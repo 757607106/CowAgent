@@ -1,0 +1,11 @@
+from cow_platform.api.routes.agent_binding import register_agent_binding_routes
+from cow_platform.api.routes.governance import register_governance_routes
+from cow_platform.api.routes.system import register_system_routes
+from cow_platform.api.routes.tenants import register_tenant_routes
+
+__all__ = [
+    "register_agent_binding_routes",
+    "register_governance_routes",
+    "register_system_routes",
+    "register_tenant_routes",
+]

@@ -3,7 +3,6 @@ import hmac
 import time
 import json
 import logging
-import mimetypes
 import os
 import threading
 import uuid
@@ -20,9 +19,23 @@ from common import const
 from common.log import logger
 from common.singleton import singleton
 from config import conf
+from channel.web.frontend_layout import (
+    FRONTEND_MODE_LEGACY,
+    build_frontend_layout,
+    guess_content_type,
+    render_chat_html,
+    resolve_asset_file,
+)
+from channel.web.handlers import CoreHandlerDeps, build_core_handlers
+from channel.web.route_table import build_web_routes
 
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".avi", ".mov", ".mkv"}
+_FRONTEND_LAYOUT = build_frontend_layout(__file__)
+
+
+def _frontend_mode() -> str:
+    return str(conf().get("web_frontend_mode", FRONTEND_MODE_LEGACY) or FRONTEND_MODE_LEGACY)
 
 def _is_password_enabled():
     return bool(conf().get("web_password", ""))
@@ -647,9 +660,7 @@ class WebChannel(ChatChannel):
 
     def chat_page(self):
         """Serve the chat HTML page."""
-        file_path = os.path.join(os.path.dirname(__file__), 'chat.html')  # 使用绝对路径
-        with open(file_path, 'r', encoding='utf-8') as f:
-            return f.read()
+        return render_chat_html(_FRONTEND_LAYOUT, _frontend_mode(), cache_bust=True)
 
     def startup(self):
         port = conf().get("web_port", 9899)
@@ -671,59 +682,12 @@ class WebChannel(ChatChannel):
         logger.info(f"[WebChannel] 🌍 服务器访问: http://YOUR_IP:{port} (请将YOUR_IP替换为服务器IP)")
 
         # 确保静态文件目录存在
-        static_dir = os.path.join(os.path.dirname(__file__), 'static')
+        static_dir = str(_FRONTEND_LAYOUT.legacy_assets)
         if not os.path.exists(static_dir):
             os.makedirs(static_dir)
             logger.debug(f"[WebChannel] Created static directory: {static_dir}")
 
-        urls = (
-            '/', 'RootHandler',
-            '/auth/login', 'AuthLoginHandler',
-            '/auth/check', 'AuthCheckHandler',
-            '/auth/logout', 'AuthLogoutHandler',
-            '/message', 'MessageHandler',
-            '/upload', 'UploadHandler',
-            '/uploads/(.*)', 'UploadsHandler',
-            '/api/file', 'FileServeHandler',
-            '/poll', 'PollHandler',
-            '/stream', 'StreamHandler',
-            '/chat', 'ChatHandler',
-            '/config', 'ConfigHandler',
-            '/api/channels', 'ChannelsHandler',
-            '/api/weixin/qrlogin', 'WeixinQrHandler',
-            '/api/tools', 'ToolsHandler',
-            '/api/skills', 'SkillsHandler',
-            '/api/memory', 'MemoryHandler',
-            '/api/memory/content', 'MemoryContentHandler',
-            '/api/knowledge/list', 'KnowledgeListHandler',
-            '/api/knowledge/read', 'KnowledgeReadHandler',
-            '/api/knowledge/graph', 'KnowledgeGraphHandler',
-            '/api/platform/tenant-user-meta', 'PlatformTenantUserMetaHandler',
-            '/api/platform/tenants', 'PlatformTenantsHandler',
-            '/api/platform/tenants/(.*)', 'PlatformTenantDetailHandler',
-            '/api/platform/tenant-users', 'PlatformTenantUsersHandler',
-            '/api/platform/tenant-users/(.*)/(.*)', 'PlatformTenantUserDetailHandler',
-            '/api/platform/tenant-user-identities', 'PlatformTenantUserIdentitiesHandler',
-            '/api/platform/tenant-user-identities/(.*)/(.*)/(.*)', 'PlatformTenantUserIdentityDetailHandler',
-            '/api/platform/agents', 'PlatformAgentsHandler',
-            '/api/platform/agents/(.*)', 'PlatformAgentDetailHandler',
-            '/api/platform/bindings', 'PlatformBindingsHandler',
-            '/api/platform/bindings/(.*)', 'PlatformBindingDetailHandler',
-            '/api/agents', 'AgentsHandler',
-            '/api/bindings', 'BindingsHandler',
-            '/api/scheduler', 'SchedulerHandler',
-            '/api/sessions', 'SessionsHandler',
-            '/api/sessions/(.*)/generate_title', 'SessionTitleHandler',
-            '/api/sessions/(.*)/clear_context', 'SessionClearContextHandler',
-            '/api/sessions/(.*)', 'SessionDetailHandler',
-            '/api/history', 'HistoryHandler',
-            '/api/logs', 'LogsHandler',
-            '/api/mcp/servers', 'MCPServersHandler',
-            '/api/mcp/servers/test', 'MCPServersTestHandler',
-            '/api/mcp/servers/(.*)/tools', 'MCPServerToolsHandler',
-            '/api/version', 'VersionHandler',
-            '/assets/(.*)', 'AssetsHandler',
-        )
+        urls = build_web_routes()
         app = web.application(urls, globals(), autoreload=False)
 
         # 完全禁用web.py的HTTP日志输出
@@ -761,142 +725,28 @@ class WebChannel(ChatChannel):
             self._http_server = None
 
 
-class RootHandler:
-    def GET(self):
-        raise web.seeother('/chat')
+def _resolve_frontend_asset(file_path: str):
+    return resolve_asset_file(_FRONTEND_LAYOUT, _frontend_mode(), file_path)
 
 
-class AuthCheckHandler:
-    def GET(self):
-        web.header('Content-Type', 'application/json; charset=utf-8')
-        if not _is_password_enabled():
-            return json.dumps({"status": "success", "auth_required": False})
-        if _check_auth():
-            return json.dumps({"status": "success", "auth_required": True, "authenticated": True})
-        return json.dumps({"status": "success", "auth_required": True, "authenticated": False})
-
-
-class AuthLoginHandler:
-    def POST(self):
-        web.header('Content-Type', 'application/json; charset=utf-8')
-        if not _is_password_enabled():
-            return json.dumps({"status": "success"})
-        try:
-            data = json.loads(web.data())
-        except Exception:
-            return json.dumps({"status": "error", "message": "Invalid request"})
-        password = data.get("password", "")
-        expected = conf().get("web_password", "")
-        if not hmac.compare_digest(password, expected):
-            logger.warning("[WebChannel] Invalid login attempt")
-            return json.dumps({"status": "error", "message": "Wrong password"})
-        token = _create_auth_token()
-        web.setcookie("cow_auth_token", token, expires=_session_expire_seconds(),
-                       path="/", httponly=True, samesite="Lax")
-        return json.dumps({"status": "success"})
-
-
-class AuthLogoutHandler:
-    def POST(self):
-        web.header('Content-Type', 'application/json; charset=utf-8')
-        web.setcookie("cow_auth_token", "", expires=-1, path="/")
-        return json.dumps({"status": "success"})
-
-
-class MessageHandler:
-    def POST(self):
-        _require_auth()
-        return WebChannel().post_message()
-
-
-class UploadHandler:
-    def POST(self):
-        _require_auth()
-        web.header('Content-Type', 'application/json; charset=utf-8')
-        return WebChannel().upload_file()
-
-
-class UploadsHandler:
-    def GET(self, file_name):
-        _require_auth()
-        try:
-            upload_dir = _get_upload_dir()
-            full_path = os.path.normpath(os.path.join(upload_dir, file_name))
-            if not os.path.abspath(full_path).startswith(os.path.abspath(upload_dir)):
-                raise web.notfound()
-            if not os.path.isfile(full_path):
-                raise web.notfound()
-            content_type = mimetypes.guess_type(full_path)[0] or "application/octet-stream"
-            web.header('Content-Type', content_type)
-            web.header('Cache-Control', 'public, max-age=86400')
-            with open(full_path, 'rb') as f:
-                return f.read()
-        except web.HTTPError:
-            raise
-        except Exception as e:
-            logger.error(f"[WebChannel] Error serving upload: {e}")
-            raise web.notfound()
-
-
-class FileServeHandler:
-    def GET(self):
-        _require_auth()
-        try:
-            params = web.input(path="")
-            file_path = params.path
-            if not file_path or not os.path.isabs(file_path):
-                raise web.notfound()
-            file_path = os.path.normpath(file_path)
-            if not os.path.isfile(file_path):
-                raise web.notfound()
-            content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
-            file_name = os.path.basename(file_path)
-            from urllib.parse import quote
-            web.header('Content-Type', content_type)
-            web.header('Content-Disposition', f"inline; filename*=UTF-8''{quote(file_name)}")
-            web.header('Cache-Control', 'public, max-age=3600')
-            with open(file_path, 'rb') as f:
-                return f.read()
-        except web.HTTPError:
-            raise
-        except Exception as e:
-            logger.error(f"[WebChannel] Error serving file: {e}")
-            raise web.notfound()
-
-
-class PollHandler:
-    def POST(self):
-        _require_auth()
-        return WebChannel().poll_response()
-
-
-class StreamHandler:
-    def GET(self):
-        _require_auth()
-        params = web.input(request_id='')
-        request_id = params.request_id
-        if not request_id:
-            raise web.badrequest()
-
-        web.header('Content-Type', 'text/event-stream; charset=utf-8')
-        web.header('Cache-Control', 'no-cache')
-        web.header('X-Accel-Buffering', 'no')
-        web.header('Access-Control-Allow-Origin', '*')
-
-        return WebChannel().stream_response(request_id)
-
-
-class ChatHandler:
-    def GET(self):
-        web.header('Cache-Control', 'no-cache, no-store, must-revalidate')
-        web.header('Pragma', 'no-cache')
-        file_path = os.path.join(os.path.dirname(__file__), 'chat.html')
-        with open(file_path, 'r', encoding='utf-8') as f:
-            html = f.read()
-        cache_bust = str(int(time.time()))
-        html = html.replace('assets/js/console.js', f'assets/js/console.js?v={cache_bust}')
-        html = html.replace('assets/css/console.css', f'assets/css/console.css?v={cache_bust}')
-        return html
+globals().update(
+    build_core_handlers(
+        CoreHandlerDeps(
+            is_password_enabled=_is_password_enabled,
+            check_auth=_check_auth,
+            create_auth_token=_create_auth_token,
+            session_expire_seconds=_session_expire_seconds,
+            require_auth=_require_auth,
+            get_expected_password=lambda: conf().get("web_password", ""),
+            get_upload_dir=_get_upload_dir,
+            get_web_channel=WebChannel,
+            render_chat_page=lambda: WebChannel().chat_page(),
+            resolve_asset_path=_resolve_frontend_asset,
+            guess_content_type=guess_content_type,
+            logger=logger,
+        )
+    )
+)
 
 
 class ConfigHandler:
@@ -2541,46 +2391,6 @@ class LogsHandler:
         return generate()
 
 
-class AssetsHandler:
-    def GET(self, file_path):  # 修改默认参数
-        try:
-            # 如果请求是/static/，需要处理
-            if file_path == '':
-                # 返回目录列表...
-                pass
-
-            # 获取当前文件的绝对路径
-            current_dir = os.path.dirname(os.path.abspath(__file__))
-            static_dir = os.path.join(current_dir, 'static')
-
-            full_path = os.path.normpath(os.path.join(static_dir, file_path))
-
-            # 安全检查：确保请求的文件在static目录内
-            if not os.path.abspath(full_path).startswith(os.path.abspath(static_dir)):
-                logger.error(f"Security check failed for path: {full_path}")
-                raise web.notfound()
-
-            if not os.path.exists(full_path) or not os.path.isfile(full_path):
-                logger.error(f"File not found: {full_path}")
-                raise web.notfound()
-
-            # 设置正确的Content-Type
-            content_type = mimetypes.guess_type(full_path)[0]
-            if content_type:
-                web.header('Content-Type', content_type)
-            else:
-                # 默认为二进制流
-                web.header('Content-Type', 'application/octet-stream')
-
-            # 读取并返回文件内容
-            with open(full_path, 'rb') as f:
-                return f.read()
-
-        except Exception as e:
-            logger.error(f"Error serving static file: {e}", exc_info=True)  # 添加更详细的错误信息
-            raise web.notfound()
-
-
 class KnowledgeListHandler:
     def GET(self):
         _require_auth()
@@ -2762,10 +2572,3 @@ class MCPServerToolsHandler:
         except Exception as e:
             logger.error(f"[WebChannel] MCP server tools error: {e}")
             return json.dumps({"status": "error", "message": str(e)})
-
-
-class VersionHandler:
-    def GET(self):
-        web.header('Content-Type', 'application/json; charset=utf-8')
-        from cli import __version__
-        return json.dumps({"version": __version__})
