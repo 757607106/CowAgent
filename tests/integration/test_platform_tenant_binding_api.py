@@ -1,0 +1,94 @@
+import pytest
+from fastapi.testclient import TestClient
+
+from config import conf
+
+from cow_platform.api.app import create_app
+from cow_platform.api.settings import PlatformSettings
+
+
+@pytest.mark.integration
+def test_platform_tenant_and_binding_api_supports_crud(tmp_path, monkeypatch) -> None:
+    monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
+    monkeypatch.setitem(conf(), "model", "legacy-model")
+
+    app = create_app(PlatformSettings(host="127.0.0.1", port=9912, mode="test"))
+    client = TestClient(app)
+
+    list_tenants_before = client.get("/api/platform/tenants")
+    create_tenant_resp = client.post(
+        "/api/platform/tenants",
+        json={"tenant_id": "acme", "name": "Acme 团队"},
+    )
+    create_agent_resp = client.post(
+        "/api/platform/agents",
+        json={
+            "tenant_id": "acme",
+            "agent_id": "writer",
+            "name": "写作助手",
+            "model": "qwen-plus",
+            "system_prompt": "你擅长写作。",
+        },
+    )
+    create_binding_resp = client.post(
+        "/api/platform/bindings",
+        json={
+            "tenant_id": "acme",
+            "binding_id": "acme-web",
+            "name": "Acme Web 入口",
+            "channel_type": "web",
+            "agent_id": "writer",
+            "metadata": {
+                "external_app_id": "cow-web-console",
+                "external_chat_id": "room-42",
+            },
+        },
+    )
+    get_binding_resp = client.get("/api/platform/bindings/acme-web")
+    update_binding_resp = client.put(
+        "/api/platform/bindings/acme-web",
+        json={
+            "name": "Acme Web 正式入口",
+            "enabled": False,
+            "metadata": {
+                "external_app_id": "cow-web-console",
+                "external_chat_id": "room-99",
+                "external_user_id": "alice",
+            },
+        },
+    )
+    list_bindings_resp = client.get("/api/platform/bindings", params={"channel_type": "web"})
+    delete_binding_resp = client.delete("/api/platform/bindings/acme-web")
+    list_bindings_after_delete = client.get("/api/platform/bindings", params={"channel_type": "web"})
+
+    assert list_tenants_before.status_code == 200
+    assert any(item["tenant_id"] == "default" for item in list_tenants_before.json()["tenants"])
+
+    assert create_tenant_resp.status_code == 200
+    assert create_tenant_resp.json()["tenant"]["tenant_id"] == "acme"
+
+    assert create_agent_resp.status_code == 200
+    assert create_agent_resp.json()["agent"]["tenant_id"] == "acme"
+
+    assert create_binding_resp.status_code == 200
+    assert create_binding_resp.json()["binding"]["binding_id"] == "acme-web"
+    assert create_binding_resp.json()["binding"]["version"] == 1
+    assert create_binding_resp.json()["binding"]["metadata"]["external_chat_id"] == "room-42"
+
+    assert get_binding_resp.status_code == 200
+    assert get_binding_resp.json()["binding"]["agent_id"] == "writer"
+    assert get_binding_resp.json()["binding"]["metadata"]["external_app_id"] == "cow-web-console"
+
+    assert update_binding_resp.status_code == 200
+    assert update_binding_resp.json()["binding"]["version"] == 2
+    assert update_binding_resp.json()["binding"]["enabled"] is False
+    assert update_binding_resp.json()["binding"]["metadata"]["external_user_id"] == "alice"
+
+    assert list_bindings_resp.status_code == 200
+    assert any(item["binding_id"] == "acme-web" for item in list_bindings_resp.json()["bindings"])
+
+    assert delete_binding_resp.status_code == 200
+    assert delete_binding_resp.json()["binding"]["binding_id"] == "acme-web"
+
+    assert list_bindings_after_delete.status_code == 200
+    assert not any(item["binding_id"] == "acme-web" for item in list_bindings_after_delete.json()["bindings"])

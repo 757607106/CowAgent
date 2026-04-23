@@ -1,0 +1,50 @@
+services:
+  platform-app:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.latest
+      args:
+        INSTALL_BROWSER: "false"
+    command: python -m cow_platform.api.main --host 0.0.0.0 --port 9900
+    environment:
+      COW_PLATFORM_HOST: 0.0.0.0
+      COW_PLATFORM_PORT: 9900
+      AGENT_WORKSPACE: /home/agent/cow
+      APPDATA_DIR: /home/agent/cow/appdata
+      MODEL: ${MODEL:-qwen3.6-plus}
+    ports:
+      - "${COW_PLATFORM_PORT:-9900}:9900"
+    volumes:
+      - ../cow:/home/agent/cow
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_started
+
+  platform-worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.latest
+      args:
+        INSTALL_BROWSER: "false"
+    command: python -m cow_platform.worker.main --poll-interval 1
+    environment:
+      AGENT_WORKSPACE: /home/agent/cow
+      APPDATA_DIR: /home/agent/cow/appdata
+      MODEL: ${MODEL:-qwen3.6-plus}
+    volumes:
+      - ../cow:/home/agent/cow
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_started
