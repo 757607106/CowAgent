@@ -185,7 +185,7 @@ export function MarkdownBlock({
         escapeRawHtml
         components={MARKDOWN_COMPONENTS}
         rootClassName={joinClassNames('chat-markdown', className)}
-        streaming={loading ? { hasNextChunk: true, enableAnimation: true, tail: true } : undefined}
+        streaming={loading ? { hasNextChunk: true, enableAnimation: true, tail: false } : undefined}
       />
       {withSources && sourceItems.length > 0 ? (
         <div className="chat-sources-wrap">

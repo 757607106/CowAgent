@@ -966,7 +966,7 @@ export default function ChatPage() {
                                 深度思考：<span className="chat-sender-switch-value">关</span>
                               </>
                             )}
-                            onChange={setDeepThink}
+                            onChange={(checked) => setDeepThink(Boolean(checked))}
                           />
                           <Dropdown
                             trigger={['click']}

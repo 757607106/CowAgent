@@ -122,6 +122,22 @@ def _normalize_binding_id(binding_id: str = "") -> str:
     return (binding_id or "").strip()
 
 
+def _parse_bool(value, default: bool = True) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ("0", "false", "off", "no", "disabled"):
+            return False
+        if text in ("1", "true", "on", "yes", "enabled"):
+            return True
+    return bool(value)
+
+
 def _get_agent_service():
     from cow_platform.services.agent_service import AgentService
 
@@ -499,7 +515,7 @@ class WebChannel(ChatChannel):
             use_sse = json_data.get('stream', True)
             attachments = json_data.get('attachments', [])
             has_enable_thinking = 'enable_thinking' in json_data
-            enable_thinking = bool(json_data.get('enable_thinking', True))
+            enable_thinking = _parse_bool(json_data.get('enable_thinking'), True)
             target = _resolve_runtime_target(
                 agent_id=json_data.get('agent_id', ''),
                 tenant_id=json_data.get('tenant_id', ''),

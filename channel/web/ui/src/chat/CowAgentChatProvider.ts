@@ -203,6 +203,20 @@ function createStepKey(prefix: string, suffix?: string): string {
   return `${prefix}-${seed}`;
 }
 
+function normalizeForCompare(text?: string): string {
+  return (text || '').replace(/\s+/g, ' ').trim();
+}
+
+function dropDuplicateStageOutput(steps: AssistantStep[], finalText: string): AssistantStep[] {
+  const normalizedFinal = normalizeForCompare(finalText);
+  if (!normalizedFinal) return steps;
+
+  return steps.filter((step) => {
+    if (step.kind !== 'output') return true;
+    return normalizeForCompare(step.markdown) !== normalizedFinal;
+  });
+}
+
 function parseStreamEvent(chunk?: SSEOutput): StreamEventPayload | null {
   if (!chunk) return null;
 
@@ -407,8 +421,9 @@ function applyStreamPayload(message: CowAgentChatMessage, payload: StreamEventPa
     case 'done': {
       finalizeRunningReasoning(steps, 'success');
       finalizeRunningTool(steps, 'success');
-      content.steps = steps;
-      content.text = payload.content ? asText(payload.content) : content.text;
+      const finalText = payload.content ? asText(payload.content) : content.text;
+      content.steps = dropDuplicateStageOutput(steps, finalText);
+      content.text = finalText;
       content.streaming = false;
       break;
     }
@@ -473,9 +488,11 @@ function parseHistoryAssistantContent(row: any): AssistantBubbleContent {
     const contentSteps = row.steps.filter((item: any) => item.type === 'content');
     const lastContent = contentSteps.at(-1);
     if (!text && lastContent?.content) text = String(lastContent.content);
+    const normalizedFinalText = normalizeForCompare(text);
 
     row.steps.forEach((step: any, index: number) => {
       if (step.type === 'content' && step !== lastContent) {
+        if (normalizeForCompare(step.content) === normalizedFinalText) return;
         steps.push({
           key: `history-content-${index}`,
           kind: 'output',
