@@ -16,7 +16,11 @@ interface BindingFormValues {
   metadata: string;
 }
 
-export default function BindingsPage() {
+interface BindingsPageProps {
+  embedded?: boolean;
+}
+
+export default function BindingsPage({ embedded = false }: BindingsPageProps) {
   const { tenantId: currentTenantId } = useRuntimeScope();
   const [loading, setLoading] = useState(false);
   const [tenants, setTenants] = useState<TenantItem[]>([]);
@@ -41,10 +45,10 @@ export default function BindingsPage() {
     [agents],
   );
 
-  const loadBase = async () => {
+  const loadBase = async (tenant = tenantId) => {
     const [tenantData, agentData] = await Promise.all([
       api.listTenants(),
-      api.listAgents(tenantId || currentTenantId),
+      api.listAgents(tenant || currentTenantId),
     ]);
     setTenants(tenantData.tenants || []);
     setAgents(agentData.agents || []);
@@ -61,7 +65,7 @@ export default function BindingsPage() {
   };
 
   const reload = async () => {
-    await loadBase();
+    await loadBase(tenantId);
     await loadBindings();
   };
 
@@ -144,26 +148,32 @@ export default function BindingsPage() {
     setTenantId(currentTenantId);
   }, [currentTenantId]);
 
-  return (
-    <Card>
-      <PageTitle
-        title="渠道绑定管理"
-        description="将渠道入口绑定到指定智能体。"
-        extra={(
-          <Space>
-            <Select
-              allowClear
-              placeholder="按租户过滤"
-              style={{ width: 220 }}
-              value={tenantId || undefined}
-              onChange={(value) => setTenantId(value || '')}
-              options={tenants.map((tenant) => ({ label: tenant.name, value: tenant.tenant_id }))}
-            />
-            <Button onClick={() => void reload()}>刷新</Button>
-            <Button type="primary" onClick={openCreate}>新建绑定</Button>
-          </Space>
-        )}
+  const toolbar = (
+    <Space wrap>
+      <Select
+        allowClear
+        placeholder="按租户过滤"
+        style={{ width: 220 }}
+        value={tenantId || undefined}
+        onChange={(value) => setTenantId(value || '')}
+        options={tenants.map((tenant) => ({ label: tenant.name, value: tenant.tenant_id }))}
       />
+      <Button onClick={() => void reload()}>刷新</Button>
+      <Button type="primary" onClick={openCreate}>新建绑定</Button>
+    </Space>
+  );
+
+  return (
+    <Card className={embedded ? 'channel-tab-card' : undefined}>
+      {embedded ? (
+        <div className="channel-tab-toolbar">{toolbar}</div>
+      ) : (
+        <PageTitle
+          title="渠道绑定管理"
+          description="将渠道入口绑定到指定智能体。"
+          extra={toolbar}
+        />
+      )}
 
       <Table<BindingItem>
         rowKey={(row) => `${row.tenant_id}/${row.binding_id}`}
@@ -204,7 +214,20 @@ export default function BindingsPage() {
             <Input />
           </Form.Item>
           <Form.Item name="channel_type" label="渠道类型" rules={[{ required: true }]}>
-            <Input />
+            <Select
+              showSearch
+              options={[
+                { label: 'Web', value: 'web' },
+                { label: '微信', value: 'weixin' },
+                { label: '飞书', value: 'feishu' },
+                { label: '钉钉', value: 'dingtalk' },
+                { label: '企微智能机器人', value: 'wecom_bot' },
+                { label: 'QQ 机器人', value: 'qq' },
+                { label: '企微自建应用', value: 'wechatcom_app' },
+                { label: '公众号', value: 'wechatmp' },
+              ]}
+              placeholder="选择渠道类型"
+            />
           </Form.Item>
           <Form.Item name="agent_id" label="智能体" rules={[{ required: true }]}>
             <Select

@@ -44,9 +44,11 @@ class TenantUpdateRequest(BaseModel):
 class TenantUserCreateRequest(BaseModel):
     tenant_id: str
     user_id: str = ""
+    account: str = ""
     name: str = ""
     role: str = "member"
     status: str = "active"
+    password: str = ""
     metadata: dict[str, object] = Field(default_factory=dict)
 
 

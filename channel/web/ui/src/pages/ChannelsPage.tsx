@@ -196,7 +196,11 @@ function renderQrStatus(info: WeixinQrInfo | null): string {
   return '等待扫码';
 }
 
-export default function ChannelsPage() {
+interface ChannelsPageProps {
+  embedded?: boolean;
+}
+
+export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
   const [channels, setChannels] = useState<ChannelItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [drafts, setDrafts] = useState<Record<string, ChannelDraft>>({});
@@ -581,19 +585,25 @@ export default function ChannelsPage() {
     );
   };
 
+  const toolbar = (
+    <Space>
+      <Button icon={<ReloadOutlined />} onClick={() => void loadChannels({ resetDrafts: true })}>
+        刷新渠道
+      </Button>
+    </Space>
+  );
+
   return (
-    <div className="channels-page">
-      <PageTitle
-        title="渠道管理"
-        description="按旧版能力补齐渠道接入、二维码授权和运行状态查看。"
-        extra={(
-          <Space>
-            <Button icon={<ReloadOutlined />} onClick={() => void loadChannels({ resetDrafts: true })}>
-              刷新渠道
-            </Button>
-          </Space>
-        )}
-      />
+    <div className={embedded ? 'channels-page channels-page-embedded' : 'channels-page'}>
+      {embedded ? (
+        <div className="channel-tab-toolbar">{toolbar}</div>
+      ) : (
+        <PageTitle
+          title="渠道管理"
+          description="按旧版能力补齐渠道接入、二维码授权和运行状态查看。"
+          extra={toolbar}
+        />
+      )}
 
       <div className="console-summary-grid">
         <Card>

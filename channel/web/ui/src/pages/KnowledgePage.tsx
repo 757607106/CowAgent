@@ -6,6 +6,7 @@ import { useRuntimeScope } from '../context/runtime';
 import { JsonBlock } from '../components/JsonBlock';
 import { PageTitle } from '../components/PageTitle';
 import { api } from '../services/api';
+import type { RuntimeScope } from '../types';
 
 interface KnowledgeFile {
   name: string;
@@ -24,6 +25,13 @@ interface KnowledgeListResult {
   enabled: boolean;
 }
 
+interface KnowledgePanelProps {
+  scope: RuntimeScope;
+  title?: string;
+  description?: string;
+  embedded?: boolean;
+}
+
 function formatBytes(size: number): string {
   if (!Number.isFinite(size) || size <= 0) return '0 B';
   if (size < 1024) return `${size} B`;
@@ -31,9 +39,12 @@ function formatBytes(size: number): string {
   return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export default function KnowledgePage() {
-  const { scope } = useRuntimeScope();
-
+export function KnowledgePanel({
+  scope,
+  title = '知识库',
+  description = '按目录浏览知识文档，阅读内容并查看知识图谱。',
+  embedded = false,
+}: KnowledgePanelProps) {
   const [tabKey, setTabKey] = useState<'docs' | 'graph'>('docs');
   const [loading, setLoading] = useState(false);
   const [listData, setListData] = useState<KnowledgeListResult>({
@@ -96,7 +107,7 @@ export default function KnowledgePage() {
     setGraph(null);
     setTabKey('docs');
     void loadList();
-  }, [scope.agentId, scope.bindingId]);
+  }, [scope.tenantId, scope.agentId, scope.bindingId]);
 
   const treeData = useMemo<DataNode[]>(() => {
     const keyword = search.trim().toLowerCase();
@@ -134,10 +145,10 @@ export default function KnowledgePage() {
   }, [listData.tree, search]);
 
   return (
-    <Card>
+    <Card className={embedded ? 'knowledge-embedded-card' : undefined}>
       <PageTitle
-        title="知识库"
-        description="按目录浏览知识文档，阅读内容并查看知识图谱。"
+        title={title}
+        description={description}
         extra={(
           <Button onClick={() => void loadList()}>刷新</Button>
         )}
@@ -157,8 +168,8 @@ export default function KnowledgePage() {
             key: 'docs',
             label: '文档',
             children: (
-              <Space align="start" style={{ width: '100%' }} size={12}>
-                <Card style={{ width: 420 }}>
+              <Space className="knowledge-doc-layout" align="start" style={{ width: '100%' }} size={12}>
+                <Card className="knowledge-tree-card">
                   <Space direction="vertical" style={{ width: '100%' }} size={10}>
                     <Typography.Text type="secondary">
                       {listData.enabled
@@ -230,4 +241,9 @@ export default function KnowledgePage() {
       />
     </Card>
   );
+}
+
+export default function KnowledgePage() {
+  const { scope } = useRuntimeScope();
+  return <KnowledgePanel scope={scope} />;
 }

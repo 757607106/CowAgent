@@ -1,6 +1,7 @@
 import { Alert, Button, Card, Col, Form, Input, InputNumber, Row, Select, Space, Switch, Tag, Typography, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { PageTitle } from '../components/PageTitle';
+import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 
 interface ProviderDef {
@@ -124,6 +125,8 @@ function buildSecurityStatus(passwordMasked: boolean, passwordTouched: boolean, 
 }
 
 export default function ConfigPage() {
+  const { authUser } = useRuntimeScope();
+  const isTenantAuth = Boolean(authUser);
   const [agentForm] = Form.useForm<AgentFormShape>();
   const agentValues = Form.useWatch([], agentForm);
 
@@ -730,6 +733,7 @@ export default function ConfigPage() {
             </div>
           </Card>
 
+          {!isTenantAuth && (
           <Card
             title="安全设置"
             extra={<Tag color={securityStatus.color}>{securityStatus.text}</Tag>}
@@ -765,6 +769,7 @@ export default function ConfigPage() {
               </Typography.Paragraph>
             </div>
           </Card>
+          )}
 
           {hasPendingChanges ? (
             <div className="config-sticky-bar">

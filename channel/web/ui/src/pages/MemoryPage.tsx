@@ -5,6 +5,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useRuntimeScope } from '../context/runtime';
 import { PageTitle } from '../components/PageTitle';
 import { api } from '../services/api';
+import type { RuntimeScope } from '../types';
 
 type MemoryCategory = 'memory' | 'dream';
 
@@ -16,6 +17,13 @@ interface MemoryFileItem {
 }
 
 const PAGE_SIZE = 20;
+
+interface MemoryPanelProps {
+  scope: RuntimeScope;
+  title?: string;
+  description?: string;
+  embedded?: boolean;
+}
 
 function formatBytes(size: number): string {
   if (!Number.isFinite(size) || size <= 0) return '0 B';
@@ -31,8 +39,12 @@ function typeTag(type: string) {
   return <Tag>{type || '-'}</Tag>;
 }
 
-export default function MemoryPage() {
-  const { scope } = useRuntimeScope();
+export function MemoryPanel({
+  scope,
+  title = '记忆管理',
+  description = '查看记忆文件与梦境日记，支持分页与内容阅读。',
+  embedded = false,
+}: MemoryPanelProps) {
   const [category, setCategory] = useState<MemoryCategory>('memory');
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
@@ -97,13 +109,13 @@ export default function MemoryPage() {
     setSelected('');
     setContent('');
     void loadFiles(1);
-  }, [category, scope.agentId, scope.bindingId]);
+  }, [category, scope.tenantId, scope.agentId, scope.bindingId]);
 
   return (
-    <Card>
+    <Card className={embedded ? 'memory-embedded-card' : undefined}>
       <PageTitle
-        title="记忆管理"
-        description="查看记忆文件与梦境日记，支持分页与内容阅读。"
+        title={title}
+        description={description}
         extra={(
           <Space>
             <Segmented
@@ -119,8 +131,8 @@ export default function MemoryPage() {
         )}
       />
 
-      <Space align="start" style={{ width: '100%' }} size={12}>
-        <Card title="文件列表" style={{ width: 620 }} bodyStyle={{ padding: 0 }}>
+      <Space className="memory-panel-layout" align="start" style={{ width: '100%' }} size={12}>
+        <Card title="文件列表" className="memory-file-list-card" bodyStyle={{ padding: 0 }}>
           <Table<MemoryFileItem>
             rowKey={(row) => row.filename}
             loading={loading}
@@ -164,4 +176,9 @@ export default function MemoryPage() {
       </Space>
     </Card>
   );
+}
+
+export default function MemoryPage() {
+  const { scope } = useRuntimeScope();
+  return <MemoryPanel scope={scope} />;
 }

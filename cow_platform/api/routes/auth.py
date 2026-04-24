@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+
 from fastapi import FastAPI, HTTPException, Request
 
 from cow_platform.api.schemas import TenantLoginRequest, TenantRegisterRequest
 from cow_platform.services.auth_service import TenantAuthService
 
 
-def register_auth_routes(app: FastAPI, *, auth_service: TenantAuthService) -> None:
+def register_auth_routes(
+    app: FastAPI,
+    *,
+    auth_service: TenantAuthService,
+    record_audit: Callable[..., None] | None = None,
+) -> None:
     @app.post("/api/platform/auth/register")
     def register_tenant(payload: TenantRegisterRequest) -> dict[str, object]:
         try:
@@ -29,6 +36,7 @@ def register_auth_routes(app: FastAPI, *, auth_service: TenantAuthService) -> No
                     user_id=result["tenant_user"]["user_id"],
                     password=payload.password,
                 )
+            _record_registration_audit(result, record_audit)
             return {
                 "status": "success",
                 **result,
@@ -68,3 +76,47 @@ def register_auth_routes(app: FastAPI, *, auth_service: TenantAuthService) -> No
         if session is None:
             raise HTTPException(status_code=401, detail="unauthorized")
         return {"status": "success", "user": session.to_public_dict()}
+
+
+def _record_registration_audit(result: dict[str, object], record_audit: Callable[..., None] | None) -> None:
+    if record_audit is None:
+        return
+
+    tenant = result.get("tenant") if isinstance(result, dict) else None
+    tenant_user = result.get("tenant_user") if isinstance(result, dict) else None
+    default_agent = result.get("default_agent") if isinstance(result, dict) else None
+    if not isinstance(tenant, dict):
+        return
+
+    tenant_id = str(tenant.get("tenant_id", "") or "")
+    if not tenant_id:
+        return
+
+    record_audit(
+        action="create_tenant",
+        resource_type="tenant",
+        resource_id=tenant_id,
+        tenant_id=tenant_id,
+        metadata={"source": "auth_register"},
+    )
+    if isinstance(tenant_user, dict):
+        user_id = str(tenant_user.get("user_id", "") or "")
+        if user_id:
+            record_audit(
+                action="create_tenant_user",
+                resource_type="tenant_user",
+                resource_id=f"{tenant_id}:{user_id}",
+                tenant_id=tenant_id,
+                metadata={"role": tenant_user.get("role", "")},
+            )
+    if isinstance(default_agent, dict):
+        agent_id = str(default_agent.get("agent_id", "") or "")
+        if agent_id:
+            record_audit(
+                action="create_agent",
+                resource_type="agent",
+                resource_id=agent_id,
+                tenant_id=tenant_id,
+                agent_id=agent_id,
+                metadata={"source": "default_agent"},
+            )

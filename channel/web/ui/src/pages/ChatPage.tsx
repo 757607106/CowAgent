@@ -41,14 +41,13 @@ import {
 } from '../chat/CowAgentChatProvider';
 import { AssistantMessageFlow } from '../chat/AssistantMessageFlow';
 import { MarkdownBlock } from '../chat/ChatMarkdown';
-import { WORKSPACE_AGENT_VALUE, useRuntimeScope } from '../context/runtime';
+import { DEFAULT_AGENT_ID, DEFAULT_AGENT_NAME, useRuntimeScope } from '../context/runtime';
 import { asAttachment, api } from '../services/api';
 import { scopeBody } from '../services/http';
 import type { ChatAttachment, RuntimeScope, SessionItem } from '../types';
 import { useXChat, type SSEOutput } from '@ant-design/x-sdk';
 
 const SESSION_KEY_PREFIX = 'cowagent-web-session-id';
-const DEEP_THINK_KEY = 'cowagent-chat-deep-think';
 const HISTORY_PAGE_SIZE = 200;
 const SenderSwitch = Sender.Switch;
 const SenderHeader = Sender.Header;
@@ -129,8 +128,9 @@ function buildConversationKey(scope: RuntimeScope, sessionId: string): string {
 
 function getScopeLabel(scope: RuntimeScope): string {
   if (scope.bindingId) return `绑定 ${scope.bindingId}`;
+  if (scope.agentId === DEFAULT_AGENT_ID) return DEFAULT_AGENT_NAME;
   if (scope.agentId) return `智能体 ${scope.agentId}`;
-  return '通用 Agent（当前租户）';
+  return DEFAULT_AGENT_NAME;
 }
 
 function formatClock(value: number): string {
@@ -332,16 +332,12 @@ export default function ChatPage() {
   const [draft, setDraft] = useState('');
   const [suggestionOpen, setSuggestionOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [deepThink, setDeepThink] = useState<boolean>(() => {
-    if (typeof window === 'undefined') return true;
-    const stored = localStorage.getItem(DEEP_THINK_KEY);
-    return stored == null ? true : stored !== '0';
-  });
+  const [deepThink, setDeepThink] = useState<boolean | null>(null);
   const inputHistoryRef = useRef<string[]>([]);
   const historyIndexRef = useRef(-1);
   const historyDraftRef = useRef('');
 
-  const scopeLabel = useMemo(() => getScopeLabel(scope), [scope.agentId, scope.bindingId]);
+  const fallbackScopeLabel = useMemo(() => getScopeLabel(scope), [scope.agentId, scope.bindingId]);
   const conversationKey = useMemo(
     () => buildConversationKey(scope, sessionId || 'draft'),
     [scope.agentId, scope.bindingId, sessionId],
@@ -403,7 +399,6 @@ export default function ChatPage() {
     () => buildConversationItems(sessions, sessionId, messages.length),
     [sessions, sessionId, messages.length],
   );
-  const bubbleItems = useMemo(() => buildBubbleItems(messages, scopeLabel), [messages, scopeLabel]);
   const activeSession = useMemo(
     () => sessions.find((session) => session.session_id === sessionId),
     [sessions, sessionId],
@@ -424,30 +419,39 @@ export default function ChatPage() {
   const agentSelectorOptions = useMemo(
     () => (agentOptions.length > 0
       ? agentOptions
-      : [{ label: '通用 Agent（当前租户）', value: WORKSPACE_AGENT_VALUE }]),
+      : [{ label: DEFAULT_AGENT_NAME, value: DEFAULT_AGENT_ID }]),
     [agentOptions],
   );
   const selectedAgentValue = useMemo(
-    () => scope.agentId || WORKSPACE_AGENT_VALUE,
+    () => scope.agentId || DEFAULT_AGENT_ID,
     [scope.agentId],
   );
   const selectedAgentLabel = useMemo(
-    () => agentSelectorOptions.find((item) => item.value === selectedAgentValue)?.label || '默认助手（当前工作区）',
-    [agentSelectorOptions, selectedAgentValue],
+    () => agentSelectorOptions.find((item) => item.value === selectedAgentValue)?.label || fallbackScopeLabel,
+    [agentSelectorOptions, fallbackScopeLabel, selectedAgentValue],
   );
+  const scopeLabel = scope.bindingId ? fallbackScopeLabel : selectedAgentLabel;
+  const bubbleItems = useMemo(() => buildBubbleItems(messages, scopeLabel), [messages, scopeLabel]);
   const agentMenuItems = useMemo(
     () => agentSelectorOptions.map((item) => ({
       key: item.value,
-      icon: item.value === WORKSPACE_AGENT_VALUE ? <AntDesignOutlined /> : <RobotOutlined />,
+      icon: item.value === DEFAULT_AGENT_ID ? <AntDesignOutlined /> : <RobotOutlined />,
       label: item.label,
     })),
     [agentSelectorOptions],
   );
 
   useEffect(() => {
-    if (typeof window === 'undefined') return;
-    localStorage.setItem(DEEP_THINK_KEY, deepThink ? '1' : '0');
-  }, [deepThink]);
+    let cancelled = false;
+    void api.getConfig()
+      .then((data) => {
+        if (!cancelled) setDeepThink(Boolean(data.enable_thinking ?? true));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const activateSession = useCallback((nextSessionId: string) => {
     persistSessionId(scope, nextSessionId);
@@ -582,7 +586,7 @@ export default function ChatPage() {
       session_id: sessionId,
       message: text,
       attachments: nextAttachments,
-      enable_thinking: deepThink,
+      ...(deepThink === null ? {} : { enable_thinking: deepThink }),
       timestamp: new Date().toISOString(),
       ...scopeBody(scope),
     });
@@ -954,7 +958,7 @@ export default function ChatPage() {
                             loading={uploading}
                           />
                           <SenderSwitch
-                            value={deepThink}
+                            value={deepThink ?? true}
                             icon={<OpenAIOutlined />}
                             rootClassName="chat-sender-trigger"
                             checkedChildren={(

@@ -2,19 +2,15 @@ import {
   ApiOutlined,
   ApartmentOutlined,
   AppstoreOutlined,
-  BuildOutlined,
   BarChartOutlined,
+  BuildOutlined,
   ClusterOutlined,
-  DatabaseOutlined,
-  FileSearchOutlined,
   FileTextOutlined,
-  HddOutlined,
   LogoutOutlined,
   MessageOutlined,
   ScheduleOutlined,
   SettingOutlined,
   TeamOutlined,
-  ToolOutlined,
 } from '@ant-design/icons';
 import { App as AntdApp, Button, ConfigProvider, Form, Input, Layout, Menu, Space, Spin, Tabs, Tag, Typography, message } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
@@ -24,20 +20,16 @@ import { XProvider } from '@ant-design/x';
 import xZhCN from '@ant-design/x/locale/zh_CN';
 import ChatPage from './pages/ChatPage';
 import ConfigPage from './pages/ConfigPage';
-import ToolsPage from './pages/ToolsPage';
+import AgentsPage from './pages/AgentsPage';
+import ChannelAccessPage from './pages/ChannelAccessPage';
 import SkillsPage from './pages/SkillsPage';
 import McpPage from './pages/McpPage';
-import AgentsPage from './pages/AgentsPage';
-import BindingsPage from './pages/BindingsPage';
 import TenantsPage from './pages/TenantsPage';
 import TenantUsersPage from './pages/TenantUsersPage';
-import MemoryPage from './pages/MemoryPage';
-import KnowledgePage from './pages/KnowledgePage';
-import ChannelsPage from './pages/ChannelsPage';
 import TasksPage from './pages/TasksPage';
 import LogsPage from './pages/LogsPage';
 import UsagePage from './pages/UsagePage';
-import { RuntimeContext, WORKSPACE_AGENT_VALUE, type RuntimeAgentOption } from './context/runtime';
+import { DEFAULT_AGENT_ID, DEFAULT_AGENT_NAME, WORKSPACE_AGENT_VALUE, displayAgentName, type RuntimeAgentOption, RuntimeContext } from './context/runtime';
 import { api } from './services/api';
 import type { AuthUser, RuntimeScope } from './types';
 
@@ -46,20 +38,18 @@ const { Sider, Content } = Layout;
 const AGENT_KEY = 'cowagent_runtime_agent_id';
 const BINDING_KEY = 'cowagent_runtime_binding_id';
 
+const DEFAULT_AGENT_OPTION: RuntimeAgentOption = { label: DEFAULT_AGENT_NAME, value: DEFAULT_AGENT_ID };
+
 const menuItems = [
   { key: '/chat', icon: <MessageOutlined />, label: '对话' },
   { key: '/config', icon: <SettingOutlined />, label: '配置' },
-  { key: '/tools', icon: <ToolOutlined />, label: '工具' },
+  { key: '/agents', icon: <AppstoreOutlined />, label: 'AI 员工' },
   { key: '/skills', icon: <BuildOutlined />, label: '技能' },
   { key: '/mcp', icon: <ApiOutlined />, label: 'MCP' },
-  { key: '/agents', icon: <AppstoreOutlined />, label: '智能体' },
-  { key: '/bindings', icon: <ClusterOutlined />, label: '绑定' },
+  { key: '/channels', icon: <ClusterOutlined />, label: '渠道接入' },
   { key: '/usage', icon: <BarChartOutlined />, label: '用量' },
   { key: '/tenants', icon: <ApartmentOutlined />, label: '租户' },
   { key: '/tenant-users', icon: <TeamOutlined />, label: '租户成员' },
-  { key: '/memory', icon: <DatabaseOutlined />, label: '记忆' },
-  { key: '/knowledge', icon: <FileSearchOutlined />, label: '知识库' },
-  { key: '/channels', icon: <HddOutlined />, label: '渠道' },
   { key: '/tasks', icon: <ScheduleOutlined />, label: '任务' },
   { key: '/logs', icon: <FileTextOutlined />, label: '日志' },
 ];
@@ -70,6 +60,11 @@ interface AuthCheckState {
   bootstrapRequired: boolean;
   authMode: string;
   user: AuthUser | null;
+}
+
+function normalizeRuntimeAgentId(value?: string | null): string {
+  if (!value || value === WORKSPACE_AGENT_VALUE) return DEFAULT_AGENT_ID;
+  return value;
 }
 
 function LoginScreen({
@@ -196,22 +191,20 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
 
   const [scope, setScope] = useState<RuntimeScope>({
     tenantId,
-    agentId: localStorage.getItem(AGENT_KEY) || '',
+    agentId: normalizeRuntimeAgentId(localStorage.getItem(AGENT_KEY)),
     bindingId: '',
   });
   const [agentOptions, setAgentOptions] = useState<RuntimeAgentOption[]>([]);
 
   const loadRuntimeOptions = useCallback(async () => {
     const agentData = await api.listAgentsSimple();
-    setAgentOptions([
-      { label: '通用 Agent（当前租户）', value: WORKSPACE_AGENT_VALUE },
-      ...(agentData.agents || []).map((agent) => {
-        const label = agent.agent_id === 'default'
-          ? `${agent.name || '默认智能体'}（默认智能体）`
-          : agent.name;
-        return { label, value: agent.agent_id };
-      }),
-    ]);
+    const options = (agentData.agents || []).map((agent) => ({
+      label: displayAgentName(agent.agent_id, agent.name),
+      value: agent.agent_id,
+    }));
+    setAgentOptions(options.some((item) => item.value === DEFAULT_AGENT_ID)
+      ? options
+      : [DEFAULT_AGENT_OPTION, ...options]);
   }, []);
 
   useEffect(() => {
@@ -220,15 +213,11 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
   }, [loadRuntimeOptions]);
 
   const setAgentScope = useCallback((value?: string) => {
-    const resolvedAgentId = !value || value === WORKSPACE_AGENT_VALUE ? '' : value;
+    const resolvedAgentId = normalizeRuntimeAgentId(value);
     const next = { tenantId, agentId: resolvedAgentId, bindingId: '' };
     setScope(next);
     localStorage.removeItem(BINDING_KEY);
-    if (next.agentId) {
-      localStorage.setItem(AGENT_KEY, next.agentId);
-    } else {
-      localStorage.removeItem(AGENT_KEY);
-    }
+    localStorage.setItem(AGENT_KEY, next.agentId);
   }, [tenantId]);
 
   useEffect(() => {
@@ -236,6 +225,7 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
   }, [tenantId]);
 
   const selectedMenu = useMemo(() => {
+    if (location.pathname.startsWith('/bindings')) return ['/channels'];
     const target = menuItems.find((item) => location.pathname.startsWith(item.key));
     return target ? [target.key] : ['/chat'];
   }, [location.pathname]);
@@ -286,17 +276,17 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
               <Route path="/" element={<Navigate to="/chat" replace />} />
               <Route path="/chat" element={<ChatPage />} />
               <Route path="/config" element={<ConfigPage />} />
-              <Route path="/tools" element={<ToolsPage />} />
+              <Route path="/agents" element={<AgentsPage />} />
+              <Route path="/tools" element={<Navigate to="/agents" replace />} />
               <Route path="/skills" element={<SkillsPage />} />
               <Route path="/mcp" element={<McpPage />} />
-              <Route path="/agents" element={<AgentsPage />} />
-              <Route path="/bindings" element={<BindingsPage />} />
+              <Route path="/memory" element={<Navigate to="/agents" replace />} />
+              <Route path="/knowledge" element={<Navigate to="/agents" replace />} />
+              <Route path="/bindings" element={<ChannelAccessPage defaultTab="bindings" />} />
+              <Route path="/channels" element={<ChannelAccessPage defaultTab="channels" />} />
               <Route path="/usage" element={<UsagePage />} />
               <Route path="/tenants" element={<TenantsPage />} />
               <Route path="/tenant-users" element={<TenantUsersPage />} />
-              <Route path="/memory" element={<MemoryPage />} />
-              <Route path="/knowledge" element={<KnowledgePage />} />
-              <Route path="/channels" element={<ChannelsPage />} />
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="/logs" element={<LogsPage />} />
               <Route path="*" element={<Navigate to="/chat" replace />} />

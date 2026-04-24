@@ -1074,7 +1074,7 @@ class ConfigHandler:
         "zhipu_ai_api_base", "moonshot_base_url", "ark_base_url",
         "open_ai_api_key", "deepseek_api_key", "claude_api_key", "gemini_api_key",
         "zhipu_ai_api_key", "dashscope_api_key", "moonshot_api_key",
-        "ark_api_key", "minimax_api_key", "linkai_api_key",
+        "ark_api_key", "minimax_api_key", "linkai_api_key", "modelscope_api_key",
         "agent_max_context_tokens", "agent_max_context_turns", "agent_max_steps",
         "enable_thinking", "web_password",
     }
@@ -1725,15 +1725,17 @@ def _is_knowledge_enabled(agent_id: str = "", tenant_id: str = "", binding_id: s
 
 
 class AgentsHandler:
+    """Simple agent listing API – also enforces tenant isolation via _scope_optional_tenant_id."""
+
     def GET(self):
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(tenant_id='default')
+            params = web.input(tenant_id='', channel_type='')
             service = _get_agent_service()
-            tenant_id = _scope_tenant_id(params.tenant_id)
+            tenant_id = _scope_optional_tenant_id(params.tenant_id)
             return json.dumps(
-                {"status": "success", "agents": service.list_agent_records(tenant_id)},
+                {"status": "success", "agents": service.list_agent_records(tenant_id or 'default')},
                 ensure_ascii=False,
             )
         except Exception as e:
@@ -1868,9 +1870,11 @@ class PlatformTenantUsersHandler:
             result = service.create_user(
                 tenant_id=tenant_id,
                 user_id=str(body.get("user_id", "")).strip(),
+                account=str(body.get("account", "")).strip(),
                 name=str(body.get("name", "")).strip(),
                 role=str(body.get("role", "member")).strip() or "member",
                 status=str(body.get("status", "active")).strip() or "active",
+                password=str(body.get("password", "")).strip(),
                 metadata=body.get("metadata", {}),
             )
             return json.dumps({"status": "success", "tenant_user": result}, ensure_ascii=False)
@@ -2106,6 +2110,8 @@ class PlatformAgentDetailHandler:
 
 
 class BindingsHandler:
+    """Simple binding listing API – also enforces tenant isolation via _scope_optional_tenant_id."""
+
     def GET(self):
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
@@ -2281,6 +2287,18 @@ class ToolsHandler:
                     })
                 except Exception:
                     tools.append({"name": name, "description": ""})
+            try:
+                from agent.tools.memory.memory_search import MemorySearchTool
+                from agent.tools.memory.memory_get import MemoryGetTool
+                existing_names = {item.get("name") for item in tools}
+                for cls in (MemorySearchTool, MemoryGetTool):
+                    if cls.name not in existing_names:
+                        tools.append({
+                            "name": cls.name,
+                            "description": cls.description,
+                        })
+            except Exception as e:
+                logger.debug(f"[WebChannel] Memory tool metadata unavailable: {e}")
             return json.dumps({"status": "success", "tools": tools}, ensure_ascii=False)
         except Exception as e:
             logger.error(f"[WebChannel] Tools API error: {e}")
@@ -2330,6 +2348,8 @@ class SkillsHandler:
                 service.open({"name": name})
             elif action == "close":
                 service.close({"name": name})
+            elif action == "delete":
+                service.delete({"name": name})
             else:
                 return json.dumps({"status": "error", "message": f"unknown action: {action}"})
             return json.dumps({"status": "success"}, ensure_ascii=False)
@@ -2783,6 +2803,7 @@ class MCPServersHandler:
                     "command": config.get("command", ""),
                     "args": config.get("args", []),
                     "env": config.get("env", {}),
+                    "enabled": config.get("enabled", True),
                 })
             return json.dumps({"status": "success", "servers": servers}, ensure_ascii=False)
         except Exception as e:

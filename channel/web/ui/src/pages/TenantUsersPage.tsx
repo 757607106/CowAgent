@@ -9,9 +9,11 @@ import type { TenantItem, TenantUserItem } from '../types';
 interface UserFormValues {
   tenant_id: string;
   user_id?: string;
+  account?: string;
   name: string;
   role: string;
   status: string;
+  password?: string;
   metadata: string;
 }
 
@@ -69,9 +71,11 @@ export default function TenantUsersPage() {
     setEditing(null);
     form.setFieldsValue({
       tenant_id: tenantId || currentTenantId,
+      account: '',
       name: '',
       role: roles[0] || 'member',
       status: statuses[0] || 'active',
+      password: '',
       metadata: '{}',
     });
     setOpen(true);
@@ -111,14 +115,20 @@ export default function TenantUsersPage() {
         });
         message.success('租户成员已更新');
       } else {
-        await api.createTenantUser({
+        const account = (values.account || '').trim();
+        const password = (values.password || '').trim();
+        const data = await api.createTenantUser({
           tenant_id: effectiveTenantId,
+          account: account || undefined,
           name: values.name,
           role: values.role,
           status: values.status,
+          password: password || undefined,
           metadata,
         });
-        message.success('租户成员已创建');
+        message.success(password && !account
+          ? `租户成员已创建，登录账号：${data.tenant_user?.user_id || ''}`
+          : '租户成员已创建');
       }
       setOpen(false);
       await loadUsers();
@@ -208,6 +218,7 @@ export default function TenantUsersPage() {
         pagination={{ pageSize: 20 }}
         columns={[
           { title: '租户', dataIndex: 'tenant_id', render: (value: string) => tenantNameById.get(value) || value },
+          { title: '用户ID', dataIndex: 'user_id' },
           { title: '姓名', dataIndex: 'name' },
           { title: '角色', dataIndex: 'role', render: (v: string) => <Tag color="blue">{v}</Tag> },
           { title: '状态', dataIndex: 'status', render: (v: string) => (v === 'active' ? <Tag color="green">active</Tag> : <Tag>{v}</Tag>) },
@@ -235,6 +246,11 @@ export default function TenantUsersPage() {
         confirmLoading={submitting}
       >
         <Form form={form} layout="vertical">
+          {!editing && (
+            <Form.Item name="account" label="登录账号" extra="可留空，系统将自动生成。">
+              <Input autoComplete="off" placeholder="用于登录的唯一标识" />
+            </Form.Item>
+          )}
           <Form.Item name="name" label="姓名" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -247,6 +263,27 @@ export default function TenantUsersPage() {
           <Form.Item name="metadata" label="Metadata(JSON)">
             <Input.TextArea rows={6} />
           </Form.Item>
+          {!editing && (
+            <Form.Item
+              name="password"
+              label="初始密码"
+              dependencies={['account']}
+              rules={[
+                { min: 8, message: '密码至少 8 位' },
+                ({ getFieldValue }) => ({
+                  validator: async (_, value) => {
+                    const account = String(getFieldValue('account') || '').trim();
+                    if (account && !String(value || '').trim()) {
+                      throw new Error('填写登录账号时必须设置初始密码');
+                    }
+                  },
+                }),
+              ]}
+              extra="租户鉴权模式下使用；留空则只创建成员，不启用账号登录。"
+            >
+              <Input.Password autoComplete="new-password" placeholder="可留空" />
+            </Form.Item>
+          )}
         </Form>
       </Modal>
 

@@ -53,6 +53,15 @@ interface ToolState {
   tools: McpToolItem[];
 }
 
+interface McpServersPanelProps {
+  tenantId: string;
+  selectedAgentId?: string;
+  selectedAgent?: AgentItem | null;
+  showAgentPicker?: boolean;
+  compact?: boolean;
+  onAgentChanged?: () => void | Promise<void>;
+}
+
 function formatArgs(args: string[]): string {
   return args.length > 0 ? args.join(' ') : '无参数';
 }
@@ -87,11 +96,17 @@ function buildAgentPayload(agent: AgentItem, mcpServers: Record<string, unknown>
   };
 }
 
-export default function McpPage() {
-  const { tenantId } = useRuntimeScope();
+export function McpServersPanel({
+  tenantId,
+  selectedAgentId: controlledAgentId,
+  selectedAgent: controlledAgent,
+  showAgentPicker = true,
+  compact = false,
+  onAgentChanged,
+}: McpServersPanelProps) {
   const [agents, setAgents] = useState<AgentItem[]>([]);
-  const [selectedAgentId, setSelectedAgentId] = useState('');
-  const [selectedAgent, setSelectedAgent] = useState<AgentItem | null>(null);
+  const [internalAgentId, setInternalAgentId] = useState('');
+  const [internalAgent, setInternalAgent] = useState<AgentItem | null>(null);
   const [servers, setServers] = useState<McpServerItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -106,22 +121,25 @@ export default function McpPage() {
   const [schemaViewer, setSchemaViewer] = useState<{ serverName: string; tool: McpToolItem } | null>(null);
   const [form] = Form.useForm<ServerFormValues>();
 
+  const selectedAgentId = controlledAgentId === undefined ? internalAgentId : controlledAgentId;
+  const selectedAgent = controlledAgent === undefined ? internalAgent : controlledAgent;
+
   const loadAgents = async () => {
     const data = await api.listAgents(tenantId);
     const list = data.agents || [];
     setAgents(list);
-    if (!selectedAgentId && list.length > 0) {
-      setSelectedAgentId(list[0].agent_id);
+    if (!selectedAgentId && list.length > 0 && controlledAgentId === undefined) {
+      setInternalAgentId((list.find((agent) => agent.agent_id === 'default') || list[0]).agent_id);
     }
   };
 
   const loadAgentDetail = async (agentId: string) => {
     if (!agentId) {
-      setSelectedAgent(null);
+      setInternalAgent(null);
       return;
     }
     const data = await api.getAgentDetail(tenantId, agentId);
-    setSelectedAgent(data.agent || null);
+    setInternalAgent(data.agent || null);
   };
 
   const loadServers = async (agentId = selectedAgentId) => {
@@ -254,6 +272,7 @@ export default function McpPage() {
       message.success('MCP 服务器已保存');
       setOpen(false);
       setTestResult(null);
+      await onAgentChanged?.();
       await loadAgentDetail(selectedAgentId);
       await loadServers(selectedAgentId);
     } catch (error) {
@@ -273,6 +292,7 @@ export default function McpPage() {
       await api.updateAgent(selectedAgentId, buildAgentPayload(current, mcpServers));
       message.success('MCP 服务器已删除');
       setExpandedTools((prev) => ({ ...prev, [server.name]: false }));
+      await onAgentChanged?.();
       await loadAgentDetail(selectedAgentId);
       await loadServers(selectedAgentId);
     } catch (error) {
@@ -326,19 +346,22 @@ export default function McpPage() {
   };
 
   useEffect(() => {
-    setSelectedAgentId('');
+    if (!showAgentPicker) return;
+    setInternalAgentId('');
     void loadAgents();
-  }, [tenantId]);
+  }, [tenantId, showAgentPicker]);
 
   useEffect(() => {
     if (!selectedAgentId) {
-      setSelectedAgent(null);
+      setInternalAgent(null);
       setServers([]);
       return;
     }
-    void loadAgentDetail(selectedAgentId);
+    if (controlledAgent === undefined) {
+      void loadAgentDetail(selectedAgentId);
+    }
     void loadServers(selectedAgentId);
-  }, [selectedAgentId, tenantId]);
+  }, [selectedAgentId, tenantId, controlledAgent]);
 
   const agentSummary = useMemo(() => {
     if (!selectedAgent) return null;
@@ -350,17 +373,18 @@ export default function McpPage() {
   }, [selectedAgent, servers.length]);
 
   return (
-    <div className="mcp-page">
-      <PageTitle
-        title="MCP 服务管理"
-        description="按智能体查看、测试、编辑 MCP Server，并补齐工具查看链路。"
-        extra={(
+    <div className={compact ? 'mcp-page mcp-page-embedded' : 'mcp-page'}>
+      {!compact ? (
+        <PageTitle
+          title="MCP 服务管理"
+          description="按智能体查看、测试、编辑 MCP Server，并补齐工具查看链路。"
+          extra={showAgentPicker ? (
           <Space wrap>
             <Select
               style={{ width: 320 }}
               value={selectedAgentId || undefined}
               placeholder="选择智能体"
-              onChange={setSelectedAgentId}
+              onChange={setInternalAgentId}
               options={agents.map((agent) => ({
                 label: `${agent.name} (${agent.agent_id})`,
                 value: agent.agent_id,
@@ -373,8 +397,29 @@ export default function McpPage() {
               新增服务器
             </Button>
           </Space>
-        )}
-      />
+          ) : (
+            <Space wrap>
+              <Button icon={<ReloadOutlined />} onClick={() => void loadServers(selectedAgentId)} disabled={!selectedAgentId}>
+                刷新
+              </Button>
+              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={!selectedAgentId}>
+                新增服务器
+              </Button>
+            </Space>
+          )}
+        />
+      ) : (
+        <div className="mcp-embedded-toolbar">
+          <Space wrap>
+            <Button icon={<ReloadOutlined />} onClick={() => void loadServers(selectedAgentId)} disabled={!selectedAgentId}>
+              刷新连接
+            </Button>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={!selectedAgentId}>
+              新增连接
+            </Button>
+          </Space>
+        </div>
+      )}
 
       {selectedAgent ? (
         <Card className="mcp-agent-summary">
@@ -681,4 +726,9 @@ export default function McpPage() {
       </Modal>
     </div>
   );
+}
+
+export default function McpPage() {
+  const { tenantId } = useRuntimeScope();
+  return <McpServersPanel tenantId={tenantId} />;
 }

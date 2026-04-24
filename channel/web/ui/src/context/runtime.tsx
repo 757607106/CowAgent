@@ -6,7 +6,17 @@ export interface RuntimeAgentOption {
   value: string;
 }
 
+export const DEFAULT_AGENT_ID = 'default';
+export const DEFAULT_AGENT_NAME = '通用 Agent';
 export const WORKSPACE_AGENT_VALUE = '__workspace__';
+
+export function displayAgentName(agentId: string, name?: string): string {
+  const trimmed = (name || '').trim();
+  if (agentId === DEFAULT_AGENT_ID) {
+    return trimmed || DEFAULT_AGENT_NAME;
+  }
+  return trimmed || agentId;
+}
 
 export interface RuntimeContextValue {
   tenantId: string;

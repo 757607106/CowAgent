@@ -4,11 +4,15 @@ Memory get tool
 Allows agents to read specific sections from memory files
 """
 
+import re
+
 from agent.tools.base_tool import BaseTool
 
 
 class MemoryGetTool(BaseTool):
     """Tool for reading memory file contents"""
+
+    DAILY_MEMORY_PATH_RE = re.compile(r"^memory/\d{4}-\d{2}-\d{2}\.md$")
     
     name: str = "memory_get"
     description: str = (
@@ -92,6 +96,17 @@ class MemoryGetTool(BaseTool):
                 return ToolResult.fail(f"Error: Access denied: path outside workspace")
             
             if not file_path.exists():
+                if self._is_daily_memory_path(path):
+                    return ToolResult.success(
+                        "\n".join([
+                            f"File: {path}",
+                            "Status: no detailed daily memory file",
+                            "",
+                            "No detailed daily memory file exists for this date.",
+                            "A date summary in MEMORY.md does not imply that a matching memory/YYYY-MM-DD.md file exists.",
+                            "Use the already-loaded MEMORY.md summary or memory_search results instead of treating this as a missing context error.",
+                        ])
+                    )
                 return ToolResult.fail(f"Error: File not found: {path}")
             
             content = file_path.read_text(encoding='utf-8')
@@ -126,3 +141,7 @@ class MemoryGetTool(BaseTool):
             
         except Exception as e:
             return ToolResult.fail(f"Error reading memory file: {str(e)}")
+
+    @classmethod
+    def _is_daily_memory_path(cls, path: str) -> bool:
+        return bool(cls.DAILY_MEMORY_PATH_RE.match(path))

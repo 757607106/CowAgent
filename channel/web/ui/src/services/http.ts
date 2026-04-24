@@ -1,4 +1,5 @@
 import type { RuntimeScope } from '../types';
+import { DEFAULT_AGENT_ID } from '../context/runtime';
 
 export function buildQuery(params: Record<string, unknown>): string {
   const query = new URLSearchParams();
@@ -17,7 +18,7 @@ export function scopeQuery(scope: RuntimeScope): Record<string, string> {
   if (scope.agentId) {
     return { tenant_id: scope.tenantId, agent_id: scope.agentId };
   }
-  return scope.tenantId ? { tenant_id: scope.tenantId } : {};
+  return scope.tenantId ? { tenant_id: scope.tenantId, agent_id: DEFAULT_AGENT_ID } : {};
 }
 
 export function scopeBody(scope: RuntimeScope): Record<string, string> {
@@ -27,7 +28,7 @@ export function scopeBody(scope: RuntimeScope): Record<string, string> {
   if (scope.agentId) {
     return { tenant_id: scope.tenantId, agent_id: scope.agentId };
   }
-  return scope.tenantId ? { tenant_id: scope.tenantId } : {};
+  return scope.tenantId ? { tenant_id: scope.tenantId, agent_id: DEFAULT_AGENT_ID } : {};
 }
 
 export async function requestJson<T = any>(url: string, init?: RequestInit): Promise<T> {

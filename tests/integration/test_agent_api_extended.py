@@ -11,6 +11,7 @@ from config import conf
 
 from cow_platform.api.app import create_app
 from cow_platform.api.settings import PlatformSettings
+from tests.integration.platform_auth_helpers import register_owner
 
 
 @pytest.mark.integration
@@ -21,9 +22,11 @@ def test_create_agent_with_full_config(tmp_path: Path, monkeypatch) -> None:
 
     app = create_app(PlatformSettings(host="127.0.0.1", port=9911, mode="test"))
     client = TestClient(app)
+    headers, _, _ = register_owner(client, tenant_id="agent-extended")
 
     create_resp = client.post(
         "/api/platform/agents",
+        headers=headers,
         json={
             "agent_id": "full-agent",
             "name": "Full Config Agent",
@@ -55,10 +58,12 @@ def test_update_agent_tools(tmp_path: Path, monkeypatch) -> None:
 
     app = create_app(PlatformSettings(host="127.0.0.1", port=9911, mode="test"))
     client = TestClient(app)
+    headers, _, _ = register_owner(client, tenant_id="agent-extended")
 
     # Create agent first (no extended fields)
     client.post(
         "/api/platform/agents",
+        headers=headers,
         json={
             "agent_id": "update-tools",
             "name": "Before Update",
@@ -69,6 +74,7 @@ def test_update_agent_tools(tmp_path: Path, monkeypatch) -> None:
     # Update with tools
     update_resp = client.put(
         "/api/platform/agents/update-tools",
+        headers=headers,
         json={
             "name": "After Update",
             "tools": ["bash", "web_search"],
@@ -93,10 +99,12 @@ def test_get_agent_returns_full_config(tmp_path: Path, monkeypatch) -> None:
 
     app = create_app(PlatformSettings(host="127.0.0.1", port=9911, mode="test"))
     client = TestClient(app)
+    headers, _, _ = register_owner(client, tenant_id="agent-extended")
 
     # Create agent with full config
     client.post(
         "/api/platform/agents",
+        headers=headers,
         json={
             "agent_id": "detail-agent",
             "name": "Detail Agent",
@@ -109,7 +117,7 @@ def test_get_agent_returns_full_config(tmp_path: Path, monkeypatch) -> None:
     )
 
     # Get agent details
-    get_resp = client.get("/api/platform/agents/detail-agent")
+    get_resp = client.get("/api/platform/agents/detail-agent", headers=headers)
     assert get_resp.status_code == 200
     agent = get_resp.json()["agent"]
     assert agent["tools"] == ["bash"]
@@ -126,10 +134,12 @@ def test_delete_agent(tmp_path: Path, monkeypatch) -> None:
 
     app = create_app(PlatformSettings(host="127.0.0.1", port=9911, mode="test"))
     client = TestClient(app)
+    headers, _, _ = register_owner(client, tenant_id="agent-extended")
 
     # Create agent
     client.post(
         "/api/platform/agents",
+        headers=headers,
         json={
             "agent_id": "delete-me",
             "name": "To Be Deleted",
@@ -137,13 +147,13 @@ def test_delete_agent(tmp_path: Path, monkeypatch) -> None:
     )
 
     # Delete agent
-    delete_resp = client.delete("/api/platform/agents/delete-me")
+    delete_resp = client.delete("/api/platform/agents/delete-me", headers=headers)
     assert delete_resp.status_code == 200
     assert delete_resp.json()["status"] == "success"
     assert delete_resp.json()["agent_id"] == "delete-me"
 
     # Verify agent is gone by checking the list
-    list_resp = client.get("/api/platform/agents")
+    list_resp = client.get("/api/platform/agents", headers=headers)
     agent_ids = [a["agent_id"] for a in list_resp.json()["agents"]]
     assert "delete-me" not in agent_ids
 
@@ -156,9 +166,11 @@ def test_create_agent_defaults(tmp_path: Path, monkeypatch) -> None:
 
     app = create_app(PlatformSettings(host="127.0.0.1", port=9911, mode="test"))
     client = TestClient(app)
+    headers, _, _ = register_owner(client, tenant_id="agent-extended")
 
     create_resp = client.post(
         "/api/platform/agents",
+        headers=headers,
         json={
             "agent_id": "defaults-agent",
             "name": "Defaults Agent",

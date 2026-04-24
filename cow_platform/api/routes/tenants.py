@@ -149,9 +149,11 @@ def register_tenant_routes(
             "tenant_user": tenant_user_service.create_user(
                 tenant_id=tenant_id,
                 user_id=payload.user_id,
+                account=payload.account,
                 name=payload.name,
                 role=payload.role,
                 status=payload.status,
+                password=payload.password,
                 metadata=payload.metadata,
             ),
         }

@@ -4,7 +4,10 @@ Agent Stream Execution Module - Multi-turn reasoning based on tool-call
 Provides streaming output, event system, and complete tool-call loop
 """
 import json
+import re
 import time
+import uuid
+from html import unescape
 from typing import List, Dict, Any, Optional, Callable, Tuple
 
 from agent.protocol.models import LLMRequest, LLMModel
@@ -112,6 +115,112 @@ class AgentStreamExecutor:
         text = re.sub(r'<think>', '', text)
         text = re.sub(r'</think>', '', text)
         return text
+
+    def _parse_text_tool_calls(self, text: str) -> Tuple[str, List[Dict]]:
+        """
+        Parse tool calls emitted as plain text instead of structured deltas.
+
+        Some Qwen/DashScope streaming responses can put a tool call in content:
+        <tool_call><function=name><parameter=key>value</parameter></function></tool_call>
+        Convert those blocks to the same internal shape as structured tool_calls.
+        """
+        if not text or "<tool_call" not in text.lower():
+            return text, []
+
+        tool_calls: List[Dict[str, Any]] = []
+
+        def _coerce_value(raw_value: str) -> Any:
+            value = unescape(raw_value).strip()
+            if not value:
+                return ""
+            try:
+                return json.loads(value)
+            except Exception:
+                return value
+
+        def _append_json_tool_call(payload: Any) -> bool:
+            if not isinstance(payload, dict):
+                return False
+
+            function_info = payload.get("function") if isinstance(payload.get("function"), dict) else payload
+            name = payload.get("name") or payload.get("tool") or function_info.get("name")
+            if not name:
+                return False
+
+            arguments = (
+                payload.get("arguments")
+                or payload.get("args")
+                or payload.get("input")
+                or function_info.get("arguments")
+                or function_info.get("input")
+                or {}
+            )
+            if isinstance(arguments, str):
+                try:
+                    arguments = json.loads(arguments) if arguments.strip() else {}
+                except Exception:
+                    arguments = {"input": arguments}
+            if not isinstance(arguments, dict):
+                arguments = {"input": arguments}
+
+            tool_calls.append({
+                "id": payload.get("id") or f"call_{uuid.uuid4().hex[:24]}",
+                "name": str(name),
+                "arguments": arguments,
+            })
+            return True
+
+        tool_call_pattern = re.compile(
+            r"<tool_call\b[^>]*>(.*?)</tool_call>",
+            re.IGNORECASE | re.DOTALL,
+        )
+        function_pattern = re.compile(
+            r"<function=([A-Za-z0-9_.:-]+)\s*>(.*?)</function>",
+            re.IGNORECASE | re.DOTALL,
+        )
+        parameter_pattern = re.compile(
+            r"<parameter=([A-Za-z0-9_.:-]+)\s*>(.*?)</parameter>",
+            re.IGNORECASE | re.DOTALL,
+        )
+
+        for tool_match in tool_call_pattern.finditer(text):
+            body = tool_match.group(1).strip()
+            parsed = False
+
+            try:
+                payload = json.loads(body)
+                if isinstance(payload, list):
+                    for item in payload:
+                        parsed = _append_json_tool_call(item) or parsed
+                else:
+                    parsed = _append_json_tool_call(payload)
+            except Exception:
+                parsed = False
+
+            if parsed:
+                continue
+
+            for function_match in function_pattern.finditer(body):
+                name = function_match.group(1).strip()
+                function_body = function_match.group(2)
+                arguments: Dict[str, Any] = {}
+                for parameter_match in parameter_pattern.finditer(function_body):
+                    key = parameter_match.group(1).strip()
+                    arguments[key] = _coerce_value(parameter_match.group(2))
+
+                if name:
+                    tool_calls.append({
+                        "id": f"call_{uuid.uuid4().hex[:24]}",
+                        "name": name,
+                        "arguments": arguments,
+                    })
+
+        if not tool_calls:
+            return text, []
+
+        cleaned_text = tool_call_pattern.sub("", text).strip()
+        logger.info(f"[Agent] Parsed {len(tool_calls)} text tool_call block(s)")
+        return cleaned_text, tool_calls
 
     def _hash_args(self, args: dict) -> str:
         """Generate a simple hash for tool arguments"""
@@ -573,6 +682,8 @@ class AgentStreamExecutor:
         full_reasoning = ""
         thinking_enabled = self._is_thinking_enabled()
         tool_calls_buffer = {}  # {index: {id, name, arguments}}
+        content_emit_buffer = ""
+        suppress_text_tool_call_output = False
         gemini_raw_parts = None  # Preserve Gemini thoughtSignature for round-trip
         stop_reason = None  # Track why the stream stopped
 
@@ -645,7 +756,24 @@ class AgentStreamExecutor:
                         filtered_delta = self._filter_think_tags(content_delta)
                         full_content += filtered_delta
                         if filtered_delta:  # Only emit if there's content after filtering
-                            self._emit_event("message_update", {"delta": filtered_delta})
+                            if suppress_text_tool_call_output:
+                                continue
+
+                            content_emit_buffer += filtered_delta
+                            marker_index = content_emit_buffer.lower().find("<tool_call")
+                            if marker_index >= 0:
+                                visible_text = content_emit_buffer[:marker_index]
+                                if visible_text:
+                                    self._emit_event("message_update", {"delta": visible_text})
+                                content_emit_buffer = ""
+                                suppress_text_tool_call_output = True
+                            else:
+                                safe_len = max(0, len(content_emit_buffer) - len("<tool_call"))
+                                if safe_len:
+                                    self._emit_event("message_update", {
+                                        "delta": content_emit_buffer[:safe_len]
+                                    })
+                                    content_emit_buffer = content_emit_buffer[safe_len:]
 
                     # Handle tool calls
                     if "tool_calls" in delta and delta["tool_calls"]:
@@ -817,6 +945,17 @@ class AgentStreamExecutor:
                 "name": tc["name"],
                 "arguments": arguments
             })
+
+        # Qwen/DashScope may stream XML tool calls through normal content.
+        # Convert them before message_end so the Agent continues into tool execution.
+        cleaned_content, text_tool_calls = self._parse_text_tool_calls(full_content)
+        if text_tool_calls:
+            full_content = cleaned_content
+            tool_calls.extend(text_tool_calls)
+        elif content_emit_buffer:
+            self._emit_event("message_update", {"delta": content_emit_buffer})
+
+        content_emit_buffer = ""
 
         # Check for empty response and retry once if enabled
         if retry_on_empty and not full_content and not tool_calls:

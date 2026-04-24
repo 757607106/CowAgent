@@ -1,4 +1,4 @@
-import { Button, Card, Col, Input, Row, Select, Space, Statistic, Table, Tag, message } from 'antd';
+import { Button, Card, Col, DatePicker, Row, Select, Space, Statistic, Table, Tag, message } from 'antd';
 import { useEffect, useState } from 'react';
 import { PageTitle } from '../components/PageTitle';
 import { useRuntimeScope } from '../context/runtime';
@@ -78,12 +78,12 @@ export default function UsagePage() {
                 value: agent.agent_id,
               }))}
             />
-            <Input
+            <DatePicker
               allowClear
               style={{ width: 160 }}
-              placeholder="YYYY-MM-DD"
-              value={day}
-              onChange={(event) => setDay(event.target.value.trim())}
+              placeholder="选择日期"
+              onChange={(_date, dateString) => setDay(typeof dateString === 'string' ? dateString : '')}
+              format="YYYY-MM-DD"
             />
             <Button onClick={() => void loadUsage()}>刷新</Button>
           </Space>

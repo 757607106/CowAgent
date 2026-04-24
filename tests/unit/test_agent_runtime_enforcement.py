@@ -126,6 +126,31 @@ def test_empty_tool_allowlist_disables_all_tools(monkeypatch, tmp_path: Path):
     assert loaded == []
 
 
+def test_default_agent_empty_tools_uses_default_tool_set(monkeypatch, tmp_path: Path):
+    initializer = _make_initializer()
+    monkeypatch.setattr("bridge.agent_initializer.ToolManager", _FakeToolManager)
+
+    agent_definition = AgentDefinition(
+        tenant_id="default",
+        agent_id="default",
+        name="默认助手",
+        tools=(),
+        skills=(),
+        knowledge_enabled=False,
+    )
+
+    memory_tools = [_DummyTool("memory_search")]
+    loaded = initializer._load_tools(
+        workspace_root=str(tmp_path),
+        memory_manager=None,
+        memory_tools=memory_tools,
+        session_id="session-1",
+        agent_definition=agent_definition,
+    )
+
+    assert [tool.name for tool in loaded] == ["read", "write", "memory_search"]
+
+
 def test_memory_tools_also_follow_tool_allowlist(monkeypatch, tmp_path: Path):
     initializer = _make_initializer()
     monkeypatch.setattr("bridge.agent_initializer.ToolManager", _FakeToolManager)
@@ -172,6 +197,29 @@ def test_empty_skill_allowlist_disables_all_skills(monkeypatch, tmp_path: Path):
 
     assert isinstance(manager, _FakeSkillManager)
     assert set(manager.disabled) == {"knowledge-wiki", "skill-creator"}
+
+
+def test_default_agent_empty_skills_uses_default_skill_set(monkeypatch, tmp_path: Path):
+    initializer = _make_initializer()
+    monkeypatch.setattr("agent.skills.SkillManager", _FakeSkillManager)
+
+    agent_definition = AgentDefinition(
+        tenant_id="default",
+        agent_id="default",
+        name="默认助手",
+        tools=(),
+        skills=(),
+        knowledge_enabled=False,
+    )
+
+    manager = initializer._initialize_skill_manager(
+        workspace_root=str(tmp_path),
+        session_id="session-1",
+        agent_definition=agent_definition,
+    )
+
+    assert isinstance(manager, _FakeSkillManager)
+    assert manager.disabled == []
 
 
 def test_initializer_legacy_default_respects_explicit_knowledge_disabled(monkeypatch, tmp_path: Path):

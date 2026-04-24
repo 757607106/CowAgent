@@ -13,11 +13,35 @@ import requests
 from tests.conftest import REPO_ROOT, find_free_port, wait_for_http
 
 
-def _poll_job_completed(base_url: str, job_id: str, timeout: float = 20.0) -> dict[str, object]:
+def _register_owner(base_url: str, *, tenant_id: str) -> tuple[dict[str, str], str]:
+    response = requests.post(
+        f"{base_url}/api/platform/auth/register",
+        json={
+            "tenant_id": tenant_id,
+            "tenant_name": "Acme Real Flow",
+            "user_id": "alice",
+            "user_name": "Alice",
+            "account": f"{tenant_id}-owner",
+            "password": "admin123456",
+        },
+        timeout=5,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    return {"Authorization": f"Bearer {body['token']}"}, body["tenant"]["tenant_id"]
+
+
+def _poll_job_completed(
+    base_url: str,
+    job_id: str,
+    *,
+    headers: dict[str, str],
+    timeout: float = 20.0,
+) -> dict[str, object]:
     deadline = time.time() + timeout
     last_job: dict[str, object] | None = None
     while time.time() < deadline:
-        response = requests.get(f"{base_url}/api/platform/jobs/{job_id}", timeout=5)
+        response = requests.get(f"{base_url}/api/platform/jobs/{job_id}", headers=headers, timeout=5)
         payload = response.json()
         job = payload["job"]
         last_job = job
@@ -55,27 +79,15 @@ def test_platform_real_http_flow_without_mock_data(tmp_path: Path) -> None:
 
     try:
         wait_for_http(f"{base_url}/health", timeout=30)
+        headers, tenant_id = _register_owner(base_url, tenant_id=tenant_id)
 
-        tenant_resp = requests.post(
-            f"{base_url}/api/platform/tenants",
-            json={"tenant_id": tenant_id, "name": "Acme Real Flow"},
-            timeout=5,
-        )
-        assert tenant_resp.status_code == 200
-
-        tenant_user_meta_resp = requests.get(f"{base_url}/api/platform/tenant-user-meta", timeout=5)
+        tenant_user_meta_resp = requests.get(f"{base_url}/api/platform/tenant-user-meta", headers=headers, timeout=5)
         assert tenant_user_meta_resp.status_code == 200
         assert "owner" in tenant_user_meta_resp.json()["roles"]
 
-        create_tenant_user_resp = requests.post(
-            f"{base_url}/api/platform/tenant-users",
-            json={
-                "tenant_id": tenant_id,
-                "user_id": "alice",
-                "name": "Alice",
-                "role": "owner",
-                "status": "active",
-            },
+        create_tenant_user_resp = requests.get(
+            f"{base_url}/api/platform/tenant-users/{tenant_id}/alice",
+            headers=headers,
             timeout=5,
         )
         assert create_tenant_user_resp.status_code == 200
@@ -83,6 +95,7 @@ def test_platform_real_http_flow_without_mock_data(tmp_path: Path) -> None:
 
         create_agent_resp = requests.post(
             f"{base_url}/api/platform/agents",
+            headers=headers,
             json={
                 "tenant_id": tenant_id,
                 "name": "Real Flow Agent",
@@ -101,6 +114,7 @@ def test_platform_real_http_flow_without_mock_data(tmp_path: Path) -> None:
         binding_id = f"{tenant_id}-web"
         create_binding_resp = requests.post(
             f"{base_url}/api/platform/bindings",
+            headers=headers,
             json={
                 "tenant_id": tenant_id,
                 "binding_id": binding_id,
@@ -120,6 +134,7 @@ def test_platform_real_http_flow_without_mock_data(tmp_path: Path) -> None:
 
         bind_identity_resp = requests.post(
             f"{base_url}/api/platform/tenant-user-identities",
+            headers=headers,
             json={
                 "tenant_id": tenant_id,
                 "user_id": "alice",
@@ -133,6 +148,7 @@ def test_platform_real_http_flow_without_mock_data(tmp_path: Path) -> None:
 
         quota_resp = requests.post(
             f"{base_url}/api/platform/quotas",
+            headers=headers,
             json={
                 "scope_type": "agent",
                 "tenant_id": tenant_id,
@@ -148,6 +164,7 @@ def test_platform_real_http_flow_without_mock_data(tmp_path: Path) -> None:
 
         job_resp = requests.post(
             f"{base_url}/api/platform/jobs",
+            headers=headers,
             json={
                 "job_type": "usage_report",
                 "tenant_id": tenant_id,
@@ -169,12 +186,12 @@ def test_platform_real_http_flow_without_mock_data(tmp_path: Path) -> None:
         )
         worker_process.wait(timeout=20)
 
-        job = _poll_job_completed(base_url, job_id, timeout=20)
+        job = _poll_job_completed(base_url, job_id, headers=headers, timeout=20)
         assert job["status"] == "completed"
         artifact_path = Path(job["result"]["artifact_path"])
         assert artifact_path.exists()
 
-        doctor_resp = requests.get(f"{base_url}/api/platform/doctor", timeout=5)
+        doctor_resp = requests.get(f"{base_url}/api/platform/doctor", headers=headers, timeout=5)
         assert doctor_resp.status_code == 200
         assert doctor_resp.json()["report"]["status"] == "ok"
     finally:

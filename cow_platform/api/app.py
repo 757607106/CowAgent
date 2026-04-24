@@ -86,6 +86,7 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     register_auth_routes(
         app,
         auth_service=auth_service,
+        record_audit=audit_callback,
     )
     register_tenant_routes(
         app,

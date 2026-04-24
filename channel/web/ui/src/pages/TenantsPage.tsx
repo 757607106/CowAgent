@@ -1,4 +1,4 @@
-import { Button, Card, Form, Input, Modal, Popconfirm, Space, Table, Tag, message } from 'antd';
+import { Button, Card, Form, Input, Modal, Space, Table, Tag, message } from 'antd';
 import { useEffect, useState } from 'react';
 import { JsonBlock } from '../components/JsonBlock';
 import { PageTitle } from '../components/PageTitle';
@@ -14,6 +14,7 @@ interface TenantFormValues {
 
 export default function TenantsPage() {
   const { authUser } = useRuntimeScope();
+  const canCreateTenant = !authUser;
   const [loading, setLoading] = useState(false);
   const [tenants, setTenants] = useState<TenantItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -93,7 +94,7 @@ export default function TenantsPage() {
         extra={(
           <Space>
             <Button onClick={() => void load()}>刷新</Button>
-            {!authUser && <Button type="primary" onClick={openCreate}>新建租户</Button>}
+            {canCreateTenant && <Button type="primary" onClick={openCreate}>新建租户</Button>}
           </Space>
         )}
       />
@@ -110,9 +111,6 @@ export default function TenantsPage() {
             render: (_, row) => (
               <Space>
                 <Button size="small" onClick={() => openEdit(row)}>编辑</Button>
-                <Popconfirm title="当前后端未提供删除租户接口，仅支持编辑。" showCancel={false}>
-                  <Button size="small" danger disabled>删除</Button>
-                </Popconfirm>
               </Space>
             ),
           },

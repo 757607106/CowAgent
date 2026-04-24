@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from config import conf
 
 from cow_platform.repositories.agent_repository import AgentRepository, get_platform_workspace_root
@@ -52,3 +54,10 @@ def test_agent_service_can_auto_generate_agent_id(tmp_path: Path, monkeypatch) -
     assert created["agent_id"].startswith("agt_")
     assert len(created["agent_id"]) == 12
     assert created["name"] == "自动编号"
+
+
+def test_agent_service_rejects_default_agent_delete() -> None:
+    service = AgentService(repository=object(), tenant_service=object())
+
+    with pytest.raises(ValueError, match="default agent cannot be deleted"):
+        service.delete_agent("default", tenant_id="any")

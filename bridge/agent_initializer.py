@@ -386,9 +386,13 @@ class AgentInitializer:
         # Determine which tools to load based on agent definition
         enabled_tools = None
         if agent_definition is not None:
-            enabled_tools = set(agent_definition.tools or ())
+            if not self._uses_default_capability_set(agent_definition, "tools"):
+                enabled_tools = set(agent_definition.tools or ())
             if session_id is None:
-                logger.info(f"[AgentInitializer] Agent definition restricts tools to: {enabled_tools}")
+                if enabled_tools is None:
+                    logger.info("[AgentInitializer] Agent definition uses default tool set")
+                else:
+                    logger.info(f"[AgentInitializer] Agent definition restricts tools to: {enabled_tools}")
 
         tools = []
         file_config = {
@@ -490,23 +494,35 @@ class AgentInitializer:
             from agent.skills import SkillManager
             skill_manager = SkillManager(custom_dir=os.path.join(workspace_root, "skills"))
 
-            # If agent definition exists, strictly enforce allowlist semantics:
-            # only explicitly selected skills are enabled.
+            # Non-default agents use allowlist semantics. The platform default
+            # agent keeps CowAgent's built-in skill behavior when no allowlist
+            # is configured, so every tenant gets a full-capability assistant.
             if agent_definition is not None:
-                enabled_skills = set(agent_definition.skills or ())
-                for skill_name in list(skill_manager.skills_config.keys()):
-                    if skill_name not in enabled_skills:
+                if self._uses_default_capability_set(agent_definition, "skills"):
+                    if session_id is None:
+                        logger.info("[AgentInitializer] Agent definition uses default skill set")
+                else:
+                    enabled_skills = set(agent_definition.skills or ())
+                    for skill_name in list(skill_manager.skills_config.keys()):
                         try:
-                            skill_manager.set_skill_enabled(skill_name, False)
+                            skill_manager.set_skill_enabled(skill_name, skill_name in enabled_skills)
                         except ValueError:
                             pass  # skill not in config, ignore
-                if session_id is None:
-                    logger.info(f"[AgentInitializer] Agent definition restricts skills to: {enabled_skills}")
+                    if session_id is None:
+                        logger.info(f"[AgentInitializer] Agent definition restricts skills to: {enabled_skills}")
 
             return skill_manager
         except Exception as e:
             logger.warning(f"[AgentInitializer] Failed to initialize SkillManager: {e}")
             return None
+
+    @staticmethod
+    def _uses_default_capability_set(agent_definition, field_name: str) -> bool:
+        """True when the tenant default agent should inherit CowAgent defaults."""
+        return (
+            getattr(agent_definition, "agent_id", "") == "default"
+            and not getattr(agent_definition, field_name, ())
+        )
     
     def _setup_mcp_tools(self, tools: List, session_id: Optional[str] = None, agent_definition=None) -> Optional[Any]:
         """Start MCP servers and register their tools as MCPTool instances.
@@ -516,7 +532,11 @@ class AgentInitializer:
         if not agent_definition or not agent_definition.mcp_servers:
             return None
 
-        mcp_servers = dict(agent_definition.mcp_servers)
+        mcp_servers = {
+            name: config
+            for name, config in dict(agent_definition.mcp_servers).items()
+            if not isinstance(config, dict) or config.get("enabled", True)
+        }
         if not mcp_servers:
             return None
 

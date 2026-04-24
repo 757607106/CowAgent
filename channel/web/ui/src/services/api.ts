@@ -51,6 +51,10 @@ export const api = {
     method: 'POST',
     body: JSON.stringify({ name, action, ...scopeBody(scope) }),
   }),
+  deleteSkill: (scope: RuntimeScope, name: string) => requestJson('/api/skills', {
+    method: 'POST',
+    body: JSON.stringify({ name, action: 'delete', ...scopeBody(scope) }),
+  }),
 
   listAgentsSimple: () => requestJson<{ status: string; agents: AgentItem[] }>('/api/agents'),
   listAgents: (tenantId = '') => requestJson<{ status: string; agents: AgentItem[] }>(`/api/platform/agents${buildQuery({ tenant_id: tenantId })}`),

@@ -15,6 +15,9 @@ from cow_platform.services.tenant_service import TenantService
 
 DEFAULT_TENANT_ID = "default"
 DEFAULT_AGENT_ID = "default"
+DEFAULT_AGENT_NAME = "通用 Agent"
+LEGACY_DEFAULT_AGENT_NAME = "默认助手"
+DEFAULT_NAME_MIGRATED_KEY = "default_name_migrated"
 
 
 class AgentService:
@@ -32,12 +35,12 @@ class AgentService:
         self.tenant_service.resolve_tenant(tenant_id)
         existing = self.repository.get_agent(tenant_id, DEFAULT_AGENT_ID)
         if existing:
-            return existing
+            return self._normalize_default_agent_name(existing)
         model = os.getenv("MODEL") or conf().get("model", "")
         return self.repository.create_agent(
             tenant_id=tenant_id,
             agent_id=DEFAULT_AGENT_ID,
-            name="默认助手",
+            name=DEFAULT_AGENT_NAME,
             model=model,
             system_prompt="",
             knowledge_enabled=bool(conf().get("knowledge", True)),
@@ -123,6 +126,8 @@ class AgentService:
         return self.serialize_agent(definition)
 
     def delete_agent(self, agent_id: str, *, tenant_id: str = DEFAULT_TENANT_ID) -> dict[str, Any]:
+        if agent_id == DEFAULT_AGENT_ID:
+            raise ValueError("default agent cannot be deleted")
         self.tenant_service.resolve_tenant(tenant_id)
         definition = self.repository.delete_agent(tenant_id=tenant_id, agent_id=agent_id)
         return self.serialize_agent(definition)
@@ -151,3 +156,17 @@ class AgentService:
             if self.repository.get_agent(tenant_id, candidate) is None:
                 return candidate
         raise RuntimeError("unable to generate unique agent_id")
+
+    def _normalize_default_agent_name(self, definition: AgentDefinition) -> AgentDefinition:
+        if definition.agent_id != DEFAULT_AGENT_ID or definition.name != LEGACY_DEFAULT_AGENT_NAME:
+            return definition
+        metadata = dict(definition.metadata or {})
+        if metadata.get(DEFAULT_NAME_MIGRATED_KEY):
+            return definition
+        metadata[DEFAULT_NAME_MIGRATED_KEY] = True
+        return self.repository.update_agent(
+            tenant_id=definition.tenant_id,
+            agent_id=definition.agent_id,
+            name=DEFAULT_AGENT_NAME,
+            metadata=metadata,
+        )

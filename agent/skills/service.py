@@ -217,12 +217,17 @@ class SkillService:
         if not name:
             raise ValueError("skill name is required")
 
+        self.manager.refresh_skills()
+        config = self.manager.get_skills_config().get(name, {})
+        if config.get("source") == "builtin":
+            raise ValueError("built-in skills cannot be deleted")
+
         skill_dir = os.path.join(self.manager.custom_dir, name)
         if os.path.exists(skill_dir):
             shutil.rmtree(skill_dir)
             logger.info(f"[SkillService] delete: removed directory {skill_dir}")
         else:
-            logger.warning(f"[SkillService] delete: skill directory not found: {skill_dir}")
+            raise FileNotFoundError(f"skill directory not found: {skill_dir}")
 
         # Refresh will remove the deleted skill from config automatically
         self.manager.refresh_skills()

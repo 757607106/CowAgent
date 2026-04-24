@@ -92,7 +92,7 @@ export interface AgentItem {
   tools?: string[];
   skills?: string[];
   knowledge_enabled?: boolean;
-  mcp_servers?: Record<string, { command?: string; args?: string[]; env?: Record<string, string> }>;
+  mcp_servers?: Record<string, { command?: string; args?: string[]; env?: Record<string, string>; enabled?: boolean }>;
 }
 
 export interface BindingItem {
@@ -124,6 +124,9 @@ export interface TenantUserItem {
 export interface SkillItem {
   name: string;
   description?: string;
+  source?: 'builtin' | 'custom' | string;
+  display_name?: string;
+  category?: string;
   enabled?: boolean;
   open?: boolean;
   active?: boolean;
@@ -172,6 +175,7 @@ export interface McpServerItem {
   command: string;
   args: string[];
   env: Record<string, string>;
+  enabled?: boolean;
 }
 
 export interface McpToolItem {

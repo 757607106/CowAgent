@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import re
 import secrets
+import time
 from typing import Any
 
 from cow_platform.domain.models import TenantUserDefinition, TenantUserIdentityDefinition
@@ -56,6 +57,8 @@ class TenantUserService:
         role: str = DEFAULT_TENANT_USER_ROLE,
         status: str = DEFAULT_TENANT_USER_STATUS,
         metadata: dict[str, Any] | None = None,
+        account: str = "",
+        password: str = "",
     ) -> dict[str, Any]:
         resolved_tenant_id = (tenant_id or "").strip()
         resolved_name = (name or "").strip()
@@ -67,13 +70,19 @@ class TenantUserService:
             tenant_id=resolved_tenant_id,
             seed=resolved_name or resolved_role,
         )
+        resolved_metadata = self._with_create_auth_metadata(
+            metadata=metadata or {},
+            account=account,
+            password=password,
+            fallback_account=resolved_user_id,
+        )
         definition = self.repository.create_user(
             tenant_id=resolved_tenant_id,
             user_id=resolved_user_id,
             name=resolved_name,
             role=resolved_role,
             status=resolved_status,
-            metadata=metadata or {},
+            metadata=resolved_metadata,
         )
         return self.serialize_user(definition)
 
@@ -245,6 +254,57 @@ class TenantUserService:
         else:
             merged.pop("auth", None)
         return merged
+
+    def _with_create_auth_metadata(
+        self,
+        *,
+        metadata: dict[str, Any],
+        account: str,
+        password: str,
+        fallback_account: str,
+    ) -> dict[str, Any]:
+        resolved_account = self._normalize_account(account)
+        resolved_password = password or ""
+        if resolved_account and not resolved_password:
+            raise ValueError("password is required when account is provided")
+        if not resolved_password:
+            return dict(metadata)
+
+        from cow_platform.services.auth_service import TenantAuthService
+
+        TenantAuthService._validate_password(resolved_password)
+        if not resolved_account:
+            resolved_account = self._normalize_account(fallback_account)
+        if self._find_users_by_account(resolved_account):
+            raise ValueError("account already registered")
+
+        resolved_metadata = dict(metadata)
+        resolved_metadata["auth"] = {
+            "password_hash": TenantAuthService.hash_password(resolved_password),
+            "created_at": int(time.time()),
+            "account": resolved_account,
+        }
+        return resolved_metadata
+
+    @staticmethod
+    def _normalize_account(account: str) -> str:
+        return (account or "").strip().lower()
+
+    @staticmethod
+    def _get_auth_account(metadata: Any) -> str:
+        if not isinstance(metadata, dict):
+            return ""
+        auth_meta = metadata.get("auth")
+        if not isinstance(auth_meta, dict):
+            return ""
+        return str(auth_meta.get("account", "") or "")
+
+    def _find_users_by_account(self, account: str) -> list[TenantUserDefinition]:
+        return [
+            user
+            for user in self.repository.list_users()
+            if self._get_auth_account(user.metadata) == account
+        ]
 
     @staticmethod
     def _sanitize_user_record(record: dict[str, Any]) -> dict[str, Any]:
