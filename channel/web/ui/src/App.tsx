@@ -3,18 +3,20 @@ import {
   ApartmentOutlined,
   AppstoreOutlined,
   BuildOutlined,
+  BarChartOutlined,
   ClusterOutlined,
   DatabaseOutlined,
   FileSearchOutlined,
   FileTextOutlined,
   HddOutlined,
+  LogoutOutlined,
   MessageOutlined,
   ScheduleOutlined,
   SettingOutlined,
   TeamOutlined,
   ToolOutlined,
 } from '@ant-design/icons';
-import { App as AntdApp, Button, ConfigProvider, Form, Input, Layout, Menu, Spin, Typography, message } from 'antd';
+import { App as AntdApp, Button, ConfigProvider, Form, Input, Layout, Menu, Space, Spin, Tabs, Tag, Typography, message } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
@@ -34,9 +36,10 @@ import KnowledgePage from './pages/KnowledgePage';
 import ChannelsPage from './pages/ChannelsPage';
 import TasksPage from './pages/TasksPage';
 import LogsPage from './pages/LogsPage';
+import UsagePage from './pages/UsagePage';
 import { RuntimeContext, WORKSPACE_AGENT_VALUE, type RuntimeAgentOption } from './context/runtime';
 import { api } from './services/api';
-import type { RuntimeScope } from './types';
+import type { AuthUser, RuntimeScope } from './types';
 
 const { Sider, Content } = Layout;
 
@@ -51,6 +54,7 @@ const menuItems = [
   { key: '/mcp', icon: <ApiOutlined />, label: 'MCP' },
   { key: '/agents', icon: <AppstoreOutlined />, label: '智能体' },
   { key: '/bindings', icon: <ClusterOutlined />, label: '绑定' },
+  { key: '/usage', icon: <BarChartOutlined />, label: '用量' },
   { key: '/tenants', icon: <ApartmentOutlined />, label: '租户' },
   { key: '/tenant-users', icon: <TeamOutlined />, label: '租户成员' },
   { key: '/memory', icon: <DatabaseOutlined />, label: '记忆' },
@@ -60,15 +64,43 @@ const menuItems = [
   { key: '/logs', icon: <FileTextOutlined />, label: '日志' },
 ];
 
-function LoginScreen({ onLogin }: { onLogin: () => Promise<void> }) {
-  const [form] = Form.useForm<{ password: string }>();
+interface AuthCheckState {
+  authRequired: boolean;
+  authenticated: boolean;
+  bootstrapRequired: boolean;
+  authMode: string;
+  user: AuthUser | null;
+}
+
+function LoginScreen({
+  onLogin,
+  bootstrapRequired,
+  authMode,
+}: {
+  onLogin: () => Promise<void>;
+  bootstrapRequired: boolean;
+  authMode: string;
+}) {
+  const [loginForm] = Form.useForm<{ account: string; password: string }>();
+  const [registerForm] = Form.useForm<{
+    tenant_name: string;
+    account: string;
+    user_name: string;
+    password: string;
+    confirm_password: string;
+  }>();
+  const [activeKey, setActiveKey] = useState(bootstrapRequired ? 'register' : 'login');
   const [submitting, setSubmitting] = useState(false);
 
-  const submit = async () => {
-    const { password } = await form.validateFields();
+  const submitLogin = async () => {
+    const values = await loginForm.validateFields();
     setSubmitting(true);
     try {
-      await api.login(password);
+      await api.login(
+        authMode === 'tenant'
+          ? { account: values.account, password: values.password }
+          : { password: values.password },
+      );
       await onLogin();
       message.success('登录成功');
     } catch (error) {
@@ -78,27 +110,92 @@ function LoginScreen({ onLogin }: { onLogin: () => Promise<void> }) {
     }
   };
 
+  const submitRegister = async () => {
+    const values = await registerForm.validateFields();
+    if (values.password !== values.confirm_password) {
+      message.error('两次输入的密码不一致');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api.registerTenant({
+        tenant_name: values.tenant_name,
+        account: values.account,
+        user_name: values.user_name,
+        password: values.password,
+      });
+      await onLogin();
+      message.success('团队已创建');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '注册失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="app-login-wrap">
       <div className="app-login-panel">
         <Typography.Title level={3} style={{ marginTop: 0 }}>CowAgent 控制台</Typography.Title>
-        <Typography.Paragraph type="secondary">请输入控制台密码继续访问。</Typography.Paragraph>
-        <Form form={form} layout="vertical">
-          <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
-            <Input.Password onPressEnter={() => void submit()} />
-          </Form.Item>
-          <Button type="primary" block loading={submitting} onClick={() => void submit()}>登录</Button>
-        </Form>
+        <Tabs
+          activeKey={activeKey}
+          onChange={setActiveKey}
+          items={[
+            {
+              key: 'login',
+              label: '登录',
+              children: (
+                <Form form={loginForm} layout="vertical">
+                  {authMode === 'tenant' && (
+                    <Form.Item name="account" label="登录账号" rules={[{ required: true, message: '请输入登录账号' }]}>
+                      <Input autoComplete="username" onPressEnter={() => void submitLogin()} />
+                    </Form.Item>
+                  )}
+                  <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
+                    <Input.Password autoComplete="current-password" onPressEnter={() => void submitLogin()} />
+                  </Form.Item>
+                  <Button type="primary" block loading={submitting} onClick={() => void submitLogin()}>登录</Button>
+                </Form>
+              ),
+            },
+            ...(authMode === 'tenant' ? [{
+              key: 'register',
+              label: '注册租户',
+              children: (
+                <Form form={registerForm} layout="vertical">
+                  <Form.Item name="tenant_name" label="团队名称" rules={[{ required: true, message: '请输入团队名称' }]}>
+                    <Input autoComplete="organization" />
+                  </Form.Item>
+                  <Form.Item name="account" label="登录账号" rules={[{ required: true, message: '请输入登录账号' }]}>
+                    <Input autoComplete="username" />
+                  </Form.Item>
+                  <Form.Item name="user_name" label="你的姓名">
+                    <Input autoComplete="name" />
+                  </Form.Item>
+                  <Form.Item name="password" label="密码" rules={[{ required: true, min: 8, message: '密码至少 8 位' }]}>
+                    <Input.Password autoComplete="new-password" />
+                  </Form.Item>
+                  <Form.Item name="confirm_password" label="确认密码" rules={[{ required: true, message: '请再次输入密码' }]}>
+                    <Input.Password autoComplete="new-password" onPressEnter={() => void submitRegister()} />
+                  </Form.Item>
+                  <Button type="primary" block loading={submitting} onClick={() => void submitRegister()}>注册并登录</Button>
+                </Form>
+              ),
+            }] : []),
+          ]}
+        />
       </div>
     </div>
   );
 }
 
-function Shell() {
+function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: () => Promise<void> }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const tenantId = authUser?.tenant_id || 'default';
 
   const [scope, setScope] = useState<RuntimeScope>({
+    tenantId,
     agentId: localStorage.getItem(AGENT_KEY) || '',
     bindingId: '',
   });
@@ -107,12 +204,11 @@ function Shell() {
   const loadRuntimeOptions = useCallback(async () => {
     const agentData = await api.listAgentsSimple();
     setAgentOptions([
-      { label: '默认助手（当前工作区）', value: WORKSPACE_AGENT_VALUE },
+      { label: '通用 Agent（当前租户）', value: WORKSPACE_AGENT_VALUE },
       ...(agentData.agents || []).map((agent) => {
-        const isDefaultAgent = agent.agent_id === 'default';
-        const label = isDefaultAgent
-          ? `${agent.name}（默认智能体 / ${agent.agent_id}）`
-          : `${agent.name} (${agent.agent_id})`;
+        const label = agent.agent_id === 'default'
+          ? `${agent.name || '默认智能体'}（默认智能体）`
+          : agent.name;
         return { label, value: agent.agent_id };
       }),
     ]);
@@ -125,7 +221,7 @@ function Shell() {
 
   const setAgentScope = useCallback((value?: string) => {
     const resolvedAgentId = !value || value === WORKSPACE_AGENT_VALUE ? '' : value;
-    const next = { agentId: resolvedAgentId, bindingId: '' };
+    const next = { tenantId, agentId: resolvedAgentId, bindingId: '' };
     setScope(next);
     localStorage.removeItem(BINDING_KEY);
     if (next.agentId) {
@@ -133,7 +229,11 @@ function Shell() {
     } else {
       localStorage.removeItem(AGENT_KEY);
     }
-  }, []);
+  }, [tenantId]);
+
+  useEffect(() => {
+    setScope((current) => ({ ...current, tenantId }));
+  }, [tenantId]);
 
   const selectedMenu = useMemo(() => {
     const target = menuItems.find((item) => location.pathname.startsWith(item.key));
@@ -143,16 +243,35 @@ function Shell() {
   return (
     <RuntimeContext.Provider
       value={{
+        tenantId,
+        authUser,
         scope,
         setScope,
         agentOptions,
         refreshAgentOptions: loadRuntimeOptions,
         setAgentScope,
+        logout: onLogout,
       }}
     >
       <Layout className="app-layout">
         <Sider width={220} theme="light">
           <div className="app-logo">CowAgent 2.0.6</div>
+          {authUser && (
+            <div className="app-tenant-session">
+              <Space size={6} direction="vertical">
+                <Tag color="blue">{authUser.tenant_name || '当前团队'}</Tag>
+                <Typography.Text className="app-tenant-user">
+                  {authUser.user_name || authUser.account || '已登录'}
+                </Typography.Text>
+              </Space>
+              <Button
+                size="small"
+                icon={<LogoutOutlined />}
+                onClick={() => void onLogout()}
+                title="退出登录"
+              />
+            </div>
+          )}
           <Menu
             mode="inline"
             selectedKeys={selectedMenu}
@@ -172,6 +291,7 @@ function Shell() {
               <Route path="/mcp" element={<McpPage />} />
               <Route path="/agents" element={<AgentsPage />} />
               <Route path="/bindings" element={<BindingsPage />} />
+              <Route path="/usage" element={<UsagePage />} />
               <Route path="/tenants" element={<TenantsPage />} />
               <Route path="/tenant-users" element={<TenantUsersPage />} />
               <Route path="/memory" element={<MemoryPage />} />
@@ -190,21 +310,42 @@ function Shell() {
 
 export default function App() {
   const [checkingAuth, setCheckingAuth] = useState(true);
-  const [authRequired, setAuthRequired] = useState(false);
-  const [authenticated, setAuthenticated] = useState(false);
+  const [authState, setAuthState] = useState<AuthCheckState>({
+    authRequired: false,
+    authenticated: false,
+    bootstrapRequired: false,
+    authMode: 'none',
+    user: null,
+  });
 
   const checkAuth = async () => {
     setCheckingAuth(true);
     try {
       const result = await api.authCheck();
-      setAuthRequired(Boolean(result.auth_required));
-      setAuthenticated(Boolean(result.authenticated || !result.auth_required));
+      setAuthState({
+        authRequired: Boolean(result.auth_required),
+        authenticated: Boolean(result.authenticated || !result.auth_required),
+        bootstrapRequired: Boolean(result.bootstrap_required),
+        authMode: result.auth_mode || 'none',
+        user: result.user || null,
+      });
     } catch {
-      setAuthRequired(false);
-      setAuthenticated(true);
+      setAuthState({
+        authRequired: false,
+        authenticated: true,
+        bootstrapRequired: false,
+        authMode: 'none',
+        user: null,
+      });
     } finally {
       setCheckingAuth(false);
     }
+  };
+
+  const logout = async () => {
+    await api.logout();
+    await checkAuth();
+    message.success('已退出登录');
   };
 
   useEffect(() => {
@@ -219,11 +360,15 @@ export default function App() {
     );
   }
 
-  if (authRequired && !authenticated) {
+  if (authState.authRequired && !authState.authenticated) {
     return (
       <ConfigProvider locale={zhCN}>
         <AntdApp>
-          <LoginScreen onLogin={checkAuth} />
+          <LoginScreen
+            onLogin={checkAuth}
+            bootstrapRequired={authState.bootstrapRequired}
+            authMode={authState.authMode}
+          />
         </AntdApp>
       </ConfigProvider>
     );
@@ -243,7 +388,7 @@ export default function App() {
       <AntdApp>
         <XProvider locale={xZhCN}>
           <HashRouter>
-            <Shell />
+            <Shell authUser={authState.user} onLogout={logout} />
           </HashRouter>
         </XProvider>
       </AntdApp>

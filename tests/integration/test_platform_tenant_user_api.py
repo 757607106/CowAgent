@@ -99,3 +99,35 @@ def test_platform_tenant_user_api_supports_crud_and_identity_binding(tmp_path, m
     assert list_users_after_delete.status_code == 200
     assert len(list_users_after_delete.json()["tenant_users"]) == 1
     assert list_users_after_delete.json()["tenant_users"][0]["user_id"] == "alice"
+
+
+@pytest.mark.integration
+def test_platform_tenant_user_api_generates_internal_ids(tmp_path, monkeypatch) -> None:
+    monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
+    monkeypatch.setitem(conf(), "model", "legacy-model")
+
+    app = create_app(PlatformSettings(host="127.0.0.1", port=9917, mode="test"))
+    client = TestClient(app)
+
+    create_tenant_resp = client.post(
+        "/api/platform/tenants",
+        json={"name": "用户成功团队", "status": "active", "metadata": {"source": "test"}},
+    )
+    tenant_id = create_tenant_resp.json()["tenant"]["tenant_id"]
+    create_user_resp = client.post(
+        "/api/platform/tenant-users",
+        json={
+            "tenant_id": tenant_id,
+            "name": "Dana",
+            "role": "member",
+            "status": "active",
+        },
+    )
+
+    assert create_tenant_resp.status_code == 200
+    assert tenant_id.startswith("tenant-")
+    assert create_tenant_resp.json()["tenant"]["metadata"]["source"] == "test"
+
+    assert create_user_resp.status_code == 200
+    assert create_user_resp.json()["tenant_user"]["tenant_id"] == tenant_id
+    assert create_user_resp.json()["tenant_user"]["user_id"].startswith("user-dana-")

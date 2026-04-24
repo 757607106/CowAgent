@@ -2,17 +2,18 @@ import { Button, Card, Form, Input, Modal, Popconfirm, Space, Table, Tag, messag
 import { useEffect, useState } from 'react';
 import { JsonBlock } from '../components/JsonBlock';
 import { PageTitle } from '../components/PageTitle';
+import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type { TenantItem } from '../types';
 
 interface TenantFormValues {
-  tenant_id: string;
   name: string;
   status: string;
   metadata: string;
 }
 
 export default function TenantsPage() {
+  const { authUser } = useRuntimeScope();
   const [loading, setLoading] = useState(false);
   const [tenants, setTenants] = useState<TenantItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -32,14 +33,13 @@ export default function TenantsPage() {
 
   const openCreate = () => {
     setEditing(null);
-    form.setFieldsValue({ tenant_id: '', name: '', status: 'active', metadata: '{}' });
+    form.setFieldsValue({ name: '', status: 'active', metadata: '{}' });
     setOpen(true);
   };
 
   const openEdit = (row: TenantItem) => {
     setEditing(row);
     form.setFieldsValue({
-      tenant_id: row.tenant_id,
       name: row.name,
       status: row.status,
       metadata: JSON.stringify(row.metadata || {}, null, 2),
@@ -68,7 +68,6 @@ export default function TenantsPage() {
         message.success('租户已更新');
       } else {
         await api.createTenant({
-          tenant_id: values.tenant_id,
           name: values.name,
           status: values.status,
           metadata,
@@ -94,7 +93,7 @@ export default function TenantsPage() {
         extra={(
           <Space>
             <Button onClick={() => void load()}>刷新</Button>
-            <Button type="primary" onClick={openCreate}>新建租户</Button>
+            {!authUser && <Button type="primary" onClick={openCreate}>新建租户</Button>}
           </Space>
         )}
       />
@@ -104,7 +103,6 @@ export default function TenantsPage() {
         dataSource={tenants}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: '租户ID', dataIndex: 'tenant_id' },
           { title: '名称', dataIndex: 'name' },
           { title: '状态', dataIndex: 'status', render: (v: string) => (v === 'active' ? <Tag color="green">active</Tag> : <Tag>{v}</Tag>) },
           {
@@ -133,9 +131,6 @@ export default function TenantsPage() {
         destroyOnClose
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="tenant_id" label="租户ID" rules={[{ required: true }]}>
-            <Input disabled={Boolean(editing)} />
-          </Form.Item>
           <Form.Item name="name" label="名称" rules={[{ required: true }]}>
             <Input />
           </Form.Item>

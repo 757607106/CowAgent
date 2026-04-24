@@ -6,10 +6,50 @@ import subprocess
 import time
 from pathlib import Path
 
+import pytest
 import requests
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _reset_platform_postgres_if_configured() -> None:
+    if not os.getenv("COW_PLATFORM_DATABASE_URL"):
+        return
+    try:
+        from cow_platform.db import connect
+
+        with connect() as conn:
+            conn.execute(
+                """
+                TRUNCATE
+                    platform_audit_logs,
+                    platform_usage_records,
+                    platform_jobs,
+                    platform_quotas,
+                    platform_pricing,
+                    platform_bindings,
+                    platform_tenant_user_identities,
+                    platform_tenant_users,
+                    platform_agents,
+                    platform_tenants,
+                    platform_conversation_messages,
+                    platform_conversation_sessions,
+                    platform_memory_chunks,
+                    platform_memory_files,
+                    platform_settings
+                RESTART IDENTITY CASCADE
+                """
+            )
+            conn.commit()
+    except Exception:
+        return
+
+
+@pytest.fixture(autouse=True)
+def reset_platform_postgres_between_tests():
+    _reset_platform_postgres_if_configured()
+    yield
 
 
 def find_free_port() -> int:

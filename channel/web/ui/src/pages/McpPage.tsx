@@ -30,6 +30,7 @@ import {
 } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { PageTitle } from '../components/PageTitle';
+import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type { AgentItem, McpServerItem, McpTestResult, McpToolItem } from '../types';
 
@@ -87,6 +88,7 @@ function buildAgentPayload(agent: AgentItem, mcpServers: Record<string, unknown>
 }
 
 export default function McpPage() {
+  const { tenantId } = useRuntimeScope();
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [selectedAgentId, setSelectedAgentId] = useState('');
   const [selectedAgent, setSelectedAgent] = useState<AgentItem | null>(null);
@@ -105,7 +107,7 @@ export default function McpPage() {
   const [form] = Form.useForm<ServerFormValues>();
 
   const loadAgents = async () => {
-    const data = await api.listAgents('default');
+    const data = await api.listAgents(tenantId);
     const list = data.agents || [];
     setAgents(list);
     if (!selectedAgentId && list.length > 0) {
@@ -118,7 +120,7 @@ export default function McpPage() {
       setSelectedAgent(null);
       return;
     }
-    const data = await api.getAgentDetail('default', agentId);
+    const data = await api.getAgentDetail(tenantId, agentId);
     setSelectedAgent(data.agent || null);
   };
 
@@ -129,7 +131,7 @@ export default function McpPage() {
     }
     setLoading(true);
     try {
-      const data = await api.listMcpServers(agentId);
+      const data = await api.listMcpServers(agentId, tenantId);
       setServers(data.servers || []);
     } finally {
       setLoading(false);
@@ -234,7 +236,7 @@ export default function McpPage() {
 
     setSubmitting(true);
     try {
-      const detail = await api.getAgentDetail('default', selectedAgentId);
+      const detail = await api.getAgentDetail(tenantId, selectedAgentId);
       const current = detail.agent;
       const mcpServers = { ...(current.mcp_servers || {}) } as Record<string, unknown>;
 
@@ -264,7 +266,7 @@ export default function McpPage() {
   const removeServer = async (server: McpServerItem) => {
     if (!selectedAgentId) return;
     try {
-      const detail = await api.getAgentDetail('default', selectedAgentId);
+      const detail = await api.getAgentDetail(tenantId, selectedAgentId);
       const current = detail.agent;
       const mcpServers = { ...(current.mcp_servers || {}) } as Record<string, unknown>;
       delete mcpServers[server.name];
@@ -293,7 +295,7 @@ export default function McpPage() {
       },
     }));
     try {
-      const result = await api.listMcpServerTools(serverName, selectedAgentId);
+      const result = await api.listMcpServerTools(serverName, selectedAgentId, tenantId);
       setToolStates((prev) => ({
         ...prev,
         [serverName]: {
@@ -324,8 +326,9 @@ export default function McpPage() {
   };
 
   useEffect(() => {
+    setSelectedAgentId('');
     void loadAgents();
-  }, []);
+  }, [tenantId]);
 
   useEffect(() => {
     if (!selectedAgentId) {
@@ -335,7 +338,7 @@ export default function McpPage() {
     }
     void loadAgentDetail(selectedAgentId);
     void loadServers(selectedAgentId);
-  }, [selectedAgentId]);
+  }, [selectedAgentId, tenantId]);
 
   const agentSummary = useMemo(() => {
     if (!selectedAgent) return null;

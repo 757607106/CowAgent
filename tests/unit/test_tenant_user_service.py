@@ -82,6 +82,16 @@ def test_tenant_user_service_supports_role_and_identity_management(tmp_path, mon
     )
     assert demoted_owner["role"] == "admin"
 
+    generated_tenant = tenant_service.create_tenant(name="用户成功团队")
+    generated_user = tenant_user_service.create_user(
+        tenant_id=generated_tenant["tenant_id"],
+        name="Dana",
+        role="member",
+        status="active",
+    )
+    assert generated_tenant["tenant_id"].startswith("tenant-")
+    assert generated_user["user_id"].startswith("user-dana-")
+
 
 def test_tenant_user_service_rejects_invalid_role_and_status(tmp_path, monkeypatch) -> None:
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))

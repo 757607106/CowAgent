@@ -2,12 +2,13 @@ import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Ta
 import { useEffect, useMemo, useState } from 'react';
 import { JsonBlock } from '../components/JsonBlock';
 import { PageTitle } from '../components/PageTitle';
+import { useRuntimeScope } from '../context/runtime';
 import { api, formatBindingPayload } from '../services/api';
 import type { AgentItem, BindingItem, TenantItem } from '../types';
 
 interface BindingFormValues {
   tenant_id: string;
-  binding_id: string;
+  binding_id?: string;
   name: string;
   channel_type: string;
   agent_id: string;
@@ -16,9 +17,10 @@ interface BindingFormValues {
 }
 
 export default function BindingsPage() {
+  const { tenantId: currentTenantId } = useRuntimeScope();
   const [loading, setLoading] = useState(false);
   const [tenants, setTenants] = useState<TenantItem[]>([]);
-  const [tenantId, setTenantId] = useState('');
+  const [tenantId, setTenantId] = useState(currentTenantId);
   const [bindings, setBindings] = useState<BindingItem[]>([]);
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [open, setOpen] = useState(false);
@@ -27,14 +29,22 @@ export default function BindingsPage() {
   const [form] = Form.useForm<BindingFormValues>();
 
   const tenantAgentOptions = useMemo(() => agents.map((agent) => ({
-    label: `${agent.name} (${agent.agent_id})`,
+    label: agent.name,
     value: agent.agent_id,
   })), [agents]);
+  const tenantNameById = useMemo(
+    () => new Map(tenants.map((tenant) => [tenant.tenant_id, tenant.name])),
+    [tenants],
+  );
+  const agentNameById = useMemo(
+    () => new Map(agents.map((agent) => [agent.agent_id, agent.name])),
+    [agents],
+  );
 
   const loadBase = async () => {
     const [tenantData, agentData] = await Promise.all([
       api.listTenants(),
-      api.listAgents(tenantId || 'default'),
+      api.listAgents(tenantId || currentTenantId),
     ]);
     setTenants(tenantData.tenants || []);
     setAgents(agentData.agents || []);
@@ -58,7 +68,7 @@ export default function BindingsPage() {
   const openCreate = () => {
     setEditing(null);
     form.setFieldsValue({
-      tenant_id: tenantId || 'default',
+      tenant_id: tenantId || currentTenantId,
       binding_id: '',
       name: '',
       channel_type: 'web',
@@ -85,6 +95,7 @@ export default function BindingsPage() {
 
   const onSubmit = async () => {
     const values = await form.validateFields();
+    const effectiveTenantId = values.tenant_id || tenantId || currentTenantId;
     let metadata = {};
     try {
       metadata = values.metadata ? JSON.parse(values.metadata) : {};
@@ -94,8 +105,8 @@ export default function BindingsPage() {
     }
 
     const payload = formatBindingPayload({
-      tenant_id: values.tenant_id,
-      binding_id: values.binding_id,
+      tenant_id: effectiveTenantId,
+      binding_id: editing ? values.binding_id : undefined,
       name: values.name,
       channel_type: values.channel_type,
       agent_id: values.agent_id,
@@ -129,6 +140,10 @@ export default function BindingsPage() {
     void reload();
   }, [tenantId]);
 
+  useEffect(() => {
+    setTenantId(currentTenantId);
+  }, [currentTenantId]);
+
   return (
     <Card>
       <PageTitle
@@ -142,7 +157,7 @@ export default function BindingsPage() {
               style={{ width: 220 }}
               value={tenantId || undefined}
               onChange={(value) => setTenantId(value || '')}
-              options={tenants.map((tenant) => ({ label: `${tenant.name} (${tenant.tenant_id})`, value: tenant.tenant_id }))}
+              options={tenants.map((tenant) => ({ label: tenant.name, value: tenant.tenant_id }))}
             />
             <Button onClick={() => void reload()}>刷新</Button>
             <Button type="primary" onClick={openCreate}>新建绑定</Button>
@@ -156,11 +171,10 @@ export default function BindingsPage() {
         dataSource={bindings}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: 'Binding ID', dataIndex: 'binding_id' },
           { title: '名称', dataIndex: 'name' },
-          { title: '租户', dataIndex: 'tenant_id' },
+          { title: '租户', dataIndex: 'tenant_id', render: (value: string) => tenantNameById.get(value) || value },
           { title: '渠道', dataIndex: 'channel_type', render: (value: string) => <Tag color="blue">{value}</Tag> },
-          { title: 'Agent', dataIndex: 'agent_id' },
+          { title: '智能体', dataIndex: 'agent_id', render: (value: string) => agentNameById.get(value) || value },
           { title: '启用', render: (_, row) => (row.enabled ? <Tag color="green">是</Tag> : <Tag>否</Tag>) },
           {
             title: '操作',
@@ -186,26 +200,18 @@ export default function BindingsPage() {
         width={760}
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="tenant_id" label="租户ID" rules={[{ required: true }]}>
-            <Input disabled={Boolean(editing)} />
-          </Form.Item>
-          <Form.Item name="binding_id" label="Binding ID" rules={[{ required: true }]}>
-            <Input disabled={Boolean(editing)} />
-          </Form.Item>
           <Form.Item name="name" label="名称" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Form.Item name="channel_type" label="渠道类型" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="agent_id" label="Agent ID" rules={[{ required: true }]}>
+          <Form.Item name="agent_id" label="智能体" rules={[{ required: true }]}>
             <Select
               showSearch
               allowClear
               options={tenantAgentOptions}
-              placeholder="选择或手动输入"
-              mode="tags"
-              maxCount={1}
+              placeholder="选择智能体"
             />
           </Form.Item>
           <Form.Item name="enabled" label="启用" valuePropName="checked">

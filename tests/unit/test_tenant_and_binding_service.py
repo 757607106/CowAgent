@@ -46,6 +46,12 @@ def test_tenant_and_binding_services_support_multi_tenant_resources(tmp_path, mo
             "external_chat_id": "oc_sales",
         },
     )
+    generated_binding = binding_service.create_binding(
+        tenant_id="acme",
+        name="Acme 自动入口",
+        channel_type="web",
+        agent_id="writer",
+    )
     updated_binding = binding_service.update_binding(
         "acme-web",
         name="Acme Web 正式入口",
@@ -67,6 +73,7 @@ def test_tenant_and_binding_services_support_multi_tenant_resources(tmp_path, mo
     assert any(item["tenant_id"] == "acme" for item in tenant_records)
 
     assert created_binding["binding_id"] == "acme-web"
+    assert generated_binding["binding_id"].startswith("bind_")
     assert updated_binding["version"] == 2
     assert updated_binding["enabled"] is False
     assert updated_binding["agent_workspace"].endswith("/workspaces/acme/writer")

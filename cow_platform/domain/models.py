@@ -33,7 +33,7 @@ class PolicySnapshot:
 
 @dataclass(frozen=True, slots=True)
 class AgentDefinition:
-    """Minimal agent resource used by the platform layer."""
+    """Agent resource used by the platform layer."""
 
     tenant_id: str
     agent_id: str
@@ -55,7 +55,7 @@ class AgentDefinition:
 
 @dataclass(frozen=True, slots=True)
 class TenantDefinition:
-    """最小租户资源定义。"""
+    """租户资源定义。"""
 
     tenant_id: str
     name: str
@@ -105,7 +105,7 @@ class TenantUserIdentityDefinition:
 
 @dataclass(frozen=True, slots=True)
 class ChannelBindingDefinition:
-    """最小渠道绑定定义。"""
+    """渠道绑定定义。"""
 
     tenant_id: str
     binding_id: str

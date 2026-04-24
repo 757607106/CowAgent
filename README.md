@@ -200,7 +200,17 @@ cow install-browser
   "group_speech_recognition": false,                          # 是否开启群组语音识别
   "voice_reply_voice": false,                                 # 是否使用语音回复语音
   "use_linkai": false,                                        # 是否使用 LinkAI 接口，默认关闭，设置为 true 后可对接 LinkAI 平台模型
-  "web_password": "",                                         # Web 控制台访问密码，留空则不启用密码保护
+  "web_password": "",                                         # 兼容旧版的 Web 控制台访问密码，web_tenant_auth=false 时生效
+  "web_tenant_auth": true,                                    # Web 控制台启用租户注册/登录，并按租户隔离数据
+  "platform_env": "dev",                                      # 平台部署环境：dev/test/production
+  "platform_require_dependencies": true,                      # 严格要求 PostgreSQL/Redis/Qdrant/MinIO 同时可用
+  "platform_database_url": "postgresql://cowplatform:cowplatform@127.0.0.1:55432/cowplatform", # PostgreSQL 平台数据连接串
+  "platform_redis_url": "redis://127.0.0.1:56379/0",          # Redis 平台依赖
+  "platform_qdrant_url": "http://127.0.0.1:56333",            # Qdrant 平台依赖
+  "platform_minio_endpoint": "http://127.0.0.1:59000",        # MinIO 平台依赖
+  "platform_minio_access_key": "cowplatform",                 # MinIO 访问账号
+  "platform_minio_secret_key": "cowplatform123",              # MinIO 访问密钥
+  "platform_minio_bucket": "cowagent",                        # MinIO 默认 bucket
   "agent": true,                                              # 是否启用 Agent 模式，启用后拥有多轮工具决策、长期记忆、Skills 能力等
   "agent_workspace": "~/cow",                                 # Agent 的工作空间路径，用于存储 memory、skills、系统设定等
   "agent_max_context_tokens": 50000,                          # Agent 模式下最大上下文 tokens，超出将自动智能压缩处理
@@ -306,6 +316,35 @@ sudo docker logs -f chatgpt-on-wechat
 ```
 
 > 如果需要通过浏览器访问 Web 控制台，请确保服务器的 `9899` 端口已在防火墙或安全组中放行，建议仅对指定 IP 开放以保证安全。
+
+#### 平台生产化 Docker 部署
+
+平台模式使用同一套 Docker 依赖栈运行测试和生产：PostgreSQL、Redis、Qdrant、MinIO、platform-app、platform-worker、platform-web。容器启动会等待全依赖可用并自动执行 PostgreSQL schema 迁移。
+
+测试环境：
+
+```bash
+docker compose -p cowagent-test \
+  -f docker/compose.base.yml \
+  -f docker/compose.platform.yml \
+  -f docker/compose.test.yml \
+  up -d --build
+```
+
+生产环境：
+
+```bash
+PLATFORM_POSTGRES_PASSWORD='change-to-strong-db-secret' \
+PLATFORM_MINIO_ROOT_USER='change-to-prod-access' \
+PLATFORM_MINIO_ROOT_PASSWORD='change-to-strong-minio-secret' \
+docker compose -p cowagent-prod \
+  -f docker/compose.base.yml \
+  -f docker/compose.platform.yml \
+  -f docker/compose.prod.yml \
+  up -d --build
+```
+
+生产 overlay 会拒绝默认弱密码和 localhost 依赖，`/ready` 会同时报告 PostgreSQL、Redis、Qdrant、MinIO 状态。
 
 ## 模型说明
 
@@ -714,7 +753,9 @@ Coding Plan 是各厂商推出的编程包月套餐，所有厂商均可通过 O
 ```
 
 - `web_port`: 默认为 9899，可按需更改，需要服务器防火墙和安全组放行该端口
-- `web_password`: 访问密码，留空则不启用密码保护。部署在公网环境时建议设置
+- `web_tenant_auth`: 默认为 true，访问控制台时先注册/登录租户；每个租户的数据、Agent、记忆和知识库按租户隔离
+- `web_password`: 兼容旧版单密码模式，设置 `web_tenant_auth=false` 后生效
+- `platform_database_url`: PostgreSQL 连接串；租户、Agent、会话、记忆索引、任务和审计等平台数据均写入 PostgreSQL
 - 如本地运行，启动后请访问 `http://localhost:9899/chat` ；如服务器运行，请访问 `http://ip:9899/chat` 
 > 注：请将上述 url 中的 ip 或者 port 替换为实际的值
 </details>

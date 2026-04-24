@@ -2,7 +2,7 @@
 Memory module for AgentMesh
 
 Provides both long-term memory (vector/keyword search) and short-term
-conversation history persistence (SQLite).
+conversation history persistence backed by PostgreSQL.
 """
 
 from agent.memory.manager import MemoryManager

@@ -4,19 +4,19 @@ from datetime import datetime
 from typing import Any
 
 from cow_platform.domain.models import QuotaDefinition
-from cow_platform.repositories.quota_repository import FileQuotaRepository
+from cow_platform.repositories.quota_repository import QuotaRepository
 from cow_platform.services.usage_service import UsageService
 
 
 class QuotaService:
-    """当前阶段使用的配额服务。"""
+    """Quota service backed by PostgreSQL."""
 
     def __init__(
         self,
-        repository: FileQuotaRepository | None = None,
+        repository: QuotaRepository | None = None,
         usage_service: UsageService | None = None,
     ):
-        self.repository = repository or FileQuotaRepository()
+        self.repository = repository or QuotaRepository()
         self.usage_service = usage_service or UsageService()
 
     def list_quotas(self, *, scope_type: str = "", tenant_id: str = "", agent_id: str = "") -> list[QuotaDefinition]:

@@ -44,6 +44,15 @@ def test_platform_tenant_and_binding_api_supports_crud(tmp_path, monkeypatch) ->
             },
         },
     )
+    create_generated_binding_resp = client.post(
+        "/api/platform/bindings",
+        json={
+            "tenant_id": "acme",
+            "name": "Acme 自动入口",
+            "channel_type": "web",
+            "agent_id": "writer",
+        },
+    )
     get_binding_resp = client.get("/api/platform/bindings/acme-web")
     update_binding_resp = client.put(
         "/api/platform/bindings/acme-web",
@@ -74,6 +83,9 @@ def test_platform_tenant_and_binding_api_supports_crud(tmp_path, monkeypatch) ->
     assert create_binding_resp.json()["binding"]["binding_id"] == "acme-web"
     assert create_binding_resp.json()["binding"]["version"] == 1
     assert create_binding_resp.json()["binding"]["metadata"]["external_chat_id"] == "room-42"
+
+    assert create_generated_binding_resp.status_code == 200
+    assert create_generated_binding_resp.json()["binding"]["binding_id"].startswith("bind_")
 
     assert get_binding_resp.status_code == 200
     assert get_binding_resp.json()["binding"]["agent_id"] == "writer"

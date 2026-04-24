@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
+from cow_platform.api.security import MANAGE_ROLES, PlatformAuthorizer
 from cow_platform.api.schemas import JobCreateRequest, PricingUpsertRequest, QuotaUpsertRequest
 from cow_platform.services.audit_service import AuditService
 from cow_platform.services.job_service import JobService
@@ -20,17 +21,20 @@ def register_governance_routes(
     usage_service: UsageService,
     job_service: JobService,
     audit_service: AuditService,
+    authorizer: PlatformAuthorizer,
     record_audit: Callable[..., None],
 ) -> None:
     @app.get("/api/platform/pricing")
-    def list_pricing() -> dict[str, object]:
+    def list_pricing(request: Request) -> dict[str, object]:
+        authorizer.require_session(request)
         return {
             "status": "success",
             "pricing": pricing_service.list_pricing_records(),
         }
 
     @app.post("/api/platform/pricing")
-    def upsert_pricing(payload: PricingUpsertRequest) -> dict[str, object]:
+    def upsert_pricing(payload: PricingUpsertRequest, request: Request) -> dict[str, object]:
+        authorizer.require_session(request, roles=MANAGE_ROLES)
         result = {
             "status": "success",
             "pricing": pricing_service.upsert_pricing(
@@ -49,7 +53,9 @@ def register_governance_routes(
         return result
 
     @app.get("/api/platform/quotas")
-    def list_quotas(scope_type: str = "", tenant_id: str = "", agent_id: str = "") -> dict[str, object]:
+    def list_quotas(request: Request, scope_type: str = "", tenant_id: str = "", agent_id: str = "") -> dict[str, object]:
+        session = authorizer.require_session(request)
+        tenant_id = authorizer.scope_tenant_id(session, tenant_id)
         return {
             "status": "success",
             "quotas": quota_service.list_quota_records(
@@ -60,12 +66,14 @@ def register_governance_routes(
         }
 
     @app.post("/api/platform/quotas")
-    def upsert_quota(payload: QuotaUpsertRequest) -> dict[str, object]:
+    def upsert_quota(payload: QuotaUpsertRequest, request: Request) -> dict[str, object]:
+        session = authorizer.require_session(request, roles=MANAGE_ROLES)
+        tenant_id = authorizer.scope_tenant_id(session, payload.tenant_id)
         result = {
             "status": "success",
             "quota": quota_service.upsert_quota(
                 scope_type=payload.scope_type,
-                tenant_id=payload.tenant_id,
+                tenant_id=tenant_id,
                 agent_id=payload.agent_id,
                 max_requests_per_day=payload.max_requests_per_day,
                 max_tokens_per_day=payload.max_tokens_per_day,
@@ -75,8 +83,8 @@ def register_governance_routes(
         record_audit(
             action="upsert_quota",
             resource_type="quota",
-            resource_id=f"{payload.scope_type}:{payload.tenant_id}:{payload.agent_id}",
-            tenant_id=payload.tenant_id,
+            resource_id=f"{payload.scope_type}:{tenant_id}:{payload.agent_id}",
+            tenant_id=tenant_id,
             agent_id=payload.agent_id,
             metadata={"scope_type": payload.scope_type},
         )
@@ -84,12 +92,15 @@ def register_governance_routes(
 
     @app.get("/api/platform/usage")
     def list_usage(
+        request: Request,
         tenant_id: str = "",
         agent_id: str = "",
         day: str = "",
         request_id: str = "",
         limit: int = 100,
     ) -> dict[str, object]:
+        session = authorizer.require_session(request)
+        tenant_id = authorizer.scope_tenant_id(session, tenant_id)
         return {
             "status": "success",
             "usage": usage_service.list_usage_records(
@@ -102,7 +113,9 @@ def register_governance_routes(
         }
 
     @app.get("/api/platform/costs")
-    def get_cost_summary(tenant_id: str = "", agent_id: str = "", day: str = "") -> dict[str, object]:
+    def get_cost_summary(request: Request, tenant_id: str = "", agent_id: str = "", day: str = "") -> dict[str, object]:
+        session = authorizer.require_session(request)
+        tenant_id = authorizer.scope_tenant_id(session, tenant_id)
         return {
             "status": "success",
             "summary": usage_service.summarize_usage(
@@ -114,11 +127,14 @@ def register_governance_routes(
 
     @app.get("/api/platform/jobs")
     def list_jobs(
+        request: Request,
         status: str = "",
         tenant_id: str = "",
         agent_id: str = "",
         limit: int = 100,
     ) -> dict[str, object]:
+        session = authorizer.require_session(request)
+        tenant_id = authorizer.scope_tenant_id(session, tenant_id)
         return {
             "status": "success",
             "jobs": job_service.list_job_records(
@@ -130,20 +146,24 @@ def register_governance_routes(
         }
 
     @app.get("/api/platform/jobs/{job_id}")
-    def get_job(job_id: str) -> dict[str, object]:
+    def get_job(job_id: str, request: Request) -> dict[str, object]:
+        session = authorizer.require_session(request)
         definition = job_service.get_job(job_id)
+        authorizer.scope_tenant_id(session, definition.tenant_id)
         return {
             "status": "success",
             "job": job_service.serialize_job(definition),
         }
 
     @app.post("/api/platform/jobs")
-    def create_job(payload: JobCreateRequest) -> dict[str, object]:
+    def create_job(payload: JobCreateRequest, request: Request) -> dict[str, object]:
+        session = authorizer.require_session(request, roles=MANAGE_ROLES)
+        tenant_id = authorizer.scope_tenant_id(session, payload.tenant_id)
         result = {
             "status": "success",
             "job": job_service.create_job(
                 job_type=payload.job_type,
-                tenant_id=payload.tenant_id,
+                tenant_id=tenant_id,
                 agent_id=payload.agent_id,
                 payload=dict(payload.payload),
             ),
@@ -160,12 +180,15 @@ def register_governance_routes(
 
     @app.get("/api/platform/audit-logs")
     def list_audit_logs(
+        request: Request,
         action: str = "",
         resource_type: str = "",
         tenant_id: str = "",
         agent_id: str = "",
         limit: int = 100,
     ) -> dict[str, object]:
+        session = authorizer.require_session(request, roles=MANAGE_ROLES)
+        tenant_id = authorizer.scope_tenant_id(session, tenant_id)
         return {
             "status": "success",
             "audit_logs": audit_service.list_records(

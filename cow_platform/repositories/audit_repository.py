@@ -1,28 +1,38 @@
 from __future__ import annotations
 
-import json
-import threading
 from dataclasses import asdict
-from pathlib import Path
 from typing import Any
 
+from cow_platform.db import connect, jsonb
 from cow_platform.domain.models import AuditLogRecord
-from cow_platform.repositories.agent_repository import get_platform_data_root
 
 
-class FileAuditRepository:
-    """基于 JSON 文件的审计日志仓储。"""
-
-    def __init__(self, store_path: Path | None = None):
-        self.store_path = store_path or (get_platform_data_root() / "audit_logs.json")
-        self._lock = threading.Lock()
-        self.store_path.parent.mkdir(parents=True, exist_ok=True)
+class PostgresAuditRepository:
+    """PostgreSQL-backed audit log repository."""
 
     def append_record(self, record: AuditLogRecord) -> AuditLogRecord:
-        with self._lock:
-            store = self._load_store()
-            store["records"].append(asdict(record))
-            self._save_store(store)
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO platform_audit_logs
+                    (audit_id, action, resource_type, resource_id, status,
+                     tenant_id, agent_id, actor, created_at, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    record.audit_id,
+                    record.action,
+                    record.resource_type,
+                    record.resource_id,
+                    record.status,
+                    record.tenant_id,
+                    record.agent_id,
+                    record.actor,
+                    record.created_at,
+                    jsonb(record.metadata or {}),
+                ),
+            )
+            conn.commit()
         return record
 
     def list_records(
@@ -34,38 +44,38 @@ class FileAuditRepository:
         agent_id: str = "",
         limit: int = 100,
     ) -> list[AuditLogRecord]:
-        with self._lock:
-            store = self._load_store()
-        items = []
-        for raw in store.get("records", []):
-            if action and raw.get("action") != action:
-                continue
-            if resource_type and raw.get("resource_type") != resource_type:
-                continue
-            if tenant_id and raw.get("tenant_id", "") != tenant_id:
-                continue
-            if agent_id and raw.get("agent_id", "") != agent_id:
-                continue
-            items.append(self._to_definition(raw))
-        items.sort(key=lambda item: item.created_at, reverse=True)
-        return items[: max(1, int(limit))]
+        conditions: list[str] = []
+        params: list[Any] = []
+        if action:
+            conditions.append("action = %s")
+            params.append(action)
+        if resource_type:
+            conditions.append("resource_type = %s")
+            params.append(resource_type)
+        if tenant_id:
+            conditions.append("tenant_id = %s")
+            params.append(tenant_id)
+        if agent_id:
+            conditions.append("agent_id = %s")
+            params.append(agent_id)
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        params.append(max(1, int(limit)))
+        with connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT *
+                FROM platform_audit_logs
+                {where}
+                ORDER BY created_at DESC
+                LIMIT %s
+                """,
+                tuple(params),
+            ).fetchall()
+        return [self._to_definition(row) for row in rows]
 
     @staticmethod
     def export_record(definition: AuditLogRecord) -> dict[str, Any]:
         return asdict(definition)
-
-    def _load_store(self) -> dict[str, Any]:
-        if not self.store_path.exists():
-            return {"records": []}
-        with self.store_path.open("r", encoding="utf-8") as file:
-            data = json.load(file)
-        if "records" not in data:
-            data["records"] = []
-        return data
-
-    def _save_store(self, store: dict[str, Any]) -> None:
-        with self.store_path.open("w", encoding="utf-8") as file:
-            json.dump(store, file, ensure_ascii=False, indent=2)
 
     @staticmethod
     def _to_definition(record: dict[str, Any]) -> AuditLogRecord:
@@ -81,3 +91,6 @@ class FileAuditRepository:
             created_at=record["created_at"],
             metadata=record.get("metadata", {}) or {},
         )
+
+
+AuditRepository = PostgresAuditRepository

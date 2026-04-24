@@ -52,7 +52,7 @@
 
 - 新增 `cow_platform/` 目录骨架
 - 新增 `RuntimeContext`、`AgentDefinition`、`SessionState`、`PolicySnapshot`
-- 新增最小平台 API：
+- 新增平台 API：
   - `/health`
   - `/ready`
 - 新增 Docker 基础依赖编排：
@@ -60,6 +60,8 @@
   - Redis
   - Qdrant
   - MinIO
+- 新增 PostgreSQL 幂等 schema 初始化入口：
+  - `python -m cow_platform.db.migrate`
 - 建立 `unit / integration / e2e` 三层测试基线
 
 目的：
@@ -71,7 +73,7 @@
 
 已完成：
 
-- 新增 Agent 资源与本地仓储
+- 新增 Agent 资源与 PostgreSQL 仓储
 - 支持通过平台 API 创建 / 查询 / 更新 Agent
 - 新增 `CowAgentRuntimeAdapter`
 - 支持按 `agent_id` 切换：
@@ -81,12 +83,13 @@
   - session store
   - memory / knowledge / dreams
 - `channel/web` 支持显式选择 Agent
-- ConversationStore 支持按 Agent 工作区隔离
+- ConversationStore 已迁移到 PostgreSQL，并按 `tenant_id + agent_id + session_id` 隔离
+- 长期记忆索引已从本地 SQLite 文件迁移到 PostgreSQL，并按 workspace namespace 隔离
 
 效果：
 
 - 单租户下多个 Agent 可以并行存在
-- 不同 Agent 的会话、记忆、知识、梦境文件互不串扰
+- 不同 Agent 的会话、记忆索引、知识、梦境文件互不串扰
 
 ## Phase 2：多租户与渠道绑定
 
@@ -133,7 +136,7 @@
 已完成：
 
 - 新增 `JobDefinition`
-- 新增目录队列式 `FileJobRepository`
+- 新增 PostgreSQL `JobRepository`
 - 新增 `JobService`
 - 新增独立 worker 入口：
   - `python -m cow_platform.worker.main`
@@ -145,6 +148,23 @@
 - 新增 Docker 平台 compose：
   - `platform-app`
   - `platform-worker`
+  - `platform-web`
+- 新增环境 overlay：
+  - `docker/compose.test.yml`
+  - `docker/compose.prod.yml`
+- `platform-app / platform-worker / platform-web` 统一通过同一组环境变量连接：
+  - PostgreSQL：`COW_PLATFORM_DATABASE_URL`
+  - Redis：`COW_PLATFORM_REDIS_URL`
+  - Qdrant：`COW_PLATFORM_QDRANT_URL`
+  - MinIO：`COW_PLATFORM_MINIO_ENDPOINT`
+- 容器启动时执行：
+  - 全依赖等待与环境校验：`python -m cow_platform.deployment.check --require-all`
+  - PostgreSQL schema 幂等迁移：`python -m cow_platform.db.migrate`
+- 生产 overlay 会强制：
+  - `COW_PLATFORM_ENV=production`
+  - `COW_PLATFORM_REQUIRE_DEPENDENCIES=true`
+  - `COW_PLATFORM_STRICT_STARTUP=true`
+  - 默认弱密码 / localhost 生产依赖直接失败
 
 当前落地的任务类型：
 
@@ -152,8 +172,9 @@
 
 效果：
 
-- 平台 app 与 worker 已经完成最小拆分
-- 异步任务链路已真实可跑，不再只是同步 API 包装
+- 平台 app、worker、web 已完成独立部署单元拆分
+- 异步任务链路已真实可跑，任务状态和 worker claim 使用 PostgreSQL 行级锁持久化
+- 测试环境和生产环境使用同一套基础依赖：PostgreSQL / Redis / Qdrant / MinIO
 
 ## Phase 5：稳定性与治理
 
@@ -164,6 +185,11 @@
 - 新增平台 doctor：
   - `/api/platform/doctor`
   - `cow platform doctor`
+- `/ready` 已纳入 PostgreSQL / Redis / Qdrant / MinIO 依赖状态
+- 新增部署环境校验：
+  - `cow_platform/deployment/checks.py`
+  - `python -m cow_platform.deployment.check`
+- 新增 compose 契约测试，防止测试和生产依赖漂移
 - 新增治理文档：
   - `docs/adr/0001-platform-dual-mode-compatibility.md`
   - `docs/patch-register.md`
@@ -224,6 +250,7 @@
 当前已登记的重要 patch 触点包括：
 
 - `agent/memory/conversation_store.py`
+- `agent/memory/storage.py`
 - `bridge/agent_initializer.py`
 - `bridge/agent_bridge.py`
 - `channel/web/web_channel.py`
@@ -242,17 +269,45 @@
 - 平台骨架与启动测试
 - 多 Agent 隔离测试
 - 多租户 / binding 路由测试
+- PostgreSQL 主数据、会话、长期记忆索引、任务状态集成测试
 - usage / quota / cost 测试
 - job API / worker e2e 测试
 - audit / doctor / CLI doctor 测试
-- Docker compose 校验测试
+- Docker compose 校验与真实依赖启动测试
+- 测试 / 生产 compose 契约一致性测试
 - legacy `app.py` 启动回归测试
 
-最终全量结果：
+本轮 PostgreSQL 迁移后的验证结果：
 
 ```bash
-pytest -q
-44 passed, 2 warnings in 6.38s
+COW_PLATFORM_DATABASE_URL=postgresql://... pytest tests/unit tests/integration -q
+132 passed, 4 warnings in 5.06s
+
+pytest tests/unit/test_platform_deployment_checks.py \
+  tests/e2e/test_platform_deployment_contract.py \
+  tests/e2e/test_compose_platform.py -q
+5 passed in 0.27s
+
+COW_PLATFORM_DATABASE_URL=postgresql://... pytest \
+  tests/e2e/test_compose_base.py \
+  tests/e2e/test_platform_deployment_contract.py \
+  tests/e2e/test_compose_platform.py \
+  tests/e2e/test_platform_health_startup.py \
+  tests/e2e/test_platform_real_http_flow.py \
+  tests/e2e/test_platform_job_worker_flow.py \
+  tests/e2e/test_platform_doctor_cli.py -q
+7 passed in 5.91s
+
+PLATFORM_POSTGRES_PASSWORD=... PLATFORM_MINIO_ROOT_USER=... PLATFORM_MINIO_ROOT_PASSWORD=... \
+docker compose -p cowagent-prod-smoke \
+  -f docker/compose.base.yml \
+  -f docker/compose.platform.yml \
+  -f docker/compose.prod.yml \
+  up -d --build
+platform-app / platform-web / postgres / redis 均 healthy，/ready 返回 PostgreSQL / Redis / Qdrant / MinIO 全部 ok
+
+cd channel/web/ui && npm run typecheck && npm run build
+passed
 ```
 
 ---
@@ -264,7 +319,7 @@ pytest -q
 1. 平台层与上游目录的边界是否清晰
 2. Agent / tenant / binding 的命名空间隔离是否足够稳妥
 3. `AgentBridge` 的 quota 与 usage 接入点是否合理
-4. 目录队列式 job 实现是否满足当前阶段最小异步需求
+4. PostgreSQL job claim 与 worker 并发模型是否满足生产部署的异步任务需求
 5. `patch-register` 是否足够覆盖未来升级高风险文件
 
 ---
@@ -273,12 +328,9 @@ pytest -q
 
 本 PR 有意识地保留了一些“下一阶段再做”的内容：
 
-- 未引入 PostgreSQL 作为平台主数据存储
-  当前平台资源仍以本地 JSON 为主，先保证功能闭环
-- 未引入 Redis Streams / Kafka 等正式异步总线
-  当前先用目录队列完成最小 worker 闭环
 - usage token 当前为估算值，不是厂商账单口径
 - 外部 IM 渠道平台化主要先打通 Web / binding 模型，其他渠道未做深度运行面改造
+- Redis / Qdrant / MinIO 已作为测试和生产一致部署依赖强制校验；当前 job 状态以 PostgreSQL 为强一致来源，Redis Streams 后续用于高吞吐事件分发
 
 这些都是刻意控制复杂度的结果，不是遗漏。
 
@@ -288,11 +340,10 @@ pytest -q
 
 后续建议按以下顺序继续推进：
 
-1. 把平台主数据从 JSON 仓储迁移到 PostgreSQL + Alembic
-2. 把目录队列迁移到 Redis Streams
-3. 补齐 app / worker 的观测指标和失败重试策略
-4. 逐步把外部渠道接入统一 binding runtime
-5. 把 usage 从估算值逐步替换为更精确的模型返回 usage
+1. 补齐 app / worker 的观测指标和失败重试策略
+2. 逐步把外部渠道接入统一 binding runtime
+3. 把 usage 从估算值逐步替换为更精确的模型返回 usage
+4. 在任务吞吐成为瓶颈时引入 Redis Streams 作为事件分发层，PostgreSQL 继续作为任务状态来源
 
 ---
 

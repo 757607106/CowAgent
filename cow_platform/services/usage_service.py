@@ -7,19 +7,19 @@ from typing import Any
 from agent.protocol.agent import Agent as ProtocolAgent
 
 from cow_platform.domain.models import UsageRecord
-from cow_platform.repositories.usage_repository import FileUsageRepository
+from cow_platform.repositories.usage_repository import UsageRepository
 from cow_platform.services.pricing_service import PricingService
 
 
 class UsageService:
-    """当前阶段使用的 usage 服务。"""
+    """Usage ledger service backed by PostgreSQL."""
 
     def __init__(
         self,
-        repository: FileUsageRepository | None = None,
+        repository: UsageRepository | None = None,
         pricing_service: PricingService | None = None,
     ):
-        self.repository = repository or FileUsageRepository()
+        self.repository = repository or UsageRepository()
         self.pricing_service = pricing_service or PricingService()
 
     @staticmethod

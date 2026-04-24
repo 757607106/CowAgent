@@ -32,9 +32,24 @@ if [ "$CHATGPT_ON_WECHAT_CONFIG_PATH" == "" ] ; then
     CHATGPT_ON_WECHAT_CONFIG_PATH=$CHATGPT_ON_WECHAT_PREFIX/config.json
 fi
 
+if [ "$#" -gt 0 ]; then
+    CHATGPT_ON_WECHAT_EXEC="$*"
+fi
+
 # CHATGPT_ON_WECHAT_EXEC is empty, use ‘python app.py’
 if [ "$CHATGPT_ON_WECHAT_EXEC" == "" ] ; then
     CHATGPT_ON_WECHAT_EXEC="python app.py"
+fi
+
+if [ "${COW_PLATFORM_STRICT_STARTUP:-false}" = "true" ]; then
+    python -m cow_platform.deployment.check \
+        --require-all \
+        --strict-secrets \
+        --wait-seconds "${COW_PLATFORM_DEPENDENCY_WAIT_SECONDS:-90}"
+fi
+
+if [ -n "${COW_PLATFORM_DATABASE_URL:-}" ] && [ "${COW_PLATFORM_MIGRATE_ON_START:-true}" = "true" ]; then
+    python -m cow_platform.db.migrate
 fi
 
 # modify content in config.json
@@ -53,5 +68,3 @@ fi
 # fallback: already running as agent
 cd $CHATGPT_ON_WECHAT_PREFIX
 $CHATGPT_ON_WECHAT_EXEC
-
-

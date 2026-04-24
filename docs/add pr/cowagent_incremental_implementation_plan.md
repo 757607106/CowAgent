@@ -135,7 +135,7 @@
 6. 独立工作区目录：
    - `/data/workspaces/{tenant_id}/{agent_id}`
 7. 会话改由平台 SessionRepository 管理
-8. 现有 SQLite ConversationStore 保留 legacy 模式，不作为平台主存储
+8. ConversationStore 统一迁移到 PostgreSQL，不再保留 SQLite 作为运行时存储
 
 ### 代码落点
 
@@ -281,22 +281,24 @@
 ### 本阶段交付
 
 1. app / worker 职责分离
-2. Redis Streams 作为第一阶段异步通道
+2. PostgreSQL job 表作为第一阶段强一致异步任务状态来源
 3. 数据分析类 Agent 支持异步 job
-4. Docker Compose 形成最小可用版：
-   - app
-   - worker
+4. Docker Compose 形成生产一致部署栈：
+   - platform-app
+   - platform-worker
+   - platform-web
    - postgres
    - redis
    - qdrant
    - minio
-5. migration 容器化
-6. CLI 新增平台模式启动命令
+5. PostgreSQL schema 通过 `python -m cow_platform.db.migrate` 幂等初始化
+6. 容器启动前通过 `python -m cow_platform.deployment.check --require-all` 校验全依赖
+7. CLI 新增平台模式启动命令
 
 ### 代码落点
 
 - 新增 `platform/jobs`
-- 新增 `docker/compose.dev.yml`
+- 新增 `docker/compose.platform.yml`
 - 新增 `docker/compose.test.yml`
 - 新增 `docker/compose.prod.yml`
 - 改造 [cli/commands/process.py](/Users/pusonglin/PycharmProjects/CowAgent-2.0.6/cli/commands/process.py)

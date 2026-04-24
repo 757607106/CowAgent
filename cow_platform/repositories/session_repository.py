@@ -2,16 +2,16 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent.memory.conversation_store import get_conversation_store
+from agent.memory.conversation_store import ConversationStore
 
-from cow_platform.repositories.agent_repository import FileAgentRepository
+from cow_platform.repositories.agent_repository import AgentRepository
 
 
 class SessionRepository:
     """按 Agent 工作区隔离的会话仓储。"""
 
-    def __init__(self, agent_repository: FileAgentRepository | None = None):
-        self.agent_repository = agent_repository or FileAgentRepository()
+    def __init__(self, agent_repository: AgentRepository | None = None):
+        self.agent_repository = agent_repository or AgentRepository()
 
     def list_sessions(
         self,
@@ -62,5 +62,4 @@ class SessionRepository:
         store.append_messages(session_id, messages, channel_type=channel_type)
 
     def _get_store(self, tenant_id: str, agent_id: str):
-        workspace_path = self.agent_repository.get_workspace_path(tenant_id, agent_id)
-        return get_conversation_store(workspace_root=str(workspace_path))
+        return ConversationStore(tenant_id=tenant_id, agent_id=agent_id)

@@ -1,95 +1,36 @@
 """
-Conversation history persistence using SQLite.
+Conversation history persistence using PostgreSQL.
 
-Design:
-- sessions table: per-session metadata (channel_type, last_active, msg_count)
-- messages table: individual messages stored as JSON, append-only
-- Pruning: age-based only (sessions not updated within N days are deleted)
-- Thread-safe via a single in-process lock
-
-Storage path: ~/cow/sessions/conversations.db
+The public API intentionally mirrors the former local store so the bridge,
+channels, and web console keep using the same calls while storage is centralized
+and isolated by tenant_id + agent_id + session_id.
 """
 
 from __future__ import annotations
 
+import hashlib
 import json
-import sqlite3
 import threading
 import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from common.log import logger
+from cow_platform.db import connect, jsonb
 
-
-# ---------------------------------------------------------------------------
-# Schema
-# ---------------------------------------------------------------------------
-
-_DDL = """
-CREATE TABLE IF NOT EXISTS sessions (
-    session_id        TEXT    PRIMARY KEY,
-    channel_type      TEXT    NOT NULL DEFAULT '',
-    title             TEXT    NOT NULL DEFAULT '',
-    context_start_seq INTEGER NOT NULL DEFAULT 0,
-    created_at        INTEGER NOT NULL,
-    last_active       INTEGER NOT NULL,
-    msg_count         INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS messages (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id   TEXT    NOT NULL,
-    seq          INTEGER NOT NULL,
-    role         TEXT    NOT NULL,
-    content      TEXT    NOT NULL,
-    created_at   INTEGER NOT NULL,
-    UNIQUE (session_id, seq)
-);
-
-CREATE INDEX IF NOT EXISTS idx_messages_session
-    ON messages (session_id, seq);
-
-CREATE INDEX IF NOT EXISTS idx_sessions_last_active
-    ON sessions (last_active);
-"""
-
-# Migration: add channel_type column to existing databases that predate it.
-_MIGRATION_ADD_CHANNEL_TYPE = """
-ALTER TABLE sessions ADD COLUMN channel_type TEXT NOT NULL DEFAULT '';
-"""
-
-_MIGRATION_ADD_TITLE = """
-ALTER TABLE sessions ADD COLUMN title TEXT NOT NULL DEFAULT '';
-"""
-
-_MIGRATION_ADD_CONTEXT_START_SEQ = """
-ALTER TABLE sessions ADD COLUMN context_start_seq INTEGER NOT NULL DEFAULT 0;
-"""
 
 DEFAULT_MAX_AGE_DAYS: int = 30
 
 
 def _is_visible_user_message(content: Any) -> bool:
-    """
-    Return True when a user-role message represents actual user input
-    (not an internal tool_result injected by the agent loop).
-    """
     if isinstance(content, str):
         return bool(content.strip())
     if isinstance(content, list):
-        return any(
-            isinstance(b, dict) and b.get("type") == "text"
-            for b in content
-        )
+        return any(isinstance(b, dict) and b.get("type") == "text" for b in content)
     return False
 
 
 def _extract_display_text(content: Any) -> str:
-    """
-    Extract the human-readable text portion from a message content value.
-    Returns an empty string for tool_use / tool_result blocks.
-    """
     if isinstance(content, str):
         return content.strip()
     if isinstance(content, list):
@@ -102,24 +43,7 @@ def _extract_display_text(content: Any) -> str:
     return ""
 
 
-def _extract_tool_calls(content: Any) -> List[Dict[str, Any]]:
-    """
-    Extract tool_use blocks from an assistant message content.
-    Returns a list of {name, arguments} dicts (result filled in later).
-    """
-    if not isinstance(content, list):
-        return []
-    return [
-        {"id": b.get("id", ""), "name": b.get("name", ""), "arguments": b.get("input", {})}
-        for b in content
-        if isinstance(b, dict) and b.get("type") == "tool_use"
-    ]
-
-
 def _extract_tool_results(content: Any) -> Dict[str, str]:
-    """
-    Extract tool_result blocks from a user message, keyed by tool_use_id.
-    """
     if not isinstance(content, list):
         return {}
     results = {}
@@ -130,49 +54,31 @@ def _extract_tool_results(content: Any) -> Dict[str, str]:
         result_content = b.get("content", "")
         if isinstance(result_content, list):
             result_content = "\n".join(
-                rb.get("text", "") for rb in result_content
+                rb.get("text", "")
+                for rb in result_content
                 if isinstance(rb, dict) and rb.get("type") == "text"
             )
         results[tool_id] = str(result_content)
     return results
 
 
-def _group_into_display_turns(
-    rows: List[tuple],
-) -> List[Dict[str, Any]]:
-    """
-    Convert raw (role, content_json, created_at) DB rows into display turns.
+def _decode_content(raw_content: Any) -> Any:
+    if isinstance(raw_content, str):
+        try:
+            return json.loads(raw_content)
+        except Exception:
+            return raw_content
+    return raw_content
 
-    One display turn = one visible user message  +  one merged assistant reply.
-    All intermediate assistant messages (those carrying tool_use) and the final
-    assistant text reply produced for the same user query are collapsed into a
-    single assistant turn, exactly matching the live SSE rendering where tools
-    and the final answer appear inside the same bubble.
 
-    Grouping rules:
-    - A visible user message starts a new group.
-    - tool_result user messages are internal; their content is attached to the
-      matching tool_use entry via tool_use_id and they never become own turns.
-    - All assistant messages within a group are merged:
-        * tool_use blocks → tool_calls list (result filled from tool_results)
-        * text blocks → last non-empty text becomes the display content
-    """
-    # ------------------------------------------------------------------ #
-    # Pass 1: split rows into groups, each starting with a visible user msg
-    # ------------------------------------------------------------------ #
-    # group = (user_row | None, [subsequent_rows])
-    # user_row: (content, created_at)
+def _group_into_display_turns(rows: List[tuple]) -> List[Dict[str, Any]]:
     groups: List[tuple] = []
     cur_user: Optional[tuple] = None
     cur_rest: List[tuple] = []
     started = False
 
     for role, raw_content, created_at in rows:
-        try:
-            content = json.loads(raw_content)
-        except Exception:
-            content = raw_content
-
+        content = _decode_content(raw_content)
         if role == "user" and _is_visible_user_message(content):
             if started:
                 groups.append((cur_user, cur_rest))
@@ -185,21 +91,14 @@ def _group_into_display_turns(
     if started:
         groups.append((cur_user, cur_rest))
 
-    # ------------------------------------------------------------------ #
-    # Pass 2: build display turns from each group
-    # ------------------------------------------------------------------ #
     turns: List[Dict[str, Any]] = []
-
     for user_row, rest in groups:
-        # User turn
         if user_row:
             content, created_at = user_row
             text = _extract_display_text(content)
             if text:
                 turns.append({"role": "user", "content": text, "created_at": created_at})
 
-        # Build an ordered list of steps preserving the original sequence:
-        #   thinking → content → tool_call → content → ...
         steps: List[Dict[str, Any]] = []
         tool_results: Dict[str, str] = {}
         final_text = ""
@@ -209,7 +108,6 @@ def _group_into_display_turns(
             if role == "user":
                 tool_results.update(_extract_tool_results(content))
             elif role == "assistant":
-                # Walk content blocks in order to preserve interleaving
                 if isinstance(content, list):
                     for block in content:
                         if not isinstance(block, dict):
@@ -225,128 +123,88 @@ def _group_into_display_turns(
                                 steps.append({"type": "content", "content": txt})
                                 final_text = txt
                         elif btype == "tool_use":
-                            steps.append({
-                                "type": "tool",
-                                "id": block.get("id", ""),
-                                "name": block.get("name", ""),
-                                "arguments": block.get("input", {}),
-                            })
+                            steps.append(
+                                {
+                                    "type": "tool",
+                                    "id": block.get("id", ""),
+                                    "name": block.get("name", ""),
+                                    "arguments": block.get("input", {}),
+                                }
+                            )
                 elif isinstance(content, str) and content.strip():
                     steps.append({"type": "content", "content": content.strip()})
                     final_text = content.strip()
                 final_ts = created_at
 
-        # Attach tool results to tool steps
         for step in steps:
             if step["type"] == "tool":
                 step["result"] = tool_results.get(step.get("id", ""), "")
 
         if steps or final_text:
-            turn = {
-                "role": "assistant",
-                "content": final_text,
-                "steps": steps,
-                "created_at": final_ts or (user_row[1] if user_row else 0),
-            }
-            turns.append(turn)
+            turns.append(
+                {
+                    "role": "assistant",
+                    "content": final_text,
+                    "steps": steps,
+                    "created_at": final_ts or (user_row[1] if user_row else 0),
+                }
+            )
 
     return turns
 
 
 class ConversationStore:
-    """
-    SQLite-backed store for per-session conversation history.
+    """PostgreSQL-backed per-agent conversation history store."""
 
-    Usage:
-        store = ConversationStore(db_path)
-        store.append_messages("user_123", new_messages, channel_type="feishu")
-        msgs = store.load_messages("user_123", max_turns=30)
-    """
-
-    def __init__(self, db_path: Path):
-        self._db_path = db_path
+    def __init__(self, tenant_id: str = "legacy", agent_id: str = "default"):
+        self.tenant_id = tenant_id
+        self.agent_id = agent_id
         self._lock = threading.Lock()
-        self._init_db()
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
-
-    def load_messages(
-        self,
-        session_id: str,
-        max_turns: int = 30,
-    ) -> List[Dict[str, Any]]:
-        """
-        Load the most recent messages for a session, for injection into the LLM.
-
-        ALL message types (user text, assistant tool_use, tool_result) are returned
-        in their original JSON form so the LLM can reconstruct the full context.
-
-        max_turns is a *visible-turn* count: we count only user messages whose
-        content is actual user text (not tool_result blocks).  This prevents
-        tool-heavy sessions from exhausting the turn budget prematurely.
-
-        Args:
-            session_id: Unique session identifier.
-            max_turns: Maximum number of visible user-assistant turns to keep.
-
-        Returns:
-            Chronologically ordered list of message dicts (role, content).
-        """
+    def load_messages(self, session_id: str, max_turns: int = 30) -> List[Dict[str, Any]]:
         with self._lock:
-            conn = self._connect()
-            try:
-                # Respect context_start_seq: only load messages at or after the boundary
+            with connect() as conn:
                 ctx_row = conn.execute(
-                    "SELECT context_start_seq FROM sessions WHERE session_id = ?",
-                    (session_id,),
+                    """
+                    SELECT context_start_seq
+                    FROM platform_conversation_sessions
+                    WHERE tenant_id = %s AND agent_id = %s AND session_id = %s
+                    """,
+                    (self.tenant_id, self.agent_id, session_id),
                 ).fetchone()
-                ctx_start = ctx_row[0] if ctx_row else 0
-
+                ctx_start = ctx_row["context_start_seq"] if ctx_row else 0
                 rows = conn.execute(
                     """
                     SELECT seq, role, content
-                    FROM messages
-                    WHERE session_id = ? AND seq >= ?
+                    FROM platform_conversation_messages
+                    WHERE tenant_id = %s AND agent_id = %s
+                      AND session_id = %s AND seq >= %s
                     ORDER BY seq DESC
                     """,
-                    (session_id, ctx_start),
+                    (self.tenant_id, self.agent_id, session_id, ctx_start),
                 ).fetchall()
-            finally:
-                conn.close()
 
         if not rows:
             return []
 
         visible_turn_seqs: List[int] = []
-        for seq, role, raw_content in rows:
-            if role != "user":
+        for row in rows:
+            if row["role"] != "user":
                 continue
-            try:
-                content = json.loads(raw_content)
-            except Exception:
-                content = raw_content
+            content = _decode_content(row["content"])
             if _is_visible_user_message(content):
-                visible_turn_seqs.append(seq)
+                visible_turn_seqs.append(row["seq"])
 
-        if len(visible_turn_seqs) <= max_turns:
-            cutoff_seq = None
-        else:
-            cutoff_seq = visible_turn_seqs[max_turns - 1]
+        cutoff_seq = None if len(visible_turn_seqs) <= max_turns else visible_turn_seqs[max_turns - 1]
 
         result = []
-        for seq, role, raw_content in reversed(rows):
-            if cutoff_seq is not None and seq < cutoff_seq:
+        for row in reversed(rows):
+            if cutoff_seq is not None and row["seq"] < cutoff_seq:
                 continue
-            try:
-                content = json.loads(raw_content)
-            except Exception:
-                content = raw_content
-            # Strip thinking blocks — they are stored for UI display only
-            if role == "assistant" and isinstance(content, list):
+            content = _decode_content(row["content"])
+            if row["role"] == "assistant" and isinstance(content, list):
                 content = [b for b in content if b.get("type") != "thinking"]
-            result.append({"role": role, "content": content})
+            result.append({"role": row["role"], "content": content})
         return result
 
     def append_messages(
@@ -355,189 +213,171 @@ class ConversationStore:
         messages: List[Dict[str, Any]],
         channel_type: str = "",
     ) -> None:
-        """
-        Append new messages to a session's history.
-
-        Seq numbers continue from the session's current maximum, so
-        concurrent callers on distinct sessions never collide.
-
-        Args:
-            session_id: Unique session identifier.
-            messages: List of message dicts to append.
-            channel_type: Source channel (e.g. "feishu", "web", "wechat").
-                          Only written on session creation; ignored on update.
-        """
         if not messages:
             return
 
         now = int(time.time())
         with self._lock:
-            conn = self._connect()
-            try:
-                with conn:
-                    # INSERT OR IGNORE creates the row on first visit;
-                    # the UPDATE always refreshes last_active.
-                    # Avoids ON CONFLICT...DO UPDATE (requires SQLite >= 3.24).
+            with connect() as conn:
+                with conn.transaction():
                     conn.execute(
                         """
-                        INSERT OR IGNORE INTO sessions
-                            (session_id, channel_type, created_at, last_active, msg_count)
-                        VALUES (?, ?, ?, ?, 0)
+                        INSERT INTO platform_conversation_sessions
+                            (tenant_id, agent_id, session_id, channel_type,
+                             created_at, last_active, msg_count)
+                        VALUES (%s, %s, %s, %s, %s, %s, 0)
+                        ON CONFLICT (tenant_id, agent_id, session_id)
+                        DO UPDATE SET last_active = EXCLUDED.last_active
                         """,
-                        (session_id, channel_type, now, now),
+                        (self.tenant_id, self.agent_id, session_id, channel_type, now, now),
                     )
                     conn.execute(
-                        "UPDATE sessions SET last_active = ? WHERE session_id = ?",
-                        (now, session_id),
-                    )
-
-                    # Determine starting seq for the new batch.
-                    row = conn.execute(
-                        "SELECT COALESCE(MAX(seq), -1) FROM messages WHERE session_id = ?",
-                        (session_id,),
+                        """
+                        SELECT session_id
+                        FROM platform_conversation_sessions
+                        WHERE tenant_id = %s AND agent_id = %s AND session_id = %s
+                        FOR UPDATE
+                        """,
+                        (self.tenant_id, self.agent_id, session_id),
                     ).fetchone()
-                    next_seq = row[0] + 1
+                    row = conn.execute(
+                        """
+                        SELECT COALESCE(MAX(seq), -1) AS max_seq
+                        FROM platform_conversation_messages
+                        WHERE tenant_id = %s AND agent_id = %s AND session_id = %s
+                        """,
+                        (self.tenant_id, self.agent_id, session_id),
+                    ).fetchone()
+                    next_seq = int(row["max_seq"]) + 1
 
                     for msg in messages:
-                        role = msg.get("role", "")
-                        content = json.dumps(
-                            msg.get("content", ""), ensure_ascii=False
-                        )
                         conn.execute(
                             """
-                            INSERT OR IGNORE INTO messages
-                                (session_id, seq, role, content, created_at)
-                            VALUES (?, ?, ?, ?, ?)
+                            INSERT INTO platform_conversation_messages
+                                (tenant_id, agent_id, session_id, seq, role, content, created_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (tenant_id, agent_id, session_id, seq) DO NOTHING
                             """,
-                            (session_id, next_seq, role, content, now),
+                            (
+                                self.tenant_id,
+                                self.agent_id,
+                                session_id,
+                                next_seq,
+                                msg.get("role", ""),
+                                jsonb(msg.get("content", "")),
+                                now,
+                            ),
                         )
                         next_seq += 1
 
                     conn.execute(
                         """
-                        UPDATE sessions
+                        UPDATE platform_conversation_sessions s
                         SET msg_count = (
-                            SELECT COUNT(*) FROM messages WHERE session_id = ?
+                            SELECT COUNT(*)
+                            FROM platform_conversation_messages m
+                            WHERE m.tenant_id = s.tenant_id
+                              AND m.agent_id = s.agent_id
+                              AND m.session_id = s.session_id
                         )
-                        WHERE session_id = ?
+                        WHERE tenant_id = %s AND agent_id = %s AND session_id = %s
                         """,
-                        (session_id, session_id),
+                        (self.tenant_id, self.agent_id, session_id),
                     )
-
-                    # Auto-generate title from the first visible user message
-                    cur_title = conn.execute(
-                        "SELECT title FROM sessions WHERE session_id = ?",
-                        (session_id,),
+                    title_row = conn.execute(
+                        """
+                        SELECT title
+                        FROM platform_conversation_sessions
+                        WHERE tenant_id = %s AND agent_id = %s AND session_id = %s
+                        """,
+                        (self.tenant_id, self.agent_id, session_id),
                     ).fetchone()
-                    if cur_title and not cur_title[0]:
+                    if title_row and not title_row["title"]:
                         for msg in messages:
-                            if msg.get("role") == "user":
-                                content = msg.get("content", "")
-                                text = _extract_display_text(content)
-                                if text:
-                                    title = text[:50].split("\n")[0]
-                                    conn.execute(
-                                        "UPDATE sessions SET title = ? WHERE session_id = ?",
-                                        (title, session_id),
-                                    )
-                                    break
-            finally:
-                conn.close()
+                            if msg.get("role") != "user":
+                                continue
+                            text = _extract_display_text(msg.get("content", ""))
+                            if text:
+                                conn.execute(
+                                    """
+                                    UPDATE platform_conversation_sessions
+                                    SET title = %s
+                                    WHERE tenant_id = %s AND agent_id = %s AND session_id = %s
+                                    """,
+                                    (text[:50].split("\n")[0], self.tenant_id, self.agent_id, session_id),
+                                )
+                                break
 
     def clear_context(self, session_id: str) -> int:
-        """
-        Set the context boundary to after the current last message.
-        Messages before this boundary are still stored but excluded from LLM context.
-
-        Returns the new context_start_seq value.
-        """
         with self._lock:
-            conn = self._connect()
-            try:
-                with conn:
+            with connect() as conn:
+                with conn.transaction():
                     row = conn.execute(
-                        "SELECT COALESCE(MAX(seq), -1) FROM messages WHERE session_id = ?",
-                        (session_id,),
+                        """
+                        SELECT COALESCE(MAX(seq), -1) AS max_seq
+                        FROM platform_conversation_messages
+                        WHERE tenant_id = %s AND agent_id = %s AND session_id = %s
+                        """,
+                        (self.tenant_id, self.agent_id, session_id),
                     ).fetchone()
-                    new_start = row[0] + 1
+                    new_start = int(row["max_seq"]) + 1
                     conn.execute(
-                        "UPDATE sessions SET context_start_seq = ? WHERE session_id = ?",
-                        (new_start, session_id),
+                        """
+                        UPDATE platform_conversation_sessions
+                        SET context_start_seq = %s
+                        WHERE tenant_id = %s AND agent_id = %s AND session_id = %s
+                        """,
+                        (new_start, self.tenant_id, self.agent_id, session_id),
                     )
                     return new_start
-            finally:
-                conn.close()
 
     def get_context_start_seq(self, session_id: str) -> int:
-        """Return the context_start_seq for a session (0 if not set)."""
         with self._lock:
-            conn = self._connect()
-            try:
+            with connect() as conn:
                 row = conn.execute(
-                    "SELECT context_start_seq FROM sessions WHERE session_id = ?",
-                    (session_id,),
+                    """
+                    SELECT context_start_seq
+                    FROM platform_conversation_sessions
+                    WHERE tenant_id = %s AND agent_id = %s AND session_id = %s
+                    """,
+                    (self.tenant_id, self.agent_id, session_id),
                 ).fetchone()
-                return row[0] if row else 0
-            finally:
-                conn.close()
+        return int(row["context_start_seq"]) if row else 0
 
     def clear_session(self, session_id: str) -> None:
-        """Delete all messages and the session record for a given session_id."""
         with self._lock:
-            conn = self._connect()
-            try:
-                with conn:
-                    conn.execute(
-                        "DELETE FROM messages WHERE session_id = ?", (session_id,)
-                    )
-                    conn.execute(
-                        "DELETE FROM sessions WHERE session_id = ?", (session_id,)
-                    )
-            finally:
-                conn.close()
+            with connect() as conn:
+                conn.execute(
+                    """
+                    DELETE FROM platform_conversation_sessions
+                    WHERE tenant_id = %s AND agent_id = %s AND session_id = %s
+                    """,
+                    (self.tenant_id, self.agent_id, session_id),
+                )
+                conn.commit()
 
     def cleanup_old_sessions(self, max_age_days: Optional[int] = None) -> int:
-        """
-        Delete sessions that have not been active within max_age_days.
-        Web channel sessions are excluded — they are meant to be permanent.
-
-        Args:
-            max_age_days: Override the default retention period.
-
-        Returns:
-            Number of sessions deleted.
-        """
         try:
             from config import conf
-            max_age = max_age_days or conf().get(
-                "conversation_max_age_days", DEFAULT_MAX_AGE_DAYS
-            )
+
+            max_age = max_age_days or conf().get("conversation_max_age_days", DEFAULT_MAX_AGE_DAYS)
         except Exception:
             max_age = max_age_days or DEFAULT_MAX_AGE_DAYS
 
         cutoff = int(time.time()) - max_age * 86400
-        deleted = 0
-
         with self._lock:
-            conn = self._connect()
-            try:
-                with conn:
-                    stale = conn.execute(
-                        "SELECT session_id FROM sessions "
-                        "WHERE last_active < ? AND channel_type != 'web'",
-                        (cutoff,),
-                    ).fetchall()
-                    for (sid,) in stale:
-                        conn.execute(
-                            "DELETE FROM messages WHERE session_id = ?", (sid,)
-                        )
-                        conn.execute(
-                            "DELETE FROM sessions WHERE session_id = ?", (sid,)
-                        )
-                        deleted += 1
-            finally:
-                conn.close()
-
+            with connect() as conn:
+                rows = conn.execute(
+                    """
+                    DELETE FROM platform_conversation_sessions
+                    WHERE tenant_id = %s AND agent_id = %s
+                      AND last_active < %s AND channel_type != 'web'
+                    RETURNING session_id
+                    """,
+                    (self.tenant_id, self.agent_id, cutoff),
+                ).fetchall()
+                conn.commit()
+        deleted = len(rows)
         if deleted:
             logger.info(f"[ConversationStore] Pruned {deleted} expired sessions")
         return deleted
@@ -548,78 +388,39 @@ class ConversationStore:
         page: int = 1,
         page_size: int = 20,
     ) -> Dict[str, Any]:
-        """
-        Load a page of conversation history for UI display, grouped into turns.
-
-        Each "turn" maps to one of:
-          - A user message (role="user", content=str)
-          - An assistant message (role="assistant", content=str,
-            tool_calls=[{name, arguments, result}] when tools were used)
-
-        Internal tool_result user messages are merged into the preceding
-        assistant entry's tool_calls list and never appear as standalone items.
-
-        Pages are numbered from 1 (most recent).  Messages within a page are
-        returned in chronological order.
-
-        Returns:
-            {
-                "messages": [
-                    {
-                        "role": "user" | "assistant",
-                        "content": str,
-                        "tool_calls": [...],   # assistant only, may be []
-                        "created_at": int,
-                    },
-                    ...
-                ],
-                "total": <visible turn count>,
-                "page": <current page>,
-                "page_size": <page_size>,
-                "has_more": bool,
-            }
-        """
         page = max(1, page)
         with self._lock:
-            conn = self._connect()
-            try:
+            with connect() as conn:
                 ctx_row = conn.execute(
-                    "SELECT context_start_seq FROM sessions WHERE session_id = ?",
-                    (session_id,),
+                    """
+                    SELECT context_start_seq
+                    FROM platform_conversation_sessions
+                    WHERE tenant_id = %s AND agent_id = %s AND session_id = %s
+                    """,
+                    (self.tenant_id, self.agent_id, session_id),
                 ).fetchone()
-                ctx_start = ctx_row[0] if ctx_row else 0
-
+                ctx_start = int(ctx_row["context_start_seq"]) if ctx_row else 0
                 rows = conn.execute(
                     """
                     SELECT seq, role, content, created_at
-                    FROM messages
-                    WHERE session_id = ?
+                    FROM platform_conversation_messages
+                    WHERE tenant_id = %s AND agent_id = %s AND session_id = %s
                     ORDER BY seq ASC
                     """,
-                    (session_id,),
+                    (self.tenant_id, self.agent_id, session_id),
                 ).fetchall()
-            finally:
-                conn.close()
 
-        # Strip seq for display grouping, but record max seq per visible user group
-        plain_rows = [(role, content, created_at) for _seq, role, content, created_at in rows]
+        plain_rows = [(row["role"], row["content"], row["created_at"]) for row in rows]
         visible = _group_into_display_turns(plain_rows)
 
-        # Build a mapping: find the seq of each visible user message to annotate context boundary.
-        # Walk through rows to find visible user message seqs in order.
         visible_user_seqs: List[int] = []
-        for seq, role, raw_content, _ts in rows:
-            if role != "user":
+        for row in rows:
+            if row["role"] != "user":
                 continue
-            try:
-                content = json.loads(raw_content)
-            except Exception:
-                content = raw_content
+            content = _decode_content(row["content"])
             if _is_visible_user_message(content):
-                visible_user_seqs.append(seq)
+                visible_user_seqs.append(row["seq"])
 
-        # Each pair of display turns (user+assistant) corresponds to a visible user seq.
-        # Mark which turns are before the context boundary.
         user_turn_idx = 0
         for turn in visible:
             if turn["role"] == "user" and user_turn_idx < len(visible_user_seqs):
@@ -628,7 +429,7 @@ class ConversationStore:
 
         total = len(visible)
         offset = (page - 1) * page_size
-        page_items = list(reversed(visible))[offset: offset + page_size]
+        page_items = list(reversed(visible))[offset : offset + page_size]
         page_items = list(reversed(page_items))
 
         return {
@@ -646,225 +447,144 @@ class ConversationStore:
         page: int = 1,
         page_size: int = 50,
     ) -> Dict[str, Any]:
-        """
-        List sessions ordered by last_active DESC, with optional channel_type filter.
-
-        Returns:
-            {
-                "sessions": [{session_id, title, created_at, last_active, msg_count}, ...],
-                "total": int,
-                "page": int,
-                "page_size": int,
-                "has_more": bool,
-            }
-        """
         page = max(1, page)
+        offset = (page - 1) * page_size
+        conditions = ["tenant_id = %s", "agent_id = %s"]
+        params: list[Any] = [self.tenant_id, self.agent_id]
+        if channel_type:
+            conditions.append("channel_type = %s")
+            params.append(channel_type)
+        where = " AND ".join(conditions)
         with self._lock:
-            conn = self._connect()
-            try:
-                if channel_type:
-                    total = conn.execute(
-                        "SELECT COUNT(*) FROM sessions WHERE channel_type = ?",
-                        (channel_type,),
-                    ).fetchone()[0]
-                    rows = conn.execute(
-                        """
-                        SELECT session_id, title, created_at, last_active, msg_count
-                        FROM sessions
-                        WHERE channel_type = ?
-                        ORDER BY last_active DESC
-                        LIMIT ? OFFSET ?
-                        """,
-                        (channel_type, page_size, (page - 1) * page_size),
-                    ).fetchall()
-                else:
-                    total = conn.execute(
-                        "SELECT COUNT(*) FROM sessions",
-                    ).fetchone()[0]
-                    rows = conn.execute(
-                        """
-                        SELECT session_id, title, created_at, last_active, msg_count
-                        FROM sessions
-                        ORDER BY last_active DESC
-                        LIMIT ? OFFSET ?
-                        """,
-                        (page_size, (page - 1) * page_size),
-                    ).fetchall()
-            finally:
-                conn.close()
+            with connect() as conn:
+                total = conn.execute(
+                    f"SELECT COUNT(*) AS cnt FROM platform_conversation_sessions WHERE {where}",
+                    tuple(params),
+                ).fetchone()["cnt"]
+                rows = conn.execute(
+                    f"""
+                    SELECT session_id, title, created_at, last_active, msg_count
+                    FROM platform_conversation_sessions
+                    WHERE {where}
+                    ORDER BY last_active DESC
+                    LIMIT %s OFFSET %s
+                    """,
+                    (*params, page_size, offset),
+                ).fetchall()
 
         sessions = [
             {
-                "session_id": r[0],
-                "title": r[1],
-                "created_at": r[2],
-                "last_active": r[3],
-                "msg_count": r[4],
+                "session_id": row["session_id"],
+                "title": row["title"],
+                "created_at": row["created_at"],
+                "last_active": row["last_active"],
+                "msg_count": row["msg_count"],
             }
-            for r in rows
+            for row in rows
         ]
         return {
             "sessions": sessions,
             "total": total,
             "page": page,
             "page_size": page_size,
-            "has_more": (page - 1) * page_size + page_size < total,
+            "has_more": offset + page_size < total,
         }
 
     def rename_session(self, session_id: str, title: str) -> bool:
-        """Update the title of a session. Returns True if the session existed."""
         with self._lock:
-            conn = self._connect()
-            try:
-                with conn:
-                    cur = conn.execute(
-                        "UPDATE sessions SET title = ? WHERE session_id = ?",
-                        (title, session_id),
-                    )
-                    return cur.rowcount > 0
-            finally:
-                conn.close()
+            with connect() as conn:
+                cursor = conn.execute(
+                    """
+                    UPDATE platform_conversation_sessions
+                    SET title = %s
+                    WHERE tenant_id = %s AND agent_id = %s AND session_id = %s
+                    """,
+                    (title, self.tenant_id, self.agent_id, session_id),
+                )
+                conn.commit()
+                return cursor.rowcount > 0
 
     def get_stats(self) -> Dict[str, Any]:
-        """Return basic stats keyed by channel_type, for monitoring."""
         with self._lock:
-            conn = self._connect()
-            try:
+            with connect() as conn:
                 total_sessions = conn.execute(
-                    "SELECT COUNT(*) FROM sessions"
-                ).fetchone()[0]
+                    """
+                    SELECT COUNT(*) AS cnt
+                    FROM platform_conversation_sessions
+                    WHERE tenant_id = %s AND agent_id = %s
+                    """,
+                    (self.tenant_id, self.agent_id),
+                ).fetchone()["cnt"]
                 total_messages = conn.execute(
-                    "SELECT COUNT(*) FROM messages"
-                ).fetchone()[0]
+                    """
+                    SELECT COUNT(*) AS cnt
+                    FROM platform_conversation_messages
+                    WHERE tenant_id = %s AND agent_id = %s
+                    """,
+                    (self.tenant_id, self.agent_id),
+                ).fetchone()["cnt"]
                 by_channel = conn.execute(
                     """
-                    SELECT channel_type, COUNT(*) as cnt
-                    FROM sessions
+                    SELECT channel_type, COUNT(*) AS cnt
+                    FROM platform_conversation_sessions
+                    WHERE tenant_id = %s AND agent_id = %s
                     GROUP BY channel_type
                     ORDER BY cnt DESC
-                    """
+                    """,
+                    (self.tenant_id, self.agent_id),
                 ).fetchall()
-                return {
-                    "total_sessions": total_sessions,
-                    "total_messages": total_messages,
-                    "by_channel": {row[0] or "unknown": row[1] for row in by_channel},
-                }
-            finally:
-                conn.close()
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _init_db(self) -> None:
-        self._db_path.parent.mkdir(parents=True, exist_ok=True)
-        conn = self._connect()
-        try:
-            conn.executescript(_DDL)
-            conn.commit()
-            self._migrate(conn)
-        finally:
-            conn.close()
-
-    def _migrate(self, conn: sqlite3.Connection) -> None:
-        """Apply incremental schema migrations on existing databases."""
-        cols = {
-            row[1]
-            for row in conn.execute("PRAGMA table_info(sessions)").fetchall()
+        return {
+            "total_sessions": total_sessions,
+            "total_messages": total_messages,
+            "by_channel": {row["channel_type"] or "unknown": row["cnt"] for row in by_channel},
         }
-        if "channel_type" not in cols:
-            try:
-                conn.execute(_MIGRATION_ADD_CHANNEL_TYPE)
-                conn.commit()
-                logger.info("[ConversationStore] Migrated: added channel_type column")
-            except Exception as e:
-                logger.warning(f"[ConversationStore] Migration failed: {e}")
-        if "title" not in cols:
-            try:
-                conn.execute(_MIGRATION_ADD_TITLE)
-                conn.commit()
-                logger.info("[ConversationStore] Migrated: added title column")
-            except Exception as e:
-                logger.warning(f"[ConversationStore] Migration (title) failed: {e}")
-        if "context_start_seq" not in cols:
-            try:
-                conn.execute(_MIGRATION_ADD_CONTEXT_START_SEQ)
-                conn.commit()
-                logger.info("[ConversationStore] Migrated: added context_start_seq column")
-            except Exception as e:
-                logger.warning(f"[ConversationStore] Migration (context_start_seq) failed: {e}")
 
-    def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(str(self._db_path), timeout=10)
-        conn.execute("PRAGMA journal_mode=WAL")
-        conn.execute("PRAGMA synchronous=NORMAL")
-        return conn
-
-
-# ---------------------------------------------------------------------------
-# Store cache
-# ---------------------------------------------------------------------------
 
 _store_instances: Dict[str, ConversationStore] = {}
 _store_lock = threading.Lock()
 
 
-def _resolve_db_path(
-    workspace_root: Optional[str] = None,
-    db_path: Optional[Path] = None,
-) -> Path:
-    """解析当前请求应使用的会话数据库路径。"""
-    if db_path is not None:
-        return Path(db_path)
+def _scope_from_workspace(workspace_root: Optional[str]) -> tuple[str, str]:
+    if not workspace_root:
+        return "legacy", "default"
+    workspace = str(Path(workspace_root).expanduser().resolve())
+    digest = hashlib.sha256(workspace.encode("utf-8")).hexdigest()[:16]
+    return "workspace", digest
 
-    if workspace_root:
-        return Path(workspace_root) / "memory" / "long-term" / "index.db"
 
+def _resolve_scope(workspace_root: Optional[str] = None, db_path: Optional[Path] = None) -> tuple[str, str]:
     try:
         from cow_platform.runtime.scope import get_current_runtime_context
 
         runtime_context = get_current_runtime_context()
         if runtime_context is not None:
-            return runtime_context.workspace_path / "memory" / "long-term" / "index.db"
+            return runtime_context.tenant_id, runtime_context.agent_id
     except Exception:
         pass
 
-    try:
-        from agent.memory.config import get_default_memory_config
-
-        return get_default_memory_config().get_db_path()
-    except Exception:
-        from common.utils import expand_path
-
-        return Path(expand_path("~/cow")) / "memory" / "long-term" / "index.db"
+    if db_path is not None:
+        digest = hashlib.sha256(str(Path(db_path)).encode("utf-8")).hexdigest()[:16]
+        return "dbpath", digest
+    return _scope_from_workspace(workspace_root)
 
 
 def get_conversation_store(
     workspace_root: Optional[str] = None,
     db_path: Optional[Path] = None,
 ) -> ConversationStore:
-    """
-    获取当前作用域对应的 ConversationStore。
-
-    legacy 模式下仍然会回落到全局共享 SQLite。
-    平台模式下会按工作区隔离到各自的 SQLite 文件。
-    """
-    resolved_db_path = _resolve_db_path(workspace_root=workspace_root, db_path=db_path)
-    store_key = str(resolved_db_path)
-
+    tenant_id, agent_id = _resolve_scope(workspace_root=workspace_root, db_path=db_path)
+    store_key = f"{tenant_id}:{agent_id}"
     if store_key in _store_instances:
         return _store_instances[store_key]
 
     with _store_lock:
         if store_key in _store_instances:
             return _store_instances[store_key]
-
-        _store_instances[store_key] = ConversationStore(resolved_db_path)
-        logger.debug(f"[ConversationStore] Using DB at: {resolved_db_path}")
+        _store_instances[store_key] = ConversationStore(tenant_id=tenant_id, agent_id=agent_id)
+        logger.debug(f"[ConversationStore] Using PostgreSQL scope: {store_key}")
         return _store_instances[store_key]
 
 
 def reset_conversation_store_cache() -> None:
-    """清理缓存，供测试场景使用。"""
     with _store_lock:
         _store_instances.clear()

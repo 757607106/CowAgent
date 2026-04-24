@@ -196,7 +196,17 @@ available_setting = {
     "Minimax_base_url": "",
     "web_port": 9899,
     "web_password": "",  # Web console password; empty means no authentication required
+    "web_tenant_auth": True,  # Whether Web console uses tenant register/login isolation
     "web_session_expire_days": 30,  # Auth session expiry in days
+    "platform_database_url": "",  # PostgreSQL DSN for platform metadata, sessions, jobs and memory indexes
+    "platform_env": "dev",  # Platform deployment environment: dev/test/production
+    "platform_require_dependencies": True,  # Require PostgreSQL/Redis/Qdrant/MinIO readiness
+    "platform_redis_url": "",  # Redis URL for platform deployment checks
+    "platform_qdrant_url": "",  # Qdrant HTTP URL for platform deployment checks
+    "platform_minio_endpoint": "",  # MinIO HTTP endpoint for platform deployment checks
+    "platform_minio_access_key": "",  # MinIO access key
+    "platform_minio_secret_key": "",  # MinIO secret key
+    "platform_minio_bucket": "cowagent",  # MinIO bucket used by platform deployments
     "agent": True,  # 是否开启Agent模式
     "agent_workspace": "~/cow",  # agent工作空间路径，用于存储skills、memory等
     "agent_max_context_tokens": 50000,  # Agent模式下最大上下文tokens
@@ -394,6 +404,15 @@ def load_config():
         "qq_app_id": "QQ_APP_ID",
         "qq_app_secret": "QQ_APP_SECRET",
         "weixin_token": "WEIXIN_TOKEN",
+        "platform_env": "COW_PLATFORM_ENV",
+        "platform_require_dependencies": "COW_PLATFORM_REQUIRE_DEPENDENCIES",
+        "platform_database_url": "COW_PLATFORM_DATABASE_URL",
+        "platform_redis_url": "COW_PLATFORM_REDIS_URL",
+        "platform_qdrant_url": "COW_PLATFORM_QDRANT_URL",
+        "platform_minio_endpoint": "COW_PLATFORM_MINIO_ENDPOINT",
+        "platform_minio_access_key": "COW_PLATFORM_MINIO_ACCESS_KEY",
+        "platform_minio_secret_key": "COW_PLATFORM_MINIO_SECRET_KEY",
+        "platform_minio_bucket": "COW_PLATFORM_MINIO_BUCKET",
     }
     injected = 0
     for conf_key, env_key in _CONFIG_TO_ENV.items():

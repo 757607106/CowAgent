@@ -9,7 +9,7 @@ from typing import Any
 from config import conf
 
 from cow_platform.domain.models import AgentDefinition
-from cow_platform.repositories.agent_repository import FileAgentRepository
+from cow_platform.repositories.agent_repository import AgentRepository
 from cow_platform.services.tenant_service import TenantService
 
 
@@ -18,14 +18,14 @@ DEFAULT_AGENT_ID = "default"
 
 
 class AgentService:
-    """单租户阶段使用的 Agent 服务。"""
+    """Agent resource service backed by PostgreSQL."""
 
     def __init__(
         self,
-        repository: FileAgentRepository | None = None,
+        repository: AgentRepository | None = None,
         tenant_service: TenantService | None = None,
     ):
-        self.repository = repository or FileAgentRepository()
+        self.repository = repository or AgentRepository()
         self.tenant_service = tenant_service or TenantService()
 
     def ensure_default_agent(self, tenant_id: str = DEFAULT_TENANT_ID) -> AgentDefinition:
@@ -120,6 +120,11 @@ class AgentService:
             knowledge_enabled=knowledge_enabled,
             mcp_servers=mcp_servers,
         )
+        return self.serialize_agent(definition)
+
+    def delete_agent(self, agent_id: str, *, tenant_id: str = DEFAULT_TENANT_ID) -> dict[str, Any]:
+        self.tenant_service.resolve_tenant(tenant_id)
+        definition = self.repository.delete_agent(tenant_id=tenant_id, agent_id=agent_id)
         return self.serialize_agent(definition)
 
     def get_agent_workspace(self, tenant_id: str, agent_id: str) -> Path:

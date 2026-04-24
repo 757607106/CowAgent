@@ -8,7 +8,7 @@ from cow_platform.services.job_service import JobService
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the minimal CowAgent platform worker.")
+    parser = argparse.ArgumentParser(description="Run the CowAgent platform worker.")
     parser.add_argument("--once", action="store_true", help="只处理一个任务后退出。")
     parser.add_argument("--job-type", default="", help="只消费指定类型的任务。")
     parser.add_argument("--poll-interval", default=1.0, type=float, help="空闲轮询间隔（秒）。")

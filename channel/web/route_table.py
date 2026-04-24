@@ -5,6 +5,7 @@ def build_web_routes() -> tuple[str, ...]:
     return (
         "/", "RootHandler",
         "/auth/login", "AuthLoginHandler",
+        "/auth/register", "AuthRegisterHandler",
         "/auth/check", "AuthCheckHandler",
         "/auth/logout", "AuthLogoutHandler",
         "/message", "MessageHandler",
@@ -35,6 +36,8 @@ def build_web_routes() -> tuple[str, ...]:
         "/api/platform/agents/(.*)", "PlatformAgentDetailHandler",
         "/api/platform/bindings", "PlatformBindingsHandler",
         "/api/platform/bindings/(.*)", "PlatformBindingDetailHandler",
+        "/api/platform/usage", "PlatformUsageHandler",
+        "/api/platform/costs", "PlatformCostsHandler",
         "/api/agents", "AgentsHandler",
         "/api/bindings", "BindingsHandler",
         "/api/scheduler", "SchedulerHandler",

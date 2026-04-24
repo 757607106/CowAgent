@@ -11,7 +11,10 @@ def test_web_route_table_is_pairwise_and_contains_core_routes() -> None:
     route_map = {path: handler for path, handler in pairs}
 
     assert route_map["/"] == "RootHandler"
+    assert route_map["/auth/register"] == "AuthRegisterHandler"
     assert route_map["/chat"] == "ChatHandler"
     assert route_map["/assets/(.*)"] == "AssetsHandler"
     assert route_map["/api/version"] == "VersionHandler"
     assert route_map["/api/platform/agents"] == "PlatformAgentsHandler"
+    assert route_map["/api/platform/usage"] == "PlatformUsageHandler"
+    assert route_map["/api/platform/costs"] == "PlatformCostsHandler"

@@ -20,8 +20,7 @@ def test_platform_app_health_and_ready_endpoints() -> None:
         "mode": "test",
     }
     assert ready_response.status_code == 200
-    assert ready_response.json() == {
-        "status": "ready",
-        "service": "cow-platform",
-        "dependencies": {},
-    }
+    ready_payload = ready_response.json()
+    assert ready_payload["status"] == "ready"
+    assert ready_payload["service"] == "cow-platform"
+    assert ready_payload["dependencies"]["postgres"]["ok"] is True

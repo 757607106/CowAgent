@@ -37,7 +37,7 @@ export default function TasksPage() {
         dataSource={tasks}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: '任务ID', render: (_, row) => row.id || row.task_id || '-' },
+          { title: '任务标识', render: (_, row) => row.id || row.task_id || '-' },
           { title: '名称', render: (_, row) => row.name || '-' },
           { title: '状态', render: (_, row) => row.status || '-' },
           { title: '下次执行', render: (_, row) => row.next_run_at || row.next_run || '-' },

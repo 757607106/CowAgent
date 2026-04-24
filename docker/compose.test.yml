@@ -1,0 +1,29 @@
+x-test-platform-environment: &test-platform-environment
+  COW_PLATFORM_ENV: test
+  COW_PLATFORM_REQUIRE_DEPENDENCIES: "true"
+  COW_PLATFORM_STRICT_STARTUP: "true"
+  COW_PLATFORM_DATABASE_URL: postgresql://${PLATFORM_POSTGRES_USER:-cowplatform}:${PLATFORM_POSTGRES_PASSWORD:-cowplatform}@postgres:5432/${PLATFORM_POSTGRES_DB:-cowplatform_test}
+
+services:
+  postgres:
+    environment:
+      POSTGRES_DB: ${PLATFORM_POSTGRES_DB:-cowplatform_test}
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${PLATFORM_POSTGRES_USER:-cowplatform} -d ${PLATFORM_POSTGRES_DB:-cowplatform_test}",
+        ]
+
+  platform-app:
+    environment:
+      <<: *test-platform-environment
+
+  platform-worker:
+    environment:
+      <<: *test-platform-environment
+
+  platform-web:
+    environment:
+      <<: *test-platform-environment
+      WEB_TENANT_AUTH: "true"

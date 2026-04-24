@@ -439,7 +439,7 @@ class MemoryManager:
             'embedding_enabled': self.embedding_provider is not None,
             'embedding_provider': self.config.embedding_provider if self.embedding_provider else 'disabled',
             'embedding_model': self.config.embedding_model if self.embedding_provider else 'N/A',
-            'search_mode': 'hybrid (vector + keyword)' if self.embedding_provider else 'keyword only (FTS5)'
+            'search_mode': 'hybrid (vector + keyword)' if self.embedding_provider else 'keyword only (PostgreSQL)'
         }
     
     def mark_dirty(self):

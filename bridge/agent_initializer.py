@@ -165,7 +165,7 @@ class AgentInitializer:
 
     def _restore_conversation_history(self, agent, session_id: str, workspace_root: str) -> None:
         """
-        Load persisted conversation messages from SQLite and inject them
+        Load persisted conversation messages from the PostgreSQL-backed store and inject them
         into the agent's in-memory message list.
 
         Only user text and assistant text are restored. Tool call chains

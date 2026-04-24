@@ -1,0 +1,50 @@
+services:
+  postgres:
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PLATFORM_POSTGRES_USER:-cowplatform}
+      POSTGRES_PASSWORD: ${PLATFORM_POSTGRES_PASSWORD:-prod-smoke-db-secret}
+      POSTGRES_DB: ${PLATFORM_POSTGRES_DB:-cowplatform}
+
+  redis:
+    restart: unless-stopped
+
+  qdrant:
+    restart: unless-stopped
+
+  minio:
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${PLATFORM_MINIO_ROOT_USER:-cowplatform-prod}
+      MINIO_ROOT_PASSWORD: ${PLATFORM_MINIO_ROOT_PASSWORD:-prod-smoke-minio-secret}
+
+  platform-app:
+    restart: unless-stopped
+    environment:
+      COW_PLATFORM_ENV: production
+      COW_PLATFORM_REQUIRE_DEPENDENCIES: "true"
+      COW_PLATFORM_STRICT_STARTUP: "true"
+      COW_PLATFORM_DATABASE_URL: postgresql://${PLATFORM_POSTGRES_USER:-cowplatform}:${PLATFORM_POSTGRES_PASSWORD:-prod-smoke-db-secret}@postgres:5432/${PLATFORM_POSTGRES_DB:-cowplatform}
+      COW_PLATFORM_MINIO_ACCESS_KEY: ${PLATFORM_MINIO_ROOT_USER:-cowplatform-prod}
+      COW_PLATFORM_MINIO_SECRET_KEY: ${PLATFORM_MINIO_ROOT_PASSWORD:-prod-smoke-minio-secret}
+
+  platform-worker:
+    restart: unless-stopped
+    environment:
+      COW_PLATFORM_ENV: production
+      COW_PLATFORM_REQUIRE_DEPENDENCIES: "true"
+      COW_PLATFORM_STRICT_STARTUP: "true"
+      COW_PLATFORM_DATABASE_URL: postgresql://${PLATFORM_POSTGRES_USER:-cowplatform}:${PLATFORM_POSTGRES_PASSWORD:-prod-smoke-db-secret}@postgres:5432/${PLATFORM_POSTGRES_DB:-cowplatform}
+      COW_PLATFORM_MINIO_ACCESS_KEY: ${PLATFORM_MINIO_ROOT_USER:-cowplatform-prod}
+      COW_PLATFORM_MINIO_SECRET_KEY: ${PLATFORM_MINIO_ROOT_PASSWORD:-prod-smoke-minio-secret}
+
+  platform-web:
+    restart: unless-stopped
+    environment:
+      COW_PLATFORM_ENV: production
+      COW_PLATFORM_REQUIRE_DEPENDENCIES: "true"
+      COW_PLATFORM_STRICT_STARTUP: "true"
+      COW_PLATFORM_DATABASE_URL: postgresql://${PLATFORM_POSTGRES_USER:-cowplatform}:${PLATFORM_POSTGRES_PASSWORD:-prod-smoke-db-secret}@postgres:5432/${PLATFORM_POSTGRES_DB:-cowplatform}
+      COW_PLATFORM_MINIO_ACCESS_KEY: ${PLATFORM_MINIO_ROOT_USER:-cowplatform-prod}
+      COW_PLATFORM_MINIO_SECRET_KEY: ${PLATFORM_MINIO_ROOT_PASSWORD:-prod-smoke-minio-secret}
+      WEB_TENANT_AUTH: "true"

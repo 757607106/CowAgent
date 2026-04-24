@@ -2,12 +2,13 @@ import { Button, Card, Drawer, Form, Input, Modal, Popconfirm, Select, Space, Ta
 import { useEffect, useMemo, useState } from 'react';
 import { JsonBlock } from '../components/JsonBlock';
 import { PageTitle } from '../components/PageTitle';
+import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type { TenantItem, TenantUserItem } from '../types';
 
 interface UserFormValues {
   tenant_id: string;
-  user_id: string;
+  user_id?: string;
   name: string;
   role: string;
   status: string;
@@ -20,11 +21,12 @@ interface IdentityFormValues {
 }
 
 export default function TenantUsersPage() {
+  const { tenantId: currentTenantId } = useRuntimeScope();
   const [loading, setLoading] = useState(false);
   const [roles, setRoles] = useState<string[]>(['owner', 'admin', 'member', 'viewer']);
   const [statuses, setStatuses] = useState<string[]>(['active', 'disabled', 'invited']);
   const [tenants, setTenants] = useState<TenantItem[]>([]);
-  const [tenantId, setTenantId] = useState('');
+  const [tenantId, setTenantId] = useState(currentTenantId);
   const [users, setUsers] = useState<TenantUserItem[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<TenantUserItem | null>(null);
@@ -38,7 +40,11 @@ export default function TenantUsersPage() {
   const [identityForm] = Form.useForm<IdentityFormValues>();
 
   const tenantOptions = useMemo(
-    () => tenants.map((tenant) => ({ label: `${tenant.name} (${tenant.tenant_id})`, value: tenant.tenant_id })),
+    () => tenants.map((tenant) => ({ label: tenant.name, value: tenant.tenant_id })),
+    [tenants],
+  );
+  const tenantNameById = useMemo(
+    () => new Map(tenants.map((tenant) => [tenant.tenant_id, tenant.name])),
     [tenants],
   );
 
@@ -62,8 +68,7 @@ export default function TenantUsersPage() {
   const openCreate = () => {
     setEditing(null);
     form.setFieldsValue({
-      tenant_id: tenantId || 'default',
-      user_id: '',
+      tenant_id: tenantId || currentTenantId,
       name: '',
       role: roles[0] || 'member',
       status: statuses[0] || 'active',
@@ -76,7 +81,6 @@ export default function TenantUsersPage() {
     setEditing(row);
     form.setFieldsValue({
       tenant_id: row.tenant_id,
-      user_id: row.user_id,
       name: row.name,
       role: row.role,
       status: row.status,
@@ -87,6 +91,7 @@ export default function TenantUsersPage() {
 
   const submit = async () => {
     const values = await form.validateFields();
+    const effectiveTenantId = values.tenant_id || tenantId || currentTenantId;
     let metadata = {};
     try {
       metadata = values.metadata ? JSON.parse(values.metadata) : {};
@@ -107,8 +112,7 @@ export default function TenantUsersPage() {
         message.success('租户成员已更新');
       } else {
         await api.createTenantUser({
-          tenant_id: values.tenant_id,
-          user_id: values.user_id,
+          tenant_id: effectiveTenantId,
           name: values.name,
           role: values.role,
           status: values.status,
@@ -173,6 +177,10 @@ export default function TenantUsersPage() {
     void loadUsers();
   }, [tenantId]);
 
+  useEffect(() => {
+    setTenantId(currentTenantId);
+  }, [currentTenantId]);
+
   return (
     <Card>
       <PageTitle
@@ -199,8 +207,7 @@ export default function TenantUsersPage() {
         dataSource={users}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: '租户', dataIndex: 'tenant_id' },
-          { title: '用户ID', dataIndex: 'user_id' },
+          { title: '租户', dataIndex: 'tenant_id', render: (value: string) => tenantNameById.get(value) || value },
           { title: '姓名', dataIndex: 'name' },
           { title: '角色', dataIndex: 'role', render: (v: string) => <Tag color="blue">{v}</Tag> },
           { title: '状态', dataIndex: 'status', render: (v: string) => (v === 'active' ? <Tag color="green">active</Tag> : <Tag>{v}</Tag>) },
@@ -228,12 +235,6 @@ export default function TenantUsersPage() {
         confirmLoading={submitting}
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="tenant_id" label="租户ID" rules={[{ required: true }]}>
-            <Input disabled={Boolean(editing)} />
-          </Form.Item>
-          <Form.Item name="user_id" label="用户ID" rules={[{ required: true }]}>
-            <Input disabled={Boolean(editing)} />
-          </Form.Item>
           <Form.Item name="name" label="姓名" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -253,13 +254,13 @@ export default function TenantUsersPage() {
         open={identityOpen}
         onClose={() => setIdentityOpen(false)}
         width={560}
-        title={identityUser ? `身份映射：${identityUser.name} (${identityUser.user_id})` : '身份映射'}
+        title={identityUser ? `身份映射：${identityUser.name}` : '身份映射'}
       >
         <Form form={identityForm} layout="vertical">
           <Form.Item name="channel_type" label="渠道类型" rules={[{ required: true }]}>
             <Input placeholder="例如：web / weixin / feishu" />
           </Form.Item>
-          <Form.Item name="external_user_id" label="外部用户ID" rules={[{ required: true }]}>
+          <Form.Item name="external_user_id" label="外部账号标识" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Button type="primary" loading={identitySubmitting} onClick={() => void bindIdentity()}>绑定映射</Button>
@@ -272,8 +273,7 @@ export default function TenantUsersPage() {
           dataSource={identities}
           columns={[
             { title: '渠道', dataIndex: 'channel_type' },
-            { title: '外部ID', dataIndex: 'external_user_id' },
-            { title: '用户ID', dataIndex: 'user_id' },
+            { title: '外部账号标识', dataIndex: 'external_user_id' },
             {
               title: '操作',
               render: (_, row) => (

@@ -10,7 +10,8 @@ Web コンソールは CowAgent のデフォルトチャネルです。起動後
 ```json
 {
   "channel_type": "web",
-  "web_port": 9899
+  "web_port": 9899,
+  "platform_database_url": "postgresql://cowplatform:cowplatform@127.0.0.1:55432/cowplatform"
 }
 ```
 
@@ -18,6 +19,7 @@ Web コンソールは CowAgent のデフォルトチャネルです。起動後
 | --- | --- | --- |
 | `channel_type` | `web` に設定 | `web` |
 | `web_port` | Web サービスのリスンポート | `9899` |
+| `platform_database_url` | tenant、Agent、session、memory index、job、audit log 用の PostgreSQL DSN | `postgresql://cowplatform:cowplatform@127.0.0.1:55432/cowplatform` |
 
 ## アクセス URL
 
@@ -40,7 +42,7 @@ Web コンソールは CowAgent のデフォルトチャネルです。起動後
 
 #### マルチセッション管理
 
-チャット画面はマルチセッション管理に対応しています。すべてのセッション記録は SQLite データベースに永続的に保存されます：
+チャット画面はマルチセッション管理に対応しています。すべてのセッション記録は PostgreSQL に永続的に保存されます：
 
 - **セッション一覧**：左側の履歴アイコンをクリックしてセッション一覧パネルを展開/折りたたみでき、スクロールですべての履歴セッションを読み込めます
 - **AI によるタイトル生成**：新しいセッションの最初のやり取りが完了すると、自動的にモデルを呼び出して短い要約タイトルを生成します

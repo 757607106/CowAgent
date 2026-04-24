@@ -2,29 +2,27 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from pathlib import Path
 from typing import Any
 import uuid
 
 from cow_platform.domain.models import JobDefinition
-from cow_platform.repositories.agent_repository import get_platform_data_root
-from cow_platform.repositories.job_repository import FileJobRepository
+from cow_platform.repositories.job_repository import JobRepository
 from cow_platform.services.agent_service import AgentService, DEFAULT_AGENT_ID, DEFAULT_TENANT_ID
 from cow_platform.services.audit_service import AuditService
 from cow_platform.services.usage_service import UsageService
 
 
 class JobService:
-    """当前阶段使用的异步任务服务。"""
+    """Asynchronous job service backed by PostgreSQL."""
 
     def __init__(
         self,
-        repository: FileJobRepository | None = None,
+        repository: JobRepository | None = None,
         usage_service: UsageService | None = None,
         agent_service: AgentService | None = None,
         audit_service: AuditService | None = None,
     ):
-        self.repository = repository or FileJobRepository()
+        self.repository = repository or JobRepository()
         self.usage_service = usage_service or UsageService()
         self.agent_service = agent_service or AgentService()
         self.audit_service = audit_service or AuditService()

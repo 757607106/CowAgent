@@ -103,9 +103,10 @@ function createSessionId(): string {
 }
 
 function getScopeStorageSegment(scope: RuntimeScope): string {
-  if (scope.bindingId) return `binding:${scope.bindingId}`;
-  if (scope.agentId) return `agent:${scope.agentId}`;
-  return 'workspace';
+  const tenantSegment = `tenant:${scope.tenantId || 'default'}`;
+  if (scope.bindingId) return `${tenantSegment}:binding:${scope.bindingId}`;
+  if (scope.agentId) return `${tenantSegment}:agent:${scope.agentId}`;
+  return `${tenantSegment}:default`;
 }
 
 function getScopeStorageKey(scope: RuntimeScope): string {
@@ -129,7 +130,7 @@ function buildConversationKey(scope: RuntimeScope, sessionId: string): string {
 function getScopeLabel(scope: RuntimeScope): string {
   if (scope.bindingId) return `绑定 ${scope.bindingId}`;
   if (scope.agentId) return `智能体 ${scope.agentId}`;
-  return '默认助手（当前工作区）';
+  return '通用 Agent（当前租户）';
 }
 
 function formatClock(value: number): string {
@@ -423,7 +424,7 @@ export default function ChatPage() {
   const agentSelectorOptions = useMemo(
     () => (agentOptions.length > 0
       ? agentOptions
-      : [{ label: '默认助手（当前工作区）', value: WORKSPACE_AGENT_VALUE }]),
+      : [{ label: '通用 Agent（当前租户）', value: WORKSPACE_AGENT_VALUE }]),
     [agentOptions],
   );
   const selectedAgentValue = useMemo(

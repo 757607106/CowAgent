@@ -243,7 +243,7 @@ class ChatService:
                 new_messages = list(executor.messages[original_length:])
             agent.messages = list(executor.messages)
 
-        # Persist new messages to SQLite so they survive restarts and
+        # Persist new messages to PostgreSQL so they survive restarts and
         # can be queried via the HISTORY interface.
         if new_messages:
             self._persist_messages(session_id, list(new_messages), channel_type)

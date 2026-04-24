@@ -8,6 +8,7 @@ def test_web_channel_exports_core_handlers() -> None:
         "RootHandler",
         "AuthCheckHandler",
         "AuthLoginHandler",
+        "AuthRegisterHandler",
         "AuthLogoutHandler",
         "MessageHandler",
         "UploadHandler",

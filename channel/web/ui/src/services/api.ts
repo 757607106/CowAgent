@@ -13,13 +13,31 @@ import type {
   TenantUserItem,
   ToolItem,
   UploadedFileResponse,
+  UsageRecordItem,
+  UsageSummary,
   WeixinQrInfo,
+  AuthUser,
 } from '../types';
 import { buildQuery, requestJson, scopeBody, scopeQuery } from './http';
 
 export const api = {
-  authCheck: () => requestJson<{ status: string; auth_required: boolean; authenticated?: boolean }>('/auth/check'),
-  login: (password: string) => requestJson('/auth/login', { method: 'POST', body: JSON.stringify({ password }) }),
+  authCheck: () => requestJson<{
+    status: string;
+    auth_required: boolean;
+    authenticated?: boolean;
+    bootstrap_required?: boolean;
+    auth_mode?: string;
+    user?: AuthUser | null;
+  }>('/auth/check'),
+  login: (payload: { account?: string; tenant_id?: string; user_id?: string; password: string }) => requestJson('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  registerTenant: (payload: Record<string, any>) => requestJson('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  logout: () => requestJson('/auth/logout', { method: 'POST' }),
 
   getConfig: () => requestJson<Record<string, any>>('/config'),
   updateConfig: (updates: Record<string, any>) => requestJson('/config', {
@@ -35,7 +53,7 @@ export const api = {
   }),
 
   listAgentsSimple: () => requestJson<{ status: string; agents: AgentItem[] }>('/api/agents'),
-  listAgents: (tenantId = 'default') => requestJson<{ status: string; agents: AgentItem[] }>(`/api/platform/agents${buildQuery({ tenant_id: tenantId })}`),
+  listAgents: (tenantId = '') => requestJson<{ status: string; agents: AgentItem[] }>(`/api/platform/agents${buildQuery({ tenant_id: tenantId })}`),
   createAgent: (payload: Record<string, any>) => requestJson('/api/platform/agents', { method: 'POST', body: JSON.stringify(payload) }),
   getAgentDetail: (tenantId: string, agentId: string) => requestJson<{ status: string; agent: AgentItem }>(`/api/platform/agents/${encodeURIComponent(agentId)}${buildQuery({ tenant_id: tenantId })}`),
   updateAgent: (agentId: string, payload: Record<string, any>) => requestJson(`/api/platform/agents/${encodeURIComponent(agentId)}`, {
@@ -53,6 +71,12 @@ export const api = {
     body: JSON.stringify(payload),
   }),
   deleteBinding: (tenantId: string, bindingId: string) => requestJson(`/api/platform/bindings/${encodeURIComponent(bindingId)}${buildQuery({ tenant_id: tenantId })}`, { method: 'DELETE' }),
+  listUsage: (tenantId = '', agentId = '', day = '', limit = 100) => requestJson<{ status: string; usage: UsageRecordItem[] }>(
+    `/api/platform/usage${buildQuery({ tenant_id: tenantId, agent_id: agentId, day, limit })}`,
+  ),
+  getCostSummary: (tenantId = '', agentId = '', day = '') => requestJson<{ status: string; summary: UsageSummary }>(
+    `/api/platform/costs${buildQuery({ tenant_id: tenantId, agent_id: agentId, day })}`,
+  ),
 
   listTenants: () => requestJson<{ status: string; tenants: TenantItem[] }>('/api/platform/tenants'),
   createTenant: (payload: Record<string, any>) => requestJson('/api/platform/tenants', { method: 'POST', body: JSON.stringify(payload) }),
@@ -83,12 +107,12 @@ export const api = {
     { method: 'DELETE' },
   ),
 
-  listMcpServers: (agentId: string, tenantId = 'default') => requestJson<{ status: string; servers: McpServerItem[] }>(`/api/mcp/servers${buildQuery({ agent_id: agentId, tenant_id: tenantId })}`),
+  listMcpServers: (agentId: string, tenantId = '') => requestJson<{ status: string; servers: McpServerItem[] }>(`/api/mcp/servers${buildQuery({ agent_id: agentId, tenant_id: tenantId })}`),
   testMcpServer: (payload: Record<string, any>) => requestJson<McpTestResult>('/api/mcp/servers/test', {
     method: 'POST',
     body: JSON.stringify(payload),
   }),
-  listMcpServerTools: (serverName: string, agentId?: string) => requestJson<{ status: string; tools: McpToolItem[] }>(`/api/mcp/servers/${encodeURIComponent(serverName)}/tools${buildQuery({ agent_id: agentId || '' })}`),
+  listMcpServerTools: (serverName: string, agentId?: string, tenantId = '') => requestJson<{ status: string; tools: McpToolItem[] }>(`/api/mcp/servers/${encodeURIComponent(serverName)}/tools${buildQuery({ agent_id: agentId || '', tenant_id: tenantId })}`),
 
   listChannels: () => requestJson<{ status: string; channels: ChannelItem[] }>('/api/channels'),
   channelAction: (payload: Record<string, any>) => requestJson('/api/channels', { method: 'POST', body: JSON.stringify(payload) }),

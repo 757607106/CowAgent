@@ -10,7 +10,8 @@ The Web Console is CowAgent's default channel. It starts automatically after lau
 ```json
 {
   "channel_type": "web",
-  "web_port": 9899
+  "web_port": 9899,
+  "platform_database_url": "postgresql://cowplatform:cowplatform@127.0.0.1:55432/cowplatform"
 }
 ```
 
@@ -18,6 +19,7 @@ The Web Console is CowAgent's default channel. It starts automatically after lau
 | --- | --- | --- |
 | `channel_type` | Set to `web` | `web` |
 | `web_port` | Web service listen port | `9899` |
+| `platform_database_url` | PostgreSQL DSN for tenants, agents, sessions, memory indexes, jobs, and audit logs | `postgresql://cowplatform:cowplatform@127.0.0.1:55432/cowplatform` |
 
 ## Access URL
 
@@ -40,7 +42,7 @@ Supports streaming output with real-time display of the Agent's reasoning proces
 
 #### Multi-Session Management
 
-The chat interface supports multi-session management. All session records are persistently stored in a SQLite database:
+The chat interface supports multi-session management. All session records are persistently stored in PostgreSQL:
 
 - **Session List**: Click the history icon on the left to expand/collapse the session list panel, with scroll-to-load support for all historical sessions
 - **AI-Generated Titles**: After the first exchange in a new session, the model is automatically called to generate a short summary title

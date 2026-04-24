@@ -2,35 +2,44 @@ import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Ta
 import { useEffect, useMemo, useState } from 'react';
 import { JsonBlock } from '../components/JsonBlock';
 import { PageTitle } from '../components/PageTitle';
+import { useRuntimeScope } from '../context/runtime';
 import { api, formatAgentPayload } from '../services/api';
-import type { AgentItem, TenantItem } from '../types';
+import type { AgentItem, SkillItem, TenantItem, ToolItem } from '../types';
 
 interface AgentFormValues {
   tenant_id: string;
   agent_id: string;
   name: string;
-  model: string;
+  model: string | string[];
   system_prompt: string;
-  tools: string;
-  skills: string;
+  tools: string[];
+  skills: string[];
   knowledge_enabled: boolean;
 }
 
-function splitCsv(input: string): string[] {
-  return input.split(',').map((item) => item.trim()).filter(Boolean);
+function firstValue(input: string | string[] | undefined): string {
+  if (Array.isArray(input)) return input[0] || '';
+  return input || '';
 }
 
 export default function AgentsPage() {
+  const { tenantId: currentTenantId, refreshAgentOptions } = useRuntimeScope();
   const [loading, setLoading] = useState(false);
   const [tenants, setTenants] = useState<TenantItem[]>([]);
-  const [tenantId, setTenantId] = useState('default');
+  const [tenantId, setTenantId] = useState(currentTenantId);
   const [agents, setAgents] = useState<AgentItem[]>([]);
+  const [tools, setTools] = useState<ToolItem[]>([]);
+  const [skills, setSkills] = useState<SkillItem[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<AgentItem | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<AgentFormValues>();
 
   const models = useMemo(() => Array.from(new Set(agents.map((a) => a.model).filter(Boolean))), [agents]);
+  const tenantNameById = useMemo(
+    () => new Map(tenants.map((tenant) => [tenant.tenant_id, tenant.name])),
+    [tenants],
+  );
 
   const loadTenants = async () => {
     const data = await api.listTenants();
@@ -47,6 +56,15 @@ export default function AgentsPage() {
     }
   };
 
+  const loadCapabilities = async (tenant = tenantId) => {
+    const [toolData, skillData] = await Promise.all([
+      api.listTools(),
+      api.listSkills({ tenantId: tenant, agentId: '', bindingId: '' }),
+    ]);
+    setTools(toolData.tools || []);
+    setSkills(skillData.skills || []);
+  };
+
   const openCreate = () => {
     setEditing(null);
     form.setFieldsValue({
@@ -55,8 +73,8 @@ export default function AgentsPage() {
       name: '',
       model: '',
       system_prompt: '',
-      tools: '',
-      skills: '',
+      tools: [],
+      skills: [],
       knowledge_enabled: false,
     });
     setOpen(true);
@@ -70,8 +88,8 @@ export default function AgentsPage() {
       name: row.name,
       model: row.model,
       system_prompt: row.system_prompt || '',
-      tools: (row.tools || []).join(', '),
-      skills: (row.skills || []).join(', '),
+      tools: row.tools || [],
+      skills: row.skills || [],
       knowledge_enabled: Boolean(row.knowledge_enabled),
     });
     setOpen(true);
@@ -79,14 +97,15 @@ export default function AgentsPage() {
 
   const onSubmit = async () => {
     const values = await form.validateFields();
+    const effectiveTenantId = values.tenant_id || tenantId || currentTenantId;
     const payload = formatAgentPayload({
-      tenant_id: values.tenant_id,
-      agent_id: values.agent_id || undefined,
+      tenant_id: effectiveTenantId,
+      agent_id: editing ? values.agent_id || editing.agent_id : undefined,
       name: values.name,
-      model: values.model,
+      model: firstValue(values.model),
       system_prompt: values.system_prompt,
-      tools: splitCsv(values.tools),
-      skills: splitCsv(values.skills),
+      tools: values.tools || [],
+      skills: values.skills || [],
       knowledge_enabled: values.knowledge_enabled,
       mcp_servers: editing?.mcp_servers || {},
     });
@@ -101,7 +120,8 @@ export default function AgentsPage() {
         message.success('智能体已创建');
       }
       setOpen(false);
-      await loadAgents(values.tenant_id);
+      await loadAgents(effectiveTenantId);
+      await refreshAgentOptions();
     } finally {
       setSubmitting(false);
     }
@@ -111,6 +131,7 @@ export default function AgentsPage() {
     await api.deleteAgent(row.tenant_id, row.agent_id);
     message.success('智能体已删除');
     await loadAgents(row.tenant_id);
+    await refreshAgentOptions();
   };
 
   useEffect(() => {
@@ -118,7 +139,12 @@ export default function AgentsPage() {
   }, []);
 
   useEffect(() => {
+    setTenantId(currentTenantId);
+  }, [currentTenantId]);
+
+  useEffect(() => {
     void loadAgents(tenantId);
+    void loadCapabilities(tenantId);
   }, [tenantId]);
 
   return (
@@ -133,7 +159,7 @@ export default function AgentsPage() {
               style={{ width: 200 }}
               onChange={(value) => setTenantId(value)}
               options={(tenants.length > 0 ? tenants : [{ tenant_id: 'default', name: 'default' }]).map((tenant) => ({
-                label: `${tenant.name} (${tenant.tenant_id})`,
+                label: tenant.name,
                 value: tenant.tenant_id,
               }))}
             />
@@ -148,8 +174,8 @@ export default function AgentsPage() {
         dataSource={agents}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: 'Agent ID', dataIndex: 'agent_id' },
           { title: '名称', dataIndex: 'name' },
+          { title: '租户', dataIndex: 'tenant_id', render: (value: string) => tenantNameById.get(value) || value },
           { title: '模型', dataIndex: 'model', render: (v: string) => (v ? <Tag color="blue">{v}</Tag> : '-') },
           { title: '工具数', render: (_, row) => row.tools?.length || 0 },
           { title: '技能数', render: (_, row) => row.skills?.length || 0 },
@@ -181,12 +207,6 @@ export default function AgentsPage() {
         destroyOnClose
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="tenant_id" label="租户ID" rules={[{ required: true }]}>
-            <Input disabled={Boolean(editing)} />
-          </Form.Item>
-          <Form.Item name="agent_id" label="Agent ID（新建可留空自动生成）">
-            <Input disabled={Boolean(editing)} />
-          </Form.Item>
           <Form.Item name="name" label="名称" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
@@ -203,11 +223,27 @@ export default function AgentsPage() {
           <Form.Item name="system_prompt" label="系统提示词">
             <Input.TextArea rows={4} />
           </Form.Item>
-          <Form.Item name="tools" label="工具（逗号分隔）">
-            <Input />
+          <Form.Item name="tools" label="工具">
+            <Select
+              mode="multiple"
+              allowClear
+              options={tools.map((tool) => ({
+                label: tool.description ? `${tool.name} - ${tool.description}` : tool.name,
+                value: tool.name,
+              }))}
+              placeholder="选择工具"
+            />
           </Form.Item>
-          <Form.Item name="skills" label="技能（逗号分隔）">
-            <Input />
+          <Form.Item name="skills" label="技能">
+            <Select
+              mode="multiple"
+              allowClear
+              options={skills.map((skill) => ({
+                label: skill.description ? `${skill.name} - ${skill.description}` : skill.name,
+                value: skill.name,
+              }))}
+              placeholder="选择技能"
+            />
           </Form.Item>
           <Form.Item name="knowledge_enabled" label="启用知识库" valuePropName="checked">
             <Switch />

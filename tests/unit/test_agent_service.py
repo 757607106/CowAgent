@@ -2,7 +2,7 @@ from pathlib import Path
 
 from config import conf
 
-from cow_platform.repositories.agent_repository import FileAgentRepository, get_platform_workspace_root
+from cow_platform.repositories.agent_repository import AgentRepository, get_platform_workspace_root
 from cow_platform.services.agent_service import AgentService
 
 
@@ -10,7 +10,7 @@ def test_agent_service_can_create_update_and_list_agents(tmp_path: Path, monkeyp
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
     monkeypatch.setitem(conf(), "model", "legacy-model")
 
-    repository = FileAgentRepository()
+    repository = AgentRepository()
     service = AgentService(repository)
 
     default_agent = service.ensure_default_agent()
@@ -41,7 +41,7 @@ def test_agent_service_can_auto_generate_agent_id(tmp_path: Path, monkeypatch) -
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
     monkeypatch.setitem(conf(), "model", "legacy-model")
 
-    repository = FileAgentRepository()
+    repository = AgentRepository()
     service = AgentService(repository)
 
     created = service.create_agent(

@@ -34,7 +34,7 @@ All memory writes run asynchronously in a background thread (LLM summarization +
 
 The memory system supports hybrid retrieval modes:
 
-- **Keyword retrieval** — FTS5 full-text index matching with BM25 ranking
+- **Keyword retrieval** — PostgreSQL text matching over indexed memory chunks
 - **Vector retrieval** — Embedding-based semantic similarity search, finds relevant memory even with different wording
 
 The Agent automatically triggers memory retrieval during conversation as needed, incorporating relevant historical information into context. Results are ranked by a combined score (default: 0.7 vector weight + 0.3 keyword weight). Daily memory scores decay over time (30-day half-life), while core memory does not decay.

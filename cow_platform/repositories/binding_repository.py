@@ -1,23 +1,17 @@
 from __future__ import annotations
 
-import json
-import threading
 import time
 from dataclasses import asdict
-from pathlib import Path
 from typing import Any
 
+from psycopg import errors
+
+from cow_platform.db import connect, jsonb
 from cow_platform.domain.models import ChannelBindingDefinition
-from cow_platform.repositories.agent_repository import get_platform_data_root
 
 
-class FileChannelBindingRepository:
-    """基于 JSON 文件的渠道绑定仓储。"""
-
-    def __init__(self, store_path: Path | None = None):
-        self.store_path = store_path or (get_platform_data_root() / "bindings.json")
-        self._lock = threading.Lock()
-        self.store_path.parent.mkdir(parents=True, exist_ok=True)
+class PostgresChannelBindingRepository:
+    """PostgreSQL-backed channel binding repository."""
 
     def list_bindings(
         self,
@@ -25,17 +19,27 @@ class FileChannelBindingRepository:
         tenant_id: str = "",
         channel_type: str = "",
     ) -> list[ChannelBindingDefinition]:
-        with self._lock:
-            store = self._load_store()
-        bindings = []
-        for record in store.get("bindings", {}).values():
-            if tenant_id and record.get("tenant_id") != tenant_id:
-                continue
-            if channel_type and record.get("channel_type") != channel_type:
-                continue
-            bindings.append(self._to_definition(record))
-        bindings.sort(key=lambda item: (item.tenant_id, item.channel_type, item.binding_id))
-        return bindings
+        conditions: list[str] = []
+        params: list[Any] = []
+        if tenant_id:
+            conditions.append("tenant_id = %s")
+            params.append(tenant_id)
+        if channel_type:
+            conditions.append("channel_type = %s")
+            params.append(channel_type)
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        with connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT tenant_id, binding_id, name, channel_type, agent_id,
+                       version, enabled, metadata
+                FROM platform_bindings
+                {where}
+                ORDER BY tenant_id, channel_type, binding_id
+                """,
+                tuple(params),
+            ).fetchall()
+        return [self._to_definition(row) for row in rows]
 
     def get_binding(
         self,
@@ -43,17 +47,25 @@ class FileChannelBindingRepository:
         tenant_id: str = "",
         binding_id: str,
     ) -> ChannelBindingDefinition | None:
-        with self._lock:
-            store = self._load_store()
-            if tenant_id:
-                record = store.get("bindings", {}).get(self._build_key(tenant_id, binding_id))
-                if record:
-                    return self._to_definition(record)
-
-            for saved in store.get("bindings", {}).values():
-                if saved.get("binding_id") == binding_id:
-                    return self._to_definition(saved)
-        return None
+        if tenant_id:
+            query = """
+                SELECT tenant_id, binding_id, name, channel_type, agent_id,
+                       version, enabled, metadata
+                FROM platform_bindings
+                WHERE tenant_id = %s AND binding_id = %s
+            """
+            params = (tenant_id, binding_id)
+        else:
+            query = """
+                SELECT tenant_id, binding_id, name, channel_type, agent_id,
+                       version, enabled, metadata
+                FROM platform_bindings
+                WHERE binding_id = %s
+            """
+            params = (binding_id,)
+        with connect() as conn:
+            row = conn.execute(query, params).fetchone()
+        return self._to_definition(row) if row else None
 
     def create_binding(
         self,
@@ -67,25 +79,33 @@ class FileChannelBindingRepository:
         metadata: dict[str, Any] | None = None,
     ) -> ChannelBindingDefinition:
         now = int(time.time())
-        with self._lock:
-            store = self._load_store()
-            self._ensure_binding_id_available(store, binding_id)
-            key = self._build_key(tenant_id, binding_id)
-            record = {
-                "tenant_id": tenant_id,
-                "binding_id": binding_id,
-                "name": name,
-                "channel_type": channel_type,
-                "agent_id": agent_id,
-                "version": 1,
-                "enabled": enabled,
-                "metadata": metadata or {},
-                "created_at": now,
-                "updated_at": now,
-            }
-            store["bindings"][key] = record
-            self._save_store(store)
-        return self._to_definition(record)
+        try:
+            with connect() as conn:
+                row = conn.execute(
+                    """
+                    INSERT INTO platform_bindings
+                        (tenant_id, binding_id, name, channel_type, agent_id, version,
+                         enabled, metadata, created_at, updated_at)
+                    VALUES (%s, %s, %s, %s, %s, 1, %s, %s, %s, %s)
+                    RETURNING tenant_id, binding_id, name, channel_type, agent_id,
+                              version, enabled, metadata
+                    """,
+                    (
+                        tenant_id,
+                        binding_id,
+                        name,
+                        channel_type,
+                        agent_id,
+                        bool(enabled),
+                        jsonb(metadata or {}),
+                        now,
+                        now,
+                    ),
+                ).fetchone()
+                conn.commit()
+        except errors.UniqueViolation as exc:
+            raise ValueError(f"binding already exists: {binding_id}") from exc
+        return self._to_definition(row)
 
     def update_binding(
         self,
@@ -98,38 +118,64 @@ class FileChannelBindingRepository:
         enabled: bool | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> ChannelBindingDefinition:
-        now = int(time.time())
-        with self._lock:
-            store = self._load_store()
-            key, record = self._find_binding_record(store, binding_id=binding_id, tenant_id=tenant_id)
-            if not record:
-                raise KeyError(f"binding not found: {binding_id}")
-
-            record["version"] = int(record.get("version", 0)) + 1
-            if name is not None:
-                record["name"] = name
-            if channel_type is not None:
-                record["channel_type"] = channel_type
-            if agent_id is not None:
-                record["agent_id"] = agent_id
-            if enabled is not None:
-                record["enabled"] = enabled
-            if metadata is not None:
-                record["metadata"] = metadata
-            record["updated_at"] = now
-            store["bindings"][key] = record
-            self._save_store(store)
-        return self._to_definition(record)
+        current = self.export_record_by_id(binding_id=binding_id, tenant_id=tenant_id)
+        version = int(current.get("version", 1)) + 1
+        with connect() as conn:
+            row = conn.execute(
+                """
+                UPDATE platform_bindings
+                SET name = %s, channel_type = %s, agent_id = %s, version = %s,
+                    enabled = %s, metadata = %s, updated_at = %s
+                WHERE tenant_id = %s AND binding_id = %s
+                RETURNING tenant_id, binding_id, name, channel_type, agent_id,
+                          version, enabled, metadata
+                """,
+                (
+                    current["name"] if name is None else name,
+                    current["channel_type"] if channel_type is None else channel_type,
+                    current["agent_id"] if agent_id is None else agent_id,
+                    version,
+                    current["enabled"] if enabled is None else bool(enabled),
+                    jsonb(current["metadata"] if metadata is None else metadata),
+                    int(time.time()),
+                    current["tenant_id"],
+                    current["binding_id"],
+                ),
+            ).fetchone()
+            conn.commit()
+        if not row:
+            raise KeyError(f"binding not found: {binding_id}")
+        return self._to_definition(row)
 
     def export_record(self, definition: ChannelBindingDefinition) -> dict[str, Any]:
-        """导出给接口层使用的完整绑定记录。"""
-        record = asdict(definition)
-        with self._lock:
-            store = self._load_store()
-            saved = store.get("bindings", {}).get(self._build_key(definition.tenant_id, definition.binding_id), {})
-        record["created_at"] = saved.get("created_at")
-        record["updated_at"] = saved.get("updated_at")
-        return record
+        try:
+            return self.export_record_by_id(binding_id=definition.binding_id, tenant_id=definition.tenant_id)
+        except KeyError:
+            record = asdict(definition)
+            record["created_at"] = None
+            record["updated_at"] = None
+            return record
+
+    def export_record_by_id(self, *, binding_id: str, tenant_id: str = "") -> dict[str, Any]:
+        if tenant_id:
+            where = "tenant_id = %s AND binding_id = %s"
+            params = (tenant_id, binding_id)
+        else:
+            where = "binding_id = %s"
+            params = (binding_id,)
+        with connect() as conn:
+            row = conn.execute(
+                f"""
+                SELECT tenant_id, binding_id, name, channel_type, agent_id,
+                       version, enabled, metadata, created_at, updated_at
+                FROM platform_bindings
+                WHERE {where}
+                """,
+                params,
+            ).fetchone()
+        if not row:
+            raise KeyError(f"binding not found: {binding_id}")
+        return dict(row)
 
     def delete_binding(
         self,
@@ -137,52 +183,25 @@ class FileChannelBindingRepository:
         binding_id: str,
         tenant_id: str = "",
     ) -> ChannelBindingDefinition:
-        with self._lock:
-            store = self._load_store()
-            key, record = self._find_binding_record(store, binding_id=binding_id, tenant_id=tenant_id)
-            if not record:
-                raise KeyError(f"binding not found: {binding_id}")
-            del store["bindings"][key]
-            self._save_store(store)
-        return self._to_definition(record)
+        current = self.export_record_by_id(binding_id=binding_id, tenant_id=tenant_id)
+        with connect() as conn:
+            row = conn.execute(
+                """
+                DELETE FROM platform_bindings
+                WHERE tenant_id = %s AND binding_id = %s
+                RETURNING tenant_id, binding_id, name, channel_type, agent_id,
+                          version, enabled, metadata
+                """,
+                (current["tenant_id"], current["binding_id"]),
+            ).fetchone()
+            conn.commit()
+        if not row:
+            raise KeyError(f"binding not found: {binding_id}")
+        return self._to_definition(row)
 
     @staticmethod
-    def _build_key(tenant_id: str, binding_id: str) -> str:
-        return f"{tenant_id}:{binding_id}"
-
-    def _ensure_binding_id_available(self, store: dict[str, Any], binding_id: str) -> None:
-        for record in store.get("bindings", {}).values():
-            if record.get("binding_id") == binding_id:
-                raise ValueError(f"binding already exists: {binding_id}")
-
-    def _find_binding_record(
-        self,
-        store: dict[str, Any],
-        *,
-        binding_id: str,
-        tenant_id: str = "",
-    ) -> tuple[str, dict[str, Any] | None]:
-        if tenant_id:
-            key = self._build_key(tenant_id, binding_id)
-            return key, store.get("bindings", {}).get(key)
-
-        for key, record in store.get("bindings", {}).items():
-            if record.get("binding_id") == binding_id:
-                return key, record
-        return "", None
-
-    def _load_store(self) -> dict[str, Any]:
-        if not self.store_path.exists():
-            return {"bindings": {}}
-        with self.store_path.open("r", encoding="utf-8") as file:
-            data = json.load(file)
-        if "bindings" not in data:
-            data["bindings"] = {}
-        return data
-
-    def _save_store(self, store: dict[str, Any]) -> None:
-        with self.store_path.open("w", encoding="utf-8") as file:
-            json.dump(store, file, ensure_ascii=False, indent=2)
+    def export_record_fallback(definition: ChannelBindingDefinition) -> dict[str, Any]:
+        return asdict(definition)
 
     @staticmethod
     def _to_definition(record: dict[str, Any]) -> ChannelBindingDefinition:
@@ -196,3 +215,6 @@ class FileChannelBindingRepository:
             enabled=bool(record.get("enabled", True)),
             metadata=record.get("metadata", {}) or {},
         )
+
+
+ChannelBindingRepository = PostgresChannelBindingRepository

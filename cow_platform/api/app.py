@@ -6,12 +6,15 @@ from fastapi import FastAPI
 
 from cow_platform.api.routes import (
     register_agent_binding_routes,
+    register_auth_routes,
     register_governance_routes,
     register_system_routes,
     register_tenant_routes,
 )
+from cow_platform.api.security import PlatformAuthorizer
 from cow_platform.api.settings import PlatformSettings
 from cow_platform.services.agent_service import AgentService
+from cow_platform.services.auth_service import TenantAuthService
 from cow_platform.services.audit_service import AuditService
 from cow_platform.services.binding_service import ChannelBindingService
 from cow_platform.services.doctor_service import DoctorService
@@ -29,6 +32,12 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     tenant_service = TenantService()
     agent_service = AgentService(tenant_service=tenant_service)
     tenant_user_service = TenantUserService(tenant_service=tenant_service)
+    auth_service = TenantAuthService(
+        tenant_service=tenant_service,
+        tenant_user_service=tenant_user_service,
+        agent_service=agent_service,
+    )
+    authorizer = PlatformAuthorizer(auth_service)
     binding_service = ChannelBindingService(agent_service=agent_service, tenant_service=tenant_service)
     pricing_service = PricingService()
     usage_service = UsageService(pricing_service=pricing_service)
@@ -72,11 +81,17 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
         app,
         mode=resolved_settings.mode,
         doctor_service=doctor_service,
+        authorizer=authorizer,
+    )
+    register_auth_routes(
+        app,
+        auth_service=auth_service,
     )
     register_tenant_routes(
         app,
         tenant_service=tenant_service,
         tenant_user_service=tenant_user_service,
+        authorizer=authorizer,
         record_audit=audit_callback,
     )
     register_agent_binding_routes(
@@ -84,6 +99,7 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
         tenant_service=tenant_service,
         agent_service=agent_service,
         binding_service=binding_service,
+        authorizer=authorizer,
         record_audit=audit_callback,
     )
     register_governance_routes(
@@ -93,6 +109,7 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
         usage_service=usage_service,
         job_service=job_service,
         audit_service=audit_service,
+        authorizer=authorizer,
         record_audit=audit_callback,
     )
 

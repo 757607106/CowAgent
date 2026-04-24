@@ -1463,7 +1463,7 @@ class AgentStreamExecutor:
 
     def _clear_session_db(self):
         """
-        Clear the current session's persisted messages from SQLite DB.
+        Clear the current session's persisted messages from PostgreSQL.
 
         This prevents dirty data (broken tool_use/tool_result pairs) from being
         reloaded on the next request or after a restart.

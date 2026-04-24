@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import os
-import hmac
 import mimetypes
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,13 +12,13 @@ import web
 
 @dataclass(frozen=True)
 class CoreHandlerDeps:
-    is_password_enabled: Callable[[], bool]
-    check_auth: Callable[[], bool]
-    create_auth_token: Callable[[], str]
-    session_expire_seconds: Callable[[], int]
+    check_auth_payload: Callable[[], dict[str, Any]]
+    login: Callable[[dict[str, Any]], dict[str, Any]]
+    register: Callable[[dict[str, Any]], dict[str, Any]]
+    logout: Callable[[], None]
     require_auth: Callable[[], None]
-    get_expected_password: Callable[[], str]
     get_upload_dir: Callable[[], str]
+    is_file_allowed: Callable[[str], bool]
     get_web_channel: Callable[[], Any]
     render_chat_page: Callable[[], str]
     resolve_asset_path: Callable[[str], Path | None]
@@ -35,43 +34,30 @@ def build_core_handlers(deps: CoreHandlerDeps) -> dict[str, type]:
     class AuthCheckHandler:
         def GET(self):
             web.header("Content-Type", "application/json; charset=utf-8")
-            if not deps.is_password_enabled():
-                return json.dumps({"status": "success", "auth_required": False})
-            if deps.check_auth():
-                return json.dumps({"status": "success", "auth_required": True, "authenticated": True})
-            return json.dumps({"status": "success", "auth_required": True, "authenticated": False})
+            return json.dumps(deps.check_auth_payload(), ensure_ascii=False)
 
     class AuthLoginHandler:
         def POST(self):
             web.header("Content-Type", "application/json; charset=utf-8")
-            if not deps.is_password_enabled():
-                return json.dumps({"status": "success"})
             try:
                 data = json.loads(web.data())
             except Exception:
                 return json.dumps({"status": "error", "message": "Invalid request"})
+            return json.dumps(deps.login(data), ensure_ascii=False)
 
-            password = data.get("password", "")
-            expected = deps.get_expected_password()
-            if not hmac.compare_digest(password, expected):
-                deps.logger.warning("[WebChannel] Invalid login attempt")
-                return json.dumps({"status": "error", "message": "Wrong password"})
-
-            token = deps.create_auth_token()
-            web.setcookie(
-                "cow_auth_token",
-                token,
-                expires=deps.session_expire_seconds(),
-                path="/",
-                httponly=True,
-                samesite="Lax",
-            )
-            return json.dumps({"status": "success"})
+    class AuthRegisterHandler:
+        def POST(self):
+            web.header("Content-Type", "application/json; charset=utf-8")
+            try:
+                data = json.loads(web.data())
+            except Exception:
+                return json.dumps({"status": "error", "message": "Invalid request"})
+            return json.dumps(deps.register(data), ensure_ascii=False)
 
     class AuthLogoutHandler:
         def POST(self):
             web.header("Content-Type", "application/json; charset=utf-8")
-            web.setcookie("cow_auth_token", "", expires=-1, path="/")
+            deps.logout()
             return json.dumps({"status": "success"})
 
     class MessageHandler:
@@ -117,6 +103,8 @@ def build_core_handlers(deps: CoreHandlerDeps) -> dict[str, type]:
                     raise web.notfound()
                 file_path = os.path.normpath(file_path)
                 if not os.path.isfile(file_path):
+                    raise web.notfound()
+                if not deps.is_file_allowed(file_path):
                     raise web.notfound()
                 content_type = mimetypes.guess_type(file_path)[0] or "application/octet-stream"
                 file_name = os.path.basename(file_path)
@@ -186,6 +174,7 @@ def build_core_handlers(deps: CoreHandlerDeps) -> dict[str, type]:
         "RootHandler": RootHandler,
         "AuthCheckHandler": AuthCheckHandler,
         "AuthLoginHandler": AuthLoginHandler,
+        "AuthRegisterHandler": AuthRegisterHandler,
         "AuthLogoutHandler": AuthLogoutHandler,
         "MessageHandler": MessageHandler,
         "UploadHandler": UploadHandler,

@@ -29,19 +29,21 @@ class AgentUpdateRequest(BaseModel):
 
 
 class TenantCreateRequest(BaseModel):
-    tenant_id: str
+    tenant_id: str = ""
     name: str
     status: str = "active"
+    metadata: dict[str, object] = Field(default_factory=dict)
 
 
 class TenantUpdateRequest(BaseModel):
     name: str | None = None
     status: str | None = None
+    metadata: dict[str, object] | None = None
 
 
 class TenantUserCreateRequest(BaseModel):
     tenant_id: str
-    user_id: str
+    user_id: str = ""
     name: str = ""
     role: str = "member"
     status: str = "active"
@@ -63,9 +65,25 @@ class TenantUserIdentityUpsertRequest(BaseModel):
     metadata: dict[str, object] = Field(default_factory=dict)
 
 
+class TenantRegisterRequest(BaseModel):
+    tenant_id: str = ""
+    tenant_name: str
+    user_id: str = ""
+    account: str = ""
+    password: str
+    user_name: str = ""
+
+
+class TenantLoginRequest(BaseModel):
+    tenant_id: str = ""
+    user_id: str = ""
+    account: str = ""
+    password: str
+
+
 class BindingCreateRequest(BaseModel):
     tenant_id: str = Field(default=DEFAULT_TENANT_ID)
-    binding_id: str
+    binding_id: str = ""
     name: str
     channel_type: str
     agent_id: str

@@ -6,6 +6,7 @@ import logging
 import os
 import threading
 import uuid
+from pathlib import Path
 from queue import Queue, Empty
 
 import web
@@ -33,6 +34,8 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".avi", ".mov", ".mkv"}
 _FRONTEND_LAYOUT = build_frontend_layout(__file__)
 _FRONTEND_MODE_WARNED = False
+_AUTH_COOKIE = "cow_auth_token"
+_TENANT_AUTH_COOKIE = "cow_tenant_auth_token"
 
 
 def _frontend_mode() -> str:
@@ -48,6 +51,10 @@ def _frontend_mode() -> str:
 
 def _is_password_enabled():
     return bool(conf().get("web_password", ""))
+
+
+def _is_tenant_auth_enabled():
+    return bool(conf().get("web_tenant_auth", True))
 
 
 def _session_expire_seconds():
@@ -88,11 +95,140 @@ def _verify_auth_token(token):
     return hmac.compare_digest(sig, expected)
 
 
+def _get_auth_service():
+    from cow_platform.services.auth_service import TenantAuthService
+
+    return TenantAuthService(session_expire_seconds=_session_expire_seconds())
+
+
+def _get_cookie_value(name: str) -> str:
+    try:
+        cookies = web.cookies()
+        return cookies.get(name, "")
+    except Exception:
+        return ""
+
+
+def _get_authenticated_tenant_session():
+    if not _is_tenant_auth_enabled():
+        return None
+    return _get_auth_service().verify_session_token(_get_cookie_value(_TENANT_AUTH_COOKIE))
+
+
 def _check_auth():
     """Return True if request is authenticated or password not enabled."""
+    if _is_tenant_auth_enabled():
+        return _get_authenticated_tenant_session() is not None
     if not _is_password_enabled():
         return True
-    return _verify_auth_token(web.cookies().get("cow_auth_token", ""))
+    return _verify_auth_token(_get_cookie_value(_AUTH_COOKIE))
+
+
+def _check_auth_payload() -> dict[str, object]:
+    if _is_tenant_auth_enabled():
+        service = _get_auth_service()
+        session = service.verify_session_token(_get_cookie_value(_TENANT_AUTH_COOKIE))
+        return {
+            "status": "success",
+            "auth_required": True,
+            "auth_mode": "tenant",
+            "authenticated": session is not None,
+            "bootstrap_required": not service.has_credentials(),
+            "user": session.to_public_dict() if session else None,
+        }
+    if not _is_password_enabled():
+        return {"status": "success", "auth_required": False, "auth_mode": "none"}
+    return {
+        "status": "success",
+        "auth_required": True,
+        "auth_mode": "password",
+        "authenticated": _verify_auth_token(_get_cookie_value(_AUTH_COOKIE)),
+    }
+
+
+def _set_auth_cookie(name: str, value: str):
+    web.setcookie(
+        name,
+        value,
+        expires=_session_expire_seconds(),
+        path="/",
+        httponly=True,
+        samesite="Lax",
+    )
+
+
+def _login(data: dict[str, object]) -> dict[str, object]:
+    if _is_tenant_auth_enabled():
+        service = _get_auth_service()
+        try:
+            if data.get("account"):
+                session = service.authenticate_account(
+                    account=str(data.get("account", "") or ""),
+                    password=str(data.get("password", "") or ""),
+                )
+            else:
+                session = service.authenticate(
+                    tenant_id=str(data.get("tenant_id", "") or ""),
+                    user_id=str(data.get("user_id", "") or ""),
+                    password=str(data.get("password", "") or ""),
+                )
+        except Exception:
+            logger.warning("[WebChannel] Invalid tenant login attempt")
+            return {"status": "error", "message": "账号或密码不正确"}
+        _set_auth_cookie(_TENANT_AUTH_COOKIE, service.create_session_token(session))
+        web.setcookie(_AUTH_COOKIE, "", expires=-1, path="/")
+        return {"status": "success", "user": session.to_public_dict()}
+
+    if not _is_password_enabled():
+        return {"status": "success"}
+
+    password = str(data.get("password", "") or "")
+    expected = conf().get("web_password", "")
+    if not hmac.compare_digest(password, expected):
+        logger.warning("[WebChannel] Invalid login attempt")
+        return {"status": "error", "message": "Wrong password"}
+
+    _set_auth_cookie(_AUTH_COOKIE, _create_auth_token())
+    web.setcookie(_TENANT_AUTH_COOKIE, "", expires=-1, path="/")
+    return {"status": "success"}
+
+
+def _register(data: dict[str, object]) -> dict[str, object]:
+    if not _is_tenant_auth_enabled():
+        return {"status": "error", "message": "tenant auth is disabled"}
+
+    try:
+        service = _get_auth_service()
+        result = service.register_tenant(
+            tenant_id=str(data.get("tenant_id", "") or ""),
+            tenant_name=str(data.get("tenant_name", "") or data.get("name", "") or ""),
+            user_id=str(data.get("user_id", "") or ""),
+            account=str(data.get("account", "") or ""),
+            name=str(data.get("user_name", "") or data.get("name", "") or ""),
+            password=str(data.get("password", "") or ""),
+        )
+        if data.get("account"):
+            session = service.authenticate_account(
+                account=str(data.get("account", "") or ""),
+                password=str(data.get("password", "") or ""),
+            )
+        else:
+            session = service.authenticate(
+                tenant_id=result["tenant"]["tenant_id"],
+                user_id=result["tenant_user"]["user_id"],
+                password=str(data.get("password", "") or ""),
+            )
+        _set_auth_cookie(_TENANT_AUTH_COOKIE, service.create_session_token(session))
+        web.setcookie(_AUTH_COOKIE, "", expires=-1, path="/")
+        return {"status": "success", **result, "user": session.to_public_dict()}
+    except Exception as e:
+        logger.warning(f"[WebChannel] Tenant register failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+
+def _logout() -> None:
+    web.setcookie(_AUTH_COOKIE, "", expires=-1, path="/")
+    web.setcookie(_TENANT_AUTH_COOKIE, "", expires=-1, path="/")
 
 
 def _require_auth():
@@ -101,6 +237,14 @@ def _require_auth():
         raise web.HTTPError("401 Unauthorized",
                             {"Content-Type": "application/json; charset=utf-8"},
                             json.dumps({"status": "error", "message": "Unauthorized"}))
+
+
+def _raise_forbidden(message: str = "Forbidden"):
+    raise web.HTTPError(
+        "403 Forbidden",
+        {"Content-Type": "application/json; charset=utf-8"},
+        json.dumps({"status": "error", "message": message}, ensure_ascii=False),
+    )
 
 
 def _get_upload_dir(agent_id: str = "", tenant_id: str = "", binding_id: str = "") -> str:
@@ -120,6 +264,28 @@ def _normalize_agent_id(agent_id: str = "") -> str:
 
 def _normalize_binding_id(binding_id: str = "") -> str:
     return (binding_id or "").strip()
+
+
+def _scope_tenant_id(tenant_id: str = "", *, default: str = "default") -> str:
+    """Resolve a tenant id under the current authenticated tenant session."""
+    session = _get_authenticated_tenant_session()
+    requested = (tenant_id or "").strip()
+    if session:
+        if requested and requested != session.tenant_id:
+            _raise_forbidden("不能访问其他租户的数据")
+        return session.tenant_id
+    return _normalize_tenant_id(requested or default)
+
+
+def _scope_optional_tenant_id(tenant_id: str = "") -> str:
+    """Like _scope_tenant_id, but preserves blank tenant filters in legacy mode."""
+    session = _get_authenticated_tenant_session()
+    requested = (tenant_id or "").strip()
+    if session:
+        if requested and requested != session.tenant_id:
+            _raise_forbidden("不能访问其他租户的数据")
+        return session.tenant_id
+    return requested
 
 
 def _parse_bool(value, default: bool = True) -> bool:
@@ -162,6 +328,12 @@ def _get_binding_service():
     return ChannelBindingService()
 
 
+def _get_usage_service():
+    from cow_platform.services.usage_service import UsageService
+
+    return UsageService()
+
+
 def _get_session_repository():
     from cow_platform.repositories.session_repository import SessionRepository
 
@@ -174,13 +346,35 @@ def _get_runtime_adapter():
     return CowAgentRuntimeAdapter()
 
 
+def _is_file_access_allowed(file_path: str) -> bool:
+    session = _get_authenticated_tenant_session()
+    if session is None:
+        return True
+    try:
+        from cow_platform.repositories.agent_repository import get_platform_workspace_root
+        from cow_platform.runtime.namespaces import normalize_namespace_segment
+
+        allowed_root = (
+            get_platform_workspace_root()
+            / normalize_namespace_segment(session.tenant_id)
+        ).resolve()
+        target = Path(file_path).resolve()
+        target.relative_to(allowed_root)
+        return True
+    except Exception:
+        logger.warning(
+            f"[WebChannel] Blocked cross-tenant file access: tenant={session.tenant_id}, path={file_path}"
+        )
+        return False
+
+
 def _resolve_runtime_target(agent_id: str = "", tenant_id: str = "", binding_id: str = "") -> dict[str, str]:
     """把页面上传入的 agent_id / binding_id 解析成最终路由目标。"""
     raw_binding_id = _normalize_binding_id(binding_id)
     if raw_binding_id:
         binding = _get_binding_service().resolve_binding(
             binding_id=raw_binding_id,
-            tenant_id=(tenant_id or "").strip(),
+            tenant_id=_scope_optional_tenant_id(tenant_id),
         )
         return {
             "tenant_id": binding.tenant_id,
@@ -191,8 +385,16 @@ def _resolve_runtime_target(agent_id: str = "", tenant_id: str = "", binding_id:
     raw_agent_id = (agent_id or "").strip()
     if raw_agent_id:
         return {
-            "tenant_id": _normalize_tenant_id(tenant_id),
+            "tenant_id": _scope_tenant_id(tenant_id),
             "agent_id": _normalize_agent_id(raw_agent_id),
+            "binding_id": "",
+        }
+
+    session = _get_authenticated_tenant_session()
+    if session:
+        return {
+            "tenant_id": session.tenant_id,
+            "agent_id": "default",
             "binding_id": "",
         }
 
@@ -755,13 +957,13 @@ def _resolve_frontend_asset(file_path: str):
 globals().update(
     build_core_handlers(
         CoreHandlerDeps(
-            is_password_enabled=_is_password_enabled,
-            check_auth=_check_auth,
-            create_auth_token=_create_auth_token,
-            session_expire_seconds=_session_expire_seconds,
+            check_auth_payload=_check_auth_payload,
+            login=_login,
+            register=_register,
+            logout=_logout,
             require_auth=_require_auth,
-            get_expected_password=lambda: conf().get("web_password", ""),
             get_upload_dir=_get_upload_dir,
+            is_file_allowed=_is_file_access_allowed,
             get_web_channel=WebChannel,
             render_chat_page=lambda: WebChannel().chat_page(),
             resolve_asset_path=_resolve_frontend_asset,
@@ -1529,8 +1731,9 @@ class AgentsHandler:
         try:
             params = web.input(tenant_id='default')
             service = _get_agent_service()
+            tenant_id = _scope_tenant_id(params.tenant_id)
             return json.dumps(
-                {"status": "success", "agents": service.list_agent_records(_normalize_tenant_id(params.tenant_id))},
+                {"status": "success", "agents": service.list_agent_records(tenant_id)},
                 ensure_ascii=False,
             )
         except Exception as e:
@@ -1564,8 +1767,14 @@ class PlatformTenantsHandler:
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             service = _get_tenant_service()
+            session = _get_authenticated_tenant_session()
+            if session:
+                definition = service.resolve_tenant(session.tenant_id)
+                tenants = [service.serialize_tenant(definition)]
+            else:
+                tenants = service.list_tenant_records()
             return json.dumps(
-                {"status": "success", "tenants": service.list_tenant_records()},
+                {"status": "success", "tenants": tenants},
                 ensure_ascii=False,
             )
         except Exception as e:
@@ -1579,11 +1788,12 @@ class PlatformTenantsHandler:
             body = json.loads(web.data() or "{}")
             service = _get_tenant_service()
             result = service.create_tenant(
-                tenant_id=str(body.get("tenant_id", "")).strip(),
+                tenant_id=_scope_tenant_id(str(body.get("tenant_id", "")).strip()),
                 name=str(body.get("name", "")).strip(),
                 status=str(body.get("status", "active")).strip() or "active",
                 metadata=body.get("metadata", {}),
             )
+            _get_agent_service().ensure_default_agent(result["tenant_id"])
             return json.dumps({"status": "success", "tenant": result}, ensure_ascii=False)
         except Exception as e:
             logger.error(f"[WebChannel] PlatformTenants POST error: {e}")
@@ -1596,7 +1806,8 @@ class PlatformTenantDetailHandler:
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             service = _get_tenant_service()
-            definition = service.resolve_tenant(str(tenant_id).strip())
+            scoped_tenant_id = _scope_tenant_id(str(tenant_id).strip())
+            definition = service.resolve_tenant(scoped_tenant_id)
             return json.dumps(
                 {"status": "success", "tenant": service.serialize_tenant(definition)},
                 ensure_ascii=False,
@@ -1611,8 +1822,9 @@ class PlatformTenantDetailHandler:
         try:
             body = json.loads(web.data() or "{}")
             service = _get_tenant_service()
+            scoped_tenant_id = _scope_tenant_id(str(tenant_id).strip())
             result = service.update_tenant(
-                tenant_id=str(tenant_id).strip(),
+                tenant_id=scoped_tenant_id,
                 name=body.get("name"),
                 status=body.get("status"),
                 metadata=body.get("metadata"),
@@ -1630,11 +1842,12 @@ class PlatformTenantUsersHandler:
         try:
             params = web.input(tenant_id='', role='', status='')
             service = _get_tenant_user_service()
+            tenant_id = _scope_optional_tenant_id(params.tenant_id)
             return json.dumps(
                 {
                     "status": "success",
                     "tenant_users": service.list_user_records(
-                        tenant_id=(params.tenant_id or "").strip(),
+                        tenant_id=tenant_id,
                         role=(params.role or "").strip(),
                         status=(params.status or "").strip(),
                     ),
@@ -1651,8 +1864,9 @@ class PlatformTenantUsersHandler:
         try:
             body = json.loads(web.data() or "{}")
             service = _get_tenant_user_service()
+            tenant_id = _scope_tenant_id(str(body.get("tenant_id", "")).strip())
             result = service.create_user(
-                tenant_id=str(body.get("tenant_id", "")).strip(),
+                tenant_id=tenant_id,
                 user_id=str(body.get("user_id", "")).strip(),
                 name=str(body.get("name", "")).strip(),
                 role=str(body.get("role", "member")).strip() or "member",
@@ -1671,7 +1885,8 @@ class PlatformTenantUserDetailHandler:
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             service = _get_tenant_user_service()
-            definition = service.resolve_user(tenant_id=str(tenant_id).strip(), user_id=str(user_id).strip())
+            scoped_tenant_id = _scope_tenant_id(str(tenant_id).strip())
+            definition = service.resolve_user(tenant_id=scoped_tenant_id, user_id=str(user_id).strip())
             return json.dumps(
                 {"status": "success", "tenant_user": service.serialize_user(definition)},
                 ensure_ascii=False,
@@ -1686,8 +1901,9 @@ class PlatformTenantUserDetailHandler:
         try:
             body = json.loads(web.data() or "{}")
             service = _get_tenant_user_service()
+            scoped_tenant_id = _scope_tenant_id(str(tenant_id).strip())
             result = service.update_user(
-                tenant_id=str(tenant_id).strip(),
+                tenant_id=scoped_tenant_id,
                 user_id=str(user_id).strip(),
                 name=body.get("name"),
                 role=body.get("role"),
@@ -1704,8 +1920,9 @@ class PlatformTenantUserDetailHandler:
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             service = _get_tenant_user_service()
+            scoped_tenant_id = _scope_tenant_id(str(tenant_id).strip())
             result = service.delete_user(
-                tenant_id=str(tenant_id).strip(),
+                tenant_id=scoped_tenant_id,
                 user_id=str(user_id).strip(),
             )
             return json.dumps({"status": "success", "tenant_user": result}, ensure_ascii=False)
@@ -1721,11 +1938,12 @@ class PlatformTenantUserIdentitiesHandler:
         try:
             params = web.input(tenant_id='', user_id='', channel_type='')
             service = _get_tenant_user_service()
+            tenant_id = _scope_optional_tenant_id(params.tenant_id)
             return json.dumps(
                 {
                     "status": "success",
                     "identities": service.list_identity_records(
-                        tenant_id=(params.tenant_id or "").strip(),
+                        tenant_id=tenant_id,
                         user_id=(params.user_id or "").strip(),
                         channel_type=(params.channel_type or "").strip(),
                     ),
@@ -1742,8 +1960,9 @@ class PlatformTenantUserIdentitiesHandler:
         try:
             body = json.loads(web.data() or "{}")
             service = _get_tenant_user_service()
+            tenant_id = _scope_tenant_id(str(body.get("tenant_id", "")).strip())
             result = service.bind_identity(
-                tenant_id=str(body.get("tenant_id", "")).strip(),
+                tenant_id=tenant_id,
                 user_id=str(body.get("user_id", "")).strip(),
                 channel_type=str(body.get("channel_type", "")).strip(),
                 external_user_id=str(body.get("external_user_id", "")).strip(),
@@ -1761,8 +1980,9 @@ class PlatformTenantUserIdentityDetailHandler:
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             service = _get_tenant_user_service()
+            scoped_tenant_id = _scope_tenant_id(str(tenant_id).strip())
             result = service.unbind_identity(
-                tenant_id=str(tenant_id).strip(),
+                tenant_id=scoped_tenant_id,
                 channel_type=str(channel_type).strip(),
                 external_user_id=str(external_user_id).strip(),
             )
@@ -1779,7 +1999,7 @@ class PlatformAgentsHandler:
         try:
             params = web.input(tenant_id='default')
             service = _get_agent_service()
-            tenant_id = _normalize_tenant_id(params.tenant_id)
+            tenant_id = _scope_tenant_id(params.tenant_id)
             return json.dumps(
                 {"status": "success", "agents": service.list_agent_records(tenant_id)},
                 ensure_ascii=False,
@@ -1794,8 +2014,9 @@ class PlatformAgentsHandler:
         try:
             body = json.loads(web.data() or "{}")
             service = _get_agent_service()
+            tenant_id = _scope_tenant_id(str(body.get("tenant_id", "default")).strip())
             result = service.create_agent(
-                tenant_id=_normalize_tenant_id(body.get("tenant_id", "default")),
+                tenant_id=tenant_id,
                 agent_id=(body.get("agent_id") or None),
                 name=str(body.get("name", "")),
                 model=str(body.get("model", "")),
@@ -1817,7 +2038,7 @@ class PlatformAgentDetailHandler:
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             params = web.input(tenant_id='default')
-            tenant_id = _normalize_tenant_id(params.tenant_id)
+            tenant_id = _scope_tenant_id(params.tenant_id)
             service = _get_agent_service()
             definition = service.resolve_agent(tenant_id=tenant_id, agent_id=agent_id)
             return json.dumps(
@@ -1834,7 +2055,7 @@ class PlatformAgentDetailHandler:
         try:
             body = json.loads(web.data() or "{}")
             service = _get_agent_service()
-            tenant_id = _normalize_tenant_id(body.get("tenant_id", "default"))
+            tenant_id = _scope_tenant_id(str(body.get("tenant_id", "default")).strip())
             result = service.update_agent(
                 agent_id=agent_id,
                 tenant_id=tenant_id,
@@ -1866,20 +2087,19 @@ class PlatformAgentDetailHandler:
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             params = web.input(tenant_id='default')
-            tenant_id = _normalize_tenant_id(params.tenant_id)
+            tenant_id = _scope_tenant_id(params.tenant_id)
             service = _get_agent_service()
-            service.resolve_agent(tenant_id=tenant_id, agent_id=agent_id)
+            deleted = service.delete_agent(agent_id=agent_id, tenant_id=tenant_id)
+            try:
+                from bridge.bridge import Bridge
+                Bridge().get_agent_bridge().clear_agent_sessions(tenant_id=tenant_id, agent_id=agent_id)
+            except Exception:
+                pass
 
-            repository = service.repository
-            key = repository._build_key(tenant_id, agent_id)
-            with repository._lock:
-                store = repository._load_store()
-                if key not in store["agents"]:
-                    raise KeyError(f"agent not found: {agent_id}")
-                del store["agents"][key]
-                repository._save_store(store)
-
-            return json.dumps({"status": "success", "agent_id": agent_id}, ensure_ascii=False)
+            return json.dumps(
+                {"status": "success", "agent": deleted, "agent_id": agent_id},
+                ensure_ascii=False,
+            )
         except Exception as e:
             logger.error(f"[WebChannel] PlatformAgentDetail DELETE error: {e}")
             return json.dumps({"status": "error", "message": str(e)})
@@ -1892,11 +2112,12 @@ class BindingsHandler:
         try:
             params = web.input(tenant_id='', channel_type='')
             service = _get_binding_service()
+            tenant_id = _scope_optional_tenant_id(params.tenant_id)
             return json.dumps(
                 {
                     "status": "success",
                     "bindings": service.list_binding_records(
-                        tenant_id=(params.tenant_id or "").strip(),
+                        tenant_id=tenant_id,
                         channel_type=(params.channel_type or "").strip(),
                     ),
                 },
@@ -1914,11 +2135,12 @@ class PlatformBindingsHandler:
         try:
             params = web.input(tenant_id='', channel_type='')
             service = _get_binding_service()
+            tenant_id = _scope_optional_tenant_id(params.tenant_id)
             return json.dumps(
                 {
                     "status": "success",
                     "bindings": service.list_binding_records(
-                        tenant_id=(params.tenant_id or "").strip(),
+                        tenant_id=tenant_id,
                         channel_type=(params.channel_type or "").strip(),
                     ),
                 },
@@ -1934,8 +2156,9 @@ class PlatformBindingsHandler:
         try:
             body = json.loads(web.data() or "{}")
             service = _get_binding_service()
+            tenant_id = _scope_tenant_id(str(body.get("tenant_id", "default")).strip())
             result = service.create_binding(
-                tenant_id=_normalize_tenant_id(body.get("tenant_id", "default")),
+                tenant_id=tenant_id,
                 binding_id=str(body.get("binding_id", "")),
                 name=str(body.get("name", "")),
                 channel_type=str(body.get("channel_type", "")),
@@ -1956,7 +2179,8 @@ class PlatformBindingDetailHandler:
         try:
             params = web.input(tenant_id='')
             service = _get_binding_service()
-            definition = service.resolve_binding(binding_id=binding_id, tenant_id=(params.tenant_id or "").strip())
+            tenant_id = _scope_optional_tenant_id(params.tenant_id)
+            definition = service.resolve_binding(binding_id=binding_id, tenant_id=tenant_id)
             return json.dumps(
                 {"status": "success", "binding": service.serialize_binding(definition)},
                 ensure_ascii=False,
@@ -1971,9 +2195,10 @@ class PlatformBindingDetailHandler:
         try:
             body = json.loads(web.data() or "{}")
             service = _get_binding_service()
+            tenant_id = _scope_optional_tenant_id(body.get("tenant_id", "") or "")
             result = service.update_binding(
                 binding_id=binding_id,
-                tenant_id=(body.get("tenant_id", "") or "").strip(),
+                tenant_id=tenant_id,
                 name=body.get("name"),
                 channel_type=body.get("channel_type"),
                 agent_id=body.get("agent_id"),
@@ -1991,10 +2216,49 @@ class PlatformBindingDetailHandler:
         try:
             params = web.input(tenant_id='')
             service = _get_binding_service()
-            result = service.delete_binding(binding_id=binding_id, tenant_id=(params.tenant_id or "").strip())
+            tenant_id = _scope_optional_tenant_id(params.tenant_id)
+            result = service.delete_binding(binding_id=binding_id, tenant_id=tenant_id)
             return json.dumps({"status": "success", "binding": result}, ensure_ascii=False)
         except Exception as e:
             logger.error(f"[WebChannel] PlatformBindingDetail DELETE error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+
+class PlatformUsageHandler:
+    def GET(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            params = web.input(tenant_id='', agent_id='', day='', request_id='', limit='100')
+            tenant_id = _scope_optional_tenant_id(params.tenant_id)
+            usage = _get_usage_service().list_usage_records(
+                tenant_id=tenant_id,
+                agent_id=(params.agent_id or "").strip(),
+                day=(params.day or "").strip(),
+                request_id=(params.request_id or "").strip(),
+                limit=int(params.limit or 100),
+            )
+            return json.dumps({"status": "success", "usage": usage}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformUsage GET error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+
+class PlatformCostsHandler:
+    def GET(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            params = web.input(tenant_id='', agent_id='', day='')
+            tenant_id = _scope_optional_tenant_id(params.tenant_id)
+            summary = _get_usage_service().summarize_usage(
+                tenant_id=tenant_id,
+                agent_id=(params.agent_id or "").strip(),
+                day=(params.day or "").strip(),
+            )
+            return json.dumps({"status": "success", "summary": summary}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformCosts GET error: {e}")
             return json.dumps({"status": "error", "message": str(e)})
 
 
@@ -2504,12 +2768,12 @@ class MCPServersHandler:
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             params = web.input(agent_id='', tenant_id='')
-            tenant_id = _normalize_tenant_id(params.tenant_id)
+            tenant_id = _scope_tenant_id(params.tenant_id)
             agent_id = _normalize_agent_id(params.agent_id)
 
             from cow_platform.services.agent_service import AgentService
-            from cow_platform.repositories.agent_repository import FileAgentRepository
-            service = AgentService(FileAgentRepository())
+            from cow_platform.repositories.agent_repository import AgentRepository
+            service = AgentService(AgentRepository())
             definition = service.resolve_agent(tenant_id=tenant_id, agent_id=agent_id)
 
             servers = []
@@ -2558,39 +2822,34 @@ class MCPServerToolsHandler:
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            # Find the agent bridge to get MCP manager from active agents
-            from bridge.bridge import Bridge
-            agent_bridge = Bridge().get_agent_bridge()
-            if agent_bridge is None:
-                return json.dumps({"status": "error", "message": "Agent bridge not available"})
-            mcp_manager = None
-            # Check default agent first
-            if agent_bridge.default_agent and hasattr(agent_bridge.default_agent, 'mcp_manager'):
-                mcp_manager = agent_bridge.default_agent.mcp_manager
-            # Check session agents
-            if mcp_manager is None:
-                for agent in agent_bridge.agents.values():
-                    if hasattr(agent, 'mcp_manager') and agent.mcp_manager:
-                        mcp_manager = agent.mcp_manager
-                        break
+            params = web.input(agent_id='', tenant_id='')
+            tenant_id = _scope_tenant_id(params.tenant_id)
+            agent_id = _normalize_agent_id(params.agent_id)
 
-            if mcp_manager is None or server_name not in mcp_manager.clients:
+            definition = _get_agent_service().resolve_agent(tenant_id=tenant_id, agent_id=agent_id)
+            server_config = dict(definition.mcp_servers or {}).get(server_name)
+            if not isinstance(server_config, dict):
                 return json.dumps({
                     "status": "error",
-                    "message": f"MCP server '{server_name}' not found or not running",
+                    "message": f"MCP server '{server_name}' not found for agent {tenant_id}/{agent_id}",
                 })
 
             import asyncio
-            client = mcp_manager.clients[server_name]
-            tools = asyncio.run(client.list_tools())
-            tool_list = [
-                {
-                    "name": t.get("name", ""),
-                    "description": t.get("description", ""),
-                    "inputSchema": t.get("inputSchema", {}),
-                }
-                for t in tools
-            ]
+            from agent.tools.mcp.mcp_manager import MCPManager
+
+            manager = MCPManager()
+            result = asyncio.run(manager.test_connection(
+                command=str(server_config.get("command", "") or ""),
+                args=list(server_config.get("args", []) or []),
+                env=server_config.get("env", None),
+            ))
+            if not result.get("success"):
+                return json.dumps({
+                    "status": "error",
+                    "message": result.get("error") or f"MCP server '{server_name}' not available",
+                    "tools": [],
+                }, ensure_ascii=False)
+            tool_list = result.get("tools", [])
             return json.dumps({"status": "success", "tools": tool_list}, ensure_ascii=False)
         except Exception as e:
             logger.error(f"[WebChannel] MCP server tools error: {e}")

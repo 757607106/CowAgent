@@ -58,10 +58,10 @@ class MemoryConfig:
         return self.get_workspace() / "memory"
     
     def get_db_path(self) -> Path:
-        """Get SQLite database path for long-term memory index"""
+        """Get the stable namespace path used by the PostgreSQL memory index."""
         index_dir = self.get_memory_dir() / "long-term"
         index_dir.mkdir(parents=True, exist_ok=True)
-        return index_dir / "index.db"
+        return index_dir / "index.pg"
     
     def get_skills_dir(self) -> Path:
         """Get skills directory"""

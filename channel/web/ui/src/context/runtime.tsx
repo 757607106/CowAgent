@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { RuntimeScope } from '../types';
+import type { AuthUser, RuntimeScope } from '../types';
 
 export interface RuntimeAgentOption {
   label: string;
@@ -9,11 +9,14 @@ export interface RuntimeAgentOption {
 export const WORKSPACE_AGENT_VALUE = '__workspace__';
 
 export interface RuntimeContextValue {
+  tenantId: string;
+  authUser: AuthUser | null;
   scope: RuntimeScope;
   setScope: (next: RuntimeScope) => void;
   agentOptions: RuntimeAgentOption[];
   refreshAgentOptions: () => Promise<void>;
   setAgentScope: (nextAgentId?: string) => void;
+  logout: () => Promise<void>;
 }
 
 export const RuntimeContext = createContext<RuntimeContextValue | null>(null);

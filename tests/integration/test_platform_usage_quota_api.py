@@ -8,6 +8,21 @@ from cow_platform.api.settings import PlatformSettings
 from cow_platform.services.usage_service import UsageService
 
 
+def _register_owner(client: TestClient) -> tuple[dict[str, str], str]:
+    response = client.post(
+        "/api/platform/auth/register",
+        json={
+            "tenant_id": "acme",
+            "tenant_name": "Acme 团队",
+            "account": "usage-owner@example.com",
+            "user_name": "Owner",
+            "password": "admin123456",
+        },
+    )
+    assert response.status_code == 200, response.text
+    return {"Authorization": f"Bearer {response.json()['token']}"}, response.json()["tenant"]["tenant_id"]
+
+
 @pytest.mark.integration
 def test_platform_usage_quota_and_cost_api_supports_phase3_resources(tmp_path, monkeypatch) -> None:
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
@@ -15,12 +30,13 @@ def test_platform_usage_quota_and_cost_api_supports_phase3_resources(tmp_path, m
 
     app = create_app(PlatformSettings(host="127.0.0.1", port=9913, mode="test"))
     client = TestClient(app)
+    headers, tenant_id = _register_owner(client)
 
-    client.post("/api/platform/tenants", json={"tenant_id": "acme", "name": "Acme 团队"})
     client.post(
         "/api/platform/agents",
+        headers=headers,
         json={
-            "tenant_id": "acme",
+            "tenant_id": tenant_id,
             "agent_id": "writer",
             "name": "写作助手",
             "model": "qwen-plus",
@@ -29,6 +45,7 @@ def test_platform_usage_quota_and_cost_api_supports_phase3_resources(tmp_path, m
     )
     pricing_resp = client.post(
         "/api/platform/pricing",
+        headers=headers,
         json={
             "model": "qwen-plus",
             "input_price_per_million": 2.0,
@@ -37,9 +54,10 @@ def test_platform_usage_quota_and_cost_api_supports_phase3_resources(tmp_path, m
     )
     quota_resp = client.post(
         "/api/platform/quotas",
+        headers=headers,
         json={
             "scope_type": "agent",
-            "tenant_id": "acme",
+            "tenant_id": tenant_id,
             "agent_id": "writer",
             "max_requests_per_day": 5,
             "max_tokens_per_day": 10000,
@@ -49,7 +67,7 @@ def test_platform_usage_quota_and_cost_api_supports_phase3_resources(tmp_path, m
     usage_service = UsageService()
     usage_service.record_chat_usage(
         request_id="req-api-1",
-        tenant_id="acme",
+        tenant_id=tenant_id,
         agent_id="writer",
         model="qwen-plus",
         prompt_tokens=1000,
@@ -58,10 +76,10 @@ def test_platform_usage_quota_and_cost_api_supports_phase3_resources(tmp_path, m
         metadata={"status": "success"},
     )
 
-    list_pricing = client.get("/api/platform/pricing")
-    list_quotas = client.get("/api/platform/quotas", params={"tenant_id": "acme", "agent_id": "writer"})
-    list_usage = client.get("/api/platform/usage", params={"tenant_id": "acme", "agent_id": "writer"})
-    cost_summary = client.get("/api/platform/costs", params={"tenant_id": "acme", "agent_id": "writer"})
+    list_pricing = client.get("/api/platform/pricing", headers=headers)
+    list_quotas = client.get("/api/platform/quotas", headers=headers, params={"tenant_id": tenant_id, "agent_id": "writer"})
+    list_usage = client.get("/api/platform/usage", headers=headers, params={"tenant_id": tenant_id, "agent_id": "writer"})
+    cost_summary = client.get("/api/platform/costs", headers=headers, params={"tenant_id": tenant_id, "agent_id": "writer"})
 
     assert pricing_resp.status_code == 200
     assert pricing_resp.json()["pricing"]["model"] == "qwen-plus"

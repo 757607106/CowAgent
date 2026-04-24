@@ -1,24 +1,25 @@
 from __future__ import annotations
 
+import secrets
 from typing import Any
 
 from common.log import logger
 from cow_platform.domain.models import ChannelBindingDefinition
-from cow_platform.repositories.binding_repository import FileChannelBindingRepository
+from cow_platform.repositories.binding_repository import ChannelBindingRepository
 from cow_platform.services.agent_service import AgentService
 from cow_platform.services.tenant_service import TenantService
 
 
 class ChannelBindingService:
-    """当前阶段使用的渠道绑定服务。"""
+    """Channel binding service backed by PostgreSQL."""
 
     def __init__(
         self,
-        repository: FileChannelBindingRepository | None = None,
+        repository: ChannelBindingRepository | None = None,
         tenant_service: TenantService | None = None,
         agent_service: AgentService | None = None,
     ):
-        self.repository = repository or FileChannelBindingRepository()
+        self.repository = repository or ChannelBindingRepository()
         self.tenant_service = tenant_service or TenantService()
         self.agent_service = agent_service or AgentService()
 
@@ -82,7 +83,7 @@ class ChannelBindingService:
         self,
         *,
         tenant_id: str,
-        binding_id: str,
+        binding_id: str = "",
         name: str,
         channel_type: str,
         agent_id: str,
@@ -91,9 +92,10 @@ class ChannelBindingService:
     ) -> dict[str, Any]:
         self.tenant_service.resolve_tenant(tenant_id)
         self.agent_service.resolve_agent(tenant_id=tenant_id, agent_id=agent_id)
+        resolved_binding_id = (binding_id or "").strip() or self._generate_binding_id(tenant_id)
         definition = self.repository.create_binding(
             tenant_id=tenant_id,
-            binding_id=binding_id,
+            binding_id=resolved_binding_id,
             name=name,
             channel_type=channel_type,
             agent_id=agent_id,
@@ -154,6 +156,13 @@ class ChannelBindingService:
             self.serialize_binding(item)
             for item in self.list_bindings(tenant_id=tenant_id, channel_type=channel_type)
         ]
+
+    def _generate_binding_id(self, tenant_id: str) -> str:
+        for _ in range(50):
+            candidate = f"bind_{secrets.token_hex(4)}"
+            if self.repository.get_binding(tenant_id=tenant_id, binding_id=candidate) is None:
+                return candidate
+        raise RuntimeError("failed to generate binding id")
 
     @staticmethod
     def _score_binding_metadata(

@@ -9,7 +9,7 @@ from cow_platform.api.settings import PlatformSettings
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the minimal CowAgent platform API.")
+    parser = argparse.ArgumentParser(description="Run the CowAgent platform API.")
     parser.add_argument("--host", default=None, help="Bind host for the platform API.")
     parser.add_argument("--port", default=None, type=int, help="Bind port for the platform API.")
     return parser.parse_args(argv)

@@ -5,14 +5,14 @@ from typing import Any
 import uuid
 
 from cow_platform.domain.models import AuditLogRecord
-from cow_platform.repositories.audit_repository import FileAuditRepository
+from cow_platform.repositories.audit_repository import AuditRepository
 
 
 class AuditService:
-    """当前阶段使用的审计日志服务。"""
+    """Audit service backed by PostgreSQL."""
 
-    def __init__(self, repository: FileAuditRepository | None = None):
-        self.repository = repository or FileAuditRepository()
+    def __init__(self, repository: AuditRepository | None = None):
+        self.repository = repository or AuditRepository()
 
     def record_event(
         self,

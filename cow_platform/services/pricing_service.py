@@ -1,14 +1,14 @@
 from __future__ import annotations
 
 from cow_platform.domain.models import PricingDefinition
-from cow_platform.repositories.pricing_repository import FilePricingRepository
+from cow_platform.repositories.pricing_repository import PricingRepository
 
 
 class PricingService:
-    """当前阶段使用的定价服务。"""
+    """Pricing service backed by PostgreSQL."""
 
-    def __init__(self, repository: FilePricingRepository | None = None):
-        self.repository = repository or FilePricingRepository()
+    def __init__(self, repository: PricingRepository | None = None):
+        self.repository = repository or PricingRepository()
 
     def list_pricing(self) -> list[PricingDefinition]:
         return self.repository.list_pricing()

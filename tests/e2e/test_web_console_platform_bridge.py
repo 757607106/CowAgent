@@ -31,6 +31,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
             "channel_type": "web",
             "web_port": str(port),
             "web_password": "",
+            "web_tenant_auth": "false",
         }
     )
 

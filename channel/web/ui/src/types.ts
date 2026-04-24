@@ -8,8 +8,19 @@ export interface ApiResponse<T = unknown> {
 }
 
 export interface RuntimeScope {
+  tenantId: string;
   agentId: string;
   bindingId: string;
+}
+
+export interface AuthUser {
+  tenant_id: string;
+  user_id: string;
+  role: string;
+  tenant_name?: string;
+  user_name?: string;
+  account?: string;
+  expires_at?: number;
 }
 
 export interface ChatAttachment {
@@ -174,4 +185,44 @@ export interface McpTestResult {
   message?: string;
   tools?: McpToolItem[];
   [key: string]: unknown;
+}
+
+export interface UsageRecordItem {
+  event_id: string;
+  request_id: string;
+  tenant_id: string;
+  agent_id: string;
+  binding_id?: string;
+  session_id?: string;
+  channel_type?: string;
+  model?: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  token_source?: string;
+  request_count: number;
+  tool_call_count: number;
+  mcp_call_count: number;
+  tool_error_count: number;
+  tool_execution_time_ms: number;
+  estimated_cost: number;
+  created_at: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface UsageSummary {
+  tenant_id?: string;
+  agent_id?: string;
+  day?: string;
+  request_count: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  provider_request_count: number;
+  estimated_request_count: number;
+  tool_call_count: number;
+  mcp_call_count: number;
+  tool_error_count: number;
+  tool_execution_time_ms: number;
+  estimated_cost: number;
 }

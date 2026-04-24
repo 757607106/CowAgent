@@ -42,19 +42,21 @@
 
 ## 3. 服务清单
 
-## 3.1 最小可用版
+## 3.1 平台部署版
 
-- app
-- worker
+- platform-app
+- platform-worker
+- platform-web
 - postgres
 - redis
 - qdrant
 - minio
 
-## 3.2 标准版
+## 3.2 外层增强版
 
-- app
-- worker
+- platform-app
+- platform-worker
+- platform-web
 - postgres
 - redis
 - qdrant
@@ -141,13 +143,9 @@
 ```text
 docker/
   compose.base.yml
-  compose.dev.yml
+  compose.platform.yml
   compose.test.yml
   compose.prod.yml
-  env/
-    dev.env
-    test.env
-    prod.env
   init/
     minio/
     qdrant/
@@ -271,39 +269,44 @@ networks:
 
 ---
 
-## 8. compose.dev.yml 建议
+## 8. compose.platform.yml 基础应用栈
 
-开发环境可追加：
+基础应用栈包含：
 
-- 代码挂载
-- 更宽松日志级别
-- 较小资源限制
-- 可选 debug 端口
+- platform-app
+- platform-worker
+- platform-web
+- 全依赖环境变量
+- 容器启动前依赖等待
+- PostgreSQL schema 幂等迁移
 
 ---
 
-## 9. compose.test.yml 建议
+## 9. compose.test.yml 已落地约束
 
 测试环境要求：
 
 - 不改变依赖类型
 - 使用独立 env
 - 自动 migration
-- 自动初始化 buckets / collections
+- 容器启动前等待 PostgreSQL / Redis / Qdrant / MinIO 全部可用
+- `/ready` 纳入四类依赖状态
 - 可执行集成测试
+- compose 契约测试校验测试环境和生产环境服务集合一致
 
 ---
 
-## 10. compose.prod.yml 建议
+## 10. compose.prod.yml 已落地约束
 
 生产环境要求：
 
-- 不挂载开发源码
-- 使用已构建镜像
-- 更严格的资源限制
-- 生产密钥通过 secrets 或环境注入
+- 使用与测试环境相同的 PostgreSQL / Redis / Qdrant / MinIO 栈
+- `restart: unless-stopped`
+- 生产密钥通过环境注入
+- 默认弱密码直接启动失败
+- 生产依赖指向 localhost 直接启动失败
 - 持久化卷独立管理
-- nginx / TLS / 日志采集接入
+- nginx / TLS / 日志采集可在外层继续接入
 
 ---
 
@@ -419,19 +422,30 @@ networks:
 ## 15. 本地开发启动命令建议
 
 ```bash
-docker compose -f docker/compose.base.yml -f docker/compose.dev.yml up -d
+docker compose -f docker/compose.base.yml -f docker/compose.platform.yml up -d --build
 ```
 
 ## 测试环境
 
 ```bash
-docker compose -f docker/compose.base.yml -f docker/compose.test.yml up -d
+docker compose -p cowagent-test \
+  -f docker/compose.base.yml \
+  -f docker/compose.platform.yml \
+  -f docker/compose.test.yml \
+  up -d --build
 ```
 
 ## 生产环境
 
 ```bash
-docker compose -f docker/compose.base.yml -f docker/compose.prod.yml up -d
+PLATFORM_POSTGRES_PASSWORD='change-to-strong-db-secret' \
+PLATFORM_MINIO_ROOT_USER='change-to-prod-access' \
+PLATFORM_MINIO_ROOT_PASSWORD='change-to-strong-minio-secret' \
+docker compose -p cowagent-prod \
+  -f docker/compose.base.yml \
+  -f docker/compose.platform.yml \
+  -f docker/compose.prod.yml \
+  up -d --build
 ```
 
 ---

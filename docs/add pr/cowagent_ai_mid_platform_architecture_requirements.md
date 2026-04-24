@@ -1217,41 +1217,31 @@ Agent 日聚合。
 - 安全策略
 - 数据卷路径
 
-## 21.3 建议部署组件
+## 21.3 当前落地部署组件
 
-### 最小可用版
-
-- app
-- worker
+- platform-app
+- platform-worker
+- platform-web
 - postgres
 - redis
 - qdrant
 - minio
+- container startup migration
+- dependency readiness check
 
-### 标准版
+nginx / TLS / 日志采集可以在外层继续接入，不改变核心服务栈。
 
-- app
-- worker
-- postgres
-- redis
-- qdrant
-- minio
-- nginx
-- migrate/init-job
-
-## 21.4 Compose 组织建议
+## 21.4 Compose 组织
 
 ```text
 docker/
   compose.base.yml
-  compose.dev.yml
+  compose.platform.yml
   compose.test.yml
   compose.prod.yml
-  env/
-    dev.env
-    test.env
-    prod.env
 ```
+
+`compose.test.yml` 和 `compose.prod.yml` 使用同一组服务，仅允许环境名、密钥、restart 策略等部署属性不同。
 
 ## 21.5 migration 原则
 
@@ -1262,6 +1252,8 @@ docker/
 - 手工改生产表结构
 - 测试环境使用不同 schema
 - 开发环境绕过 migration
+
+当前容器启动时通过 `python -m cow_platform.db.migrate` 执行幂等迁移；生产和测试均通过 `python -m cow_platform.deployment.check --require-all` 强制校验 PostgreSQL / Redis / Qdrant / MinIO。
 
 ---
 

@@ -12,22 +12,22 @@ export function buildQuery(params: Record<string, unknown>): string {
 
 export function scopeQuery(scope: RuntimeScope): Record<string, string> {
   if (scope.bindingId) {
-    return { binding_id: scope.bindingId };
+    return { tenant_id: scope.tenantId, binding_id: scope.bindingId };
   }
   if (scope.agentId) {
-    return { agent_id: scope.agentId };
+    return { tenant_id: scope.tenantId, agent_id: scope.agentId };
   }
-  return {};
+  return scope.tenantId ? { tenant_id: scope.tenantId } : {};
 }
 
 export function scopeBody(scope: RuntimeScope): Record<string, string> {
   if (scope.bindingId) {
-    return { binding_id: scope.bindingId };
+    return { tenant_id: scope.tenantId, binding_id: scope.bindingId };
   }
   if (scope.agentId) {
-    return { agent_id: scope.agentId };
+    return { tenant_id: scope.tenantId, agent_id: scope.agentId };
   }
-  return {};
+  return scope.tenantId ? { tenant_id: scope.tenantId } : {};
 }
 
 export async function requestJson<T = any>(url: string, init?: RequestInit): Promise<T> {

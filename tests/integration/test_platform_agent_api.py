@@ -7,6 +7,22 @@ from cow_platform.api.app import create_app
 from cow_platform.api.settings import PlatformSettings
 
 
+def _register_owner(client: TestClient, account: str, tenant_id: str = "default") -> tuple[dict[str, str], str]:
+    response = client.post(
+        "/api/platform/auth/register",
+        json={
+            "tenant_id": tenant_id,
+            "tenant_name": tenant_id,
+            "account": account,
+            "user_name": "Owner",
+            "password": "admin123456",
+        },
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    return {"Authorization": f"Bearer {payload['token']}"}, payload["tenant"]["tenant_id"]
+
+
 @pytest.mark.integration
 def test_platform_agent_api_supports_crud(tmp_path, monkeypatch) -> None:
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
@@ -14,10 +30,12 @@ def test_platform_agent_api_supports_crud(tmp_path, monkeypatch) -> None:
 
     app = create_app(PlatformSettings(host="127.0.0.1", port=9911, mode="test"))
     client = TestClient(app, raise_server_exceptions=False)
+    headers, _tenant_id = _register_owner(client, "agent-crud@example.com")
 
-    list_before = client.get("/api/platform/agents")
+    list_before = client.get("/api/platform/agents", headers=headers)
     create_resp = client.post(
         "/api/platform/agents",
+        headers=headers,
         json={
             "agent_id": "writer",
             "name": "写作助手",
@@ -27,16 +45,18 @@ def test_platform_agent_api_supports_crud(tmp_path, monkeypatch) -> None:
     )
     create_auto_resp = client.post(
         "/api/platform/agents",
+        headers=headers,
         json={
             "name": "自动编号助手",
             "model": "qwen-plus",
         },
     )
     auto_agent_id = create_auto_resp.json()["agent"]["agent_id"]
-    get_resp = client.get("/api/platform/agents/writer")
-    get_auto_resp = client.get(f"/api/platform/agents/{auto_agent_id}")
+    get_resp = client.get("/api/platform/agents/writer", headers=headers)
+    get_auto_resp = client.get(f"/api/platform/agents/{auto_agent_id}", headers=headers)
     update_resp = client.put(
         "/api/platform/agents/writer",
+        headers=headers,
         json={
             "name": "高级写作助手",
             "model": "qwen-max",
@@ -75,9 +95,11 @@ def test_platform_agent_api_rejects_nonexistent_tenant(tmp_path, monkeypatch) ->
 
     app = create_app(PlatformSettings(host="127.0.0.1", port=9921, mode="test"))
     client = TestClient(app, raise_server_exceptions=False)
+    headers, _tenant_id = _register_owner(client, "missing-tenant@example.com")
 
     create_resp = client.post(
         "/api/platform/agents",
+        headers=headers,
         json={
             "tenant_id": "missing-tenant",
             "agent_id": "writer",
@@ -85,7 +107,7 @@ def test_platform_agent_api_rejects_nonexistent_tenant(tmp_path, monkeypatch) ->
         },
     )
 
-    assert create_resp.status_code == 500
+    assert create_resp.status_code == 403
 
 
 @pytest.mark.integration
@@ -98,15 +120,12 @@ def test_platform_agent_api_isolates_same_agent_id_across_tenants(tmp_path, monk
 
     tenant_a = "tenant-a"
     tenant_b = "tenant-b"
-    for tenant_id in (tenant_a, tenant_b):
-        create_tenant_resp = client.post(
-            "/api/platform/tenants",
-            json={"tenant_id": tenant_id, "name": tenant_id},
-        )
-        assert create_tenant_resp.status_code == 200
+    headers_a, _ = _register_owner(client, "tenant-a@example.com", tenant_a)
+    headers_b, _ = _register_owner(client, "tenant-b@example.com", tenant_b)
 
     create_a = client.post(
         "/api/platform/agents",
+        headers=headers_a,
         json={
             "tenant_id": tenant_a,
             "agent_id": "shared-agent",
@@ -116,6 +135,7 @@ def test_platform_agent_api_isolates_same_agent_id_across_tenants(tmp_path, monk
     )
     create_b = client.post(
         "/api/platform/agents",
+        headers=headers_b,
         json={
             "tenant_id": tenant_b,
             "agent_id": "shared-agent",
@@ -127,8 +147,8 @@ def test_platform_agent_api_isolates_same_agent_id_across_tenants(tmp_path, monk
     assert create_a.status_code == 200
     assert create_b.status_code == 200
 
-    get_a = client.get("/api/platform/agents/shared-agent", params={"tenant_id": tenant_a})
-    get_b = client.get("/api/platform/agents/shared-agent", params={"tenant_id": tenant_b})
+    get_a = client.get("/api/platform/agents/shared-agent", headers=headers_a, params={"tenant_id": tenant_a})
+    get_b = client.get("/api/platform/agents/shared-agent", headers=headers_b, params={"tenant_id": tenant_b})
     assert get_a.status_code == 200
     assert get_b.status_code == 200
     assert get_a.json()["agent"]["name"] == "Shared Agent A"
@@ -136,20 +156,21 @@ def test_platform_agent_api_isolates_same_agent_id_across_tenants(tmp_path, monk
 
     update_a = client.put(
         "/api/platform/agents/shared-agent",
+        headers=headers_a,
         json={"tenant_id": tenant_a, "name": "Shared Agent A v2"},
     )
     assert update_a.status_code == 200
     assert update_a.json()["agent"]["name"] == "Shared Agent A v2"
 
-    get_b_after = client.get("/api/platform/agents/shared-agent", params={"tenant_id": tenant_b})
+    get_b_after = client.get("/api/platform/agents/shared-agent", headers=headers_b, params={"tenant_id": tenant_b})
     assert get_b_after.status_code == 200
     assert get_b_after.json()["agent"]["name"] == "Shared Agent B"
 
-    delete_a = client.delete("/api/platform/agents/shared-agent", params={"tenant_id": tenant_a})
+    delete_a = client.delete("/api/platform/agents/shared-agent", headers=headers_a, params={"tenant_id": tenant_a})
     assert delete_a.status_code == 200
     assert delete_a.json()["agent_id"] == "shared-agent"
 
-    still_get_b = client.get("/api/platform/agents/shared-agent", params={"tenant_id": tenant_b})
+    still_get_b = client.get("/api/platform/agents/shared-agent", headers=headers_b, params={"tenant_id": tenant_b})
     assert still_get_b.status_code == 200
     assert still_get_b.json()["agent"]["tenant_id"] == tenant_b
 
@@ -173,9 +194,11 @@ def test_platform_agent_update_invalidates_runtime_cache(tmp_path, monkeypatch) 
 
     app = create_app(PlatformSettings(host="127.0.0.1", port=9931, mode="test"))
     client = TestClient(app, raise_server_exceptions=False)
+    headers, _tenant_id = _register_owner(client, "cache@example.com")
 
     create_resp = client.post(
         "/api/platform/agents",
+        headers=headers,
         json={
             "agent_id": "cache-target",
             "name": "缓存目标助手",
@@ -187,6 +210,7 @@ def test_platform_agent_update_invalidates_runtime_cache(tmp_path, monkeypatch) 
 
     update_resp = client.put(
         "/api/platform/agents/cache-target",
+        headers=headers,
         json={
             "name": "缓存目标助手V2",
             "model": "qwen-max",
