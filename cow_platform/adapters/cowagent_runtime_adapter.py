@@ -82,6 +82,7 @@ class CowAgentRuntimeAdapter:
             metadata={
                 "agent_name": agent_definition.name,
                 "binding_id": getattr(resolved_binding, "binding_id", ""),
+                **({"enable_thinking": bool(context.get("enable_thinking"))} if "enable_thinking" in context else {}),
             },
         )
 

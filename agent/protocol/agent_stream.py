@@ -85,7 +85,19 @@ class AgentStreamExecutor:
     def _is_thinking_enabled(self) -> bool:
         from config import conf
         channel_type = getattr(self.model, 'channel_type', '') or ''
-        return conf().get("enable_thinking", True) and channel_type == 'web'
+        if channel_type != 'web':
+            return False
+
+        try:
+            from cow_platform.runtime.scope import get_current_runtime_context
+
+            runtime_context = get_current_runtime_context()
+            if runtime_context is not None and "enable_thinking" in runtime_context.metadata:
+                return bool(runtime_context.metadata.get("enable_thinking"))
+        except Exception:
+            pass
+
+        return bool(conf().get("enable_thinking", True))
 
     def _filter_think_tags(self, text: str) -> str:
         """

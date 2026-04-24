@@ -20,6 +20,7 @@ export interface CowAgentChatRequest {
   message: string;
   attachments?: ChatAttachment[];
   timestamp?: string;
+  enable_thinking?: boolean;
   agent_id?: string;
   binding_id?: string;
 }

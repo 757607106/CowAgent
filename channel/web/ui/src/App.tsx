@@ -14,9 +14,9 @@ import {
   TeamOutlined,
   ToolOutlined,
 } from '@ant-design/icons';
-import { App as AntdApp, Button, ConfigProvider, Form, Input, Layout, Menu, Select, Space, Spin, Typography, message } from 'antd';
+import { App as AntdApp, Button, ConfigProvider, Form, Input, Layout, Menu, Spin, Typography, message } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 import { XProvider } from '@ant-design/x';
 import xZhCN from '@ant-design/x/locale/zh_CN';
@@ -34,15 +34,14 @@ import KnowledgePage from './pages/KnowledgePage';
 import ChannelsPage from './pages/ChannelsPage';
 import TasksPage from './pages/TasksPage';
 import LogsPage from './pages/LogsPage';
-import { RuntimeContext } from './context/runtime';
+import { RuntimeContext, WORKSPACE_AGENT_VALUE, type RuntimeAgentOption } from './context/runtime';
 import { api } from './services/api';
 import type { RuntimeScope } from './types';
 
-const { Header, Sider, Content } = Layout;
+const { Sider, Content } = Layout;
 
 const AGENT_KEY = 'cowagent_runtime_agent_id';
 const BINDING_KEY = 'cowagent_runtime_binding_id';
-const WORKSPACE_AGENT_VALUE = '__workspace__';
 
 const menuItems = [
   { key: '/chat', icon: <MessageOutlined />, label: '对话' },
@@ -101,13 +100,12 @@ function Shell() {
 
   const [scope, setScope] = useState<RuntimeScope>({
     agentId: localStorage.getItem(AGENT_KEY) || '',
-    bindingId: localStorage.getItem(BINDING_KEY) || '',
+    bindingId: '',
   });
-  const [agentOptions, setAgentOptions] = useState<{ label: string; value: string }[]>([]);
-  const [bindingOptions, setBindingOptions] = useState<{ label: string; value: string }[]>([]);
+  const [agentOptions, setAgentOptions] = useState<RuntimeAgentOption[]>([]);
 
-  const loadRuntimeOptions = async () => {
-    const [agentData, bindingData] = await Promise.all([api.listAgentsSimple(), api.listBindingsSimple()]);
+  const loadRuntimeOptions = useCallback(async () => {
+    const agentData = await api.listAgentsSimple();
     setAgentOptions([
       { label: '默认助手（当前工作区）', value: WORKSPACE_AGENT_VALUE },
       ...(agentData.agents || []).map((agent) => {
@@ -118,11 +116,23 @@ function Shell() {
         return { label, value: agent.agent_id };
       }),
     ]);
-    setBindingOptions((bindingData.bindings || []).map((binding) => ({ label: `${binding.name} (${binding.binding_id})`, value: binding.binding_id })));
-  };
+  }, []);
 
   useEffect(() => {
+    localStorage.removeItem(BINDING_KEY);
     void loadRuntimeOptions();
+  }, [loadRuntimeOptions]);
+
+  const setAgentScope = useCallback((value?: string) => {
+    const resolvedAgentId = !value || value === WORKSPACE_AGENT_VALUE ? '' : value;
+    const next = { agentId: resolvedAgentId, bindingId: '' };
+    setScope(next);
+    localStorage.removeItem(BINDING_KEY);
+    if (next.agentId) {
+      localStorage.setItem(AGENT_KEY, next.agentId);
+    } else {
+      localStorage.removeItem(AGENT_KEY);
+    }
   }, []);
 
   const selectedMenu = useMemo(() => {
@@ -130,13 +140,16 @@ function Shell() {
     return target ? [target.key] : ['/chat'];
   }, [location.pathname]);
 
-  const agentSelectValue = useMemo(() => {
-    if (scope.bindingId) return undefined;
-    return scope.agentId || WORKSPACE_AGENT_VALUE;
-  }, [scope.agentId, scope.bindingId]);
-
   return (
-    <RuntimeContext.Provider value={{ scope, setScope }}>
+    <RuntimeContext.Provider
+      value={{
+        scope,
+        setScope,
+        agentOptions,
+        refreshAgentOptions: loadRuntimeOptions,
+        setAgentScope,
+      }}
+    >
       <Layout className="app-layout">
         <Sider width={220} theme="light">
           <div className="app-logo">CowAgent 2.0.6</div>
@@ -149,48 +162,6 @@ function Shell() {
           />
         </Sider>
         <Layout>
-          <Header className="app-header">
-            <Space wrap>
-              <Typography.Text strong>运行上下文：</Typography.Text>
-              <Select
-                allowClear
-                placeholder="选择绑定（优先）"
-                style={{ width: 260 }}
-                value={scope.bindingId || undefined}
-                options={bindingOptions}
-                onChange={(value) => {
-                  const next = { agentId: '', bindingId: value || '' };
-                  setScope(next);
-                  localStorage.removeItem(AGENT_KEY);
-                  if (next.bindingId) {
-                    localStorage.setItem(BINDING_KEY, next.bindingId);
-                  } else {
-                    localStorage.removeItem(BINDING_KEY);
-                  }
-                }}
-              />
-              <Select
-                allowClear
-                placeholder="默认助手（当前工作区）"
-                style={{ width: 260 }}
-                value={agentSelectValue}
-                options={agentOptions}
-                disabled={Boolean(scope.bindingId)}
-                onChange={(value) => {
-                  const resolvedAgentId = !value || value === WORKSPACE_AGENT_VALUE ? '' : value;
-                  const next = { agentId: resolvedAgentId, bindingId: '' };
-                  setScope(next);
-                  localStorage.removeItem(BINDING_KEY);
-                  if (next.agentId) {
-                    localStorage.setItem(AGENT_KEY, next.agentId);
-                  } else {
-                    localStorage.removeItem(AGENT_KEY);
-                  }
-                }}
-              />
-              <Button onClick={() => void loadRuntimeOptions()}>刷新选项</Button>
-            </Space>
-          </Header>
           <Content className="app-content">
             <Routes>
               <Route path="/" element={<Navigate to="/chat" replace />} />

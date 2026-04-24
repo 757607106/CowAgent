@@ -69,6 +69,24 @@ def add_openai_compatible_support(bot_instance):
     return bot_instance
 
 
+def _resolve_thinking_enabled(channel_type: str) -> bool:
+    from config import conf
+
+    if channel_type != "web":
+        return False
+
+    try:
+        from cow_platform.runtime.scope import get_current_runtime_context
+
+        runtime_context = get_current_runtime_context()
+        if runtime_context is not None and "enable_thinking" in runtime_context.metadata:
+            return bool(runtime_context.metadata.get("enable_thinking"))
+    except Exception:
+        pass
+
+    return bool(conf().get("enable_thinking", True))
+
+
 class AgentLLMModel(LLMModel):
     """
     LLM Model adapter that uses COW's existing bot infrastructure
@@ -180,13 +198,8 @@ class AgentLLMModel(LLMModel):
                 if session_id:
                     kwargs['session_id'] = session_id
 
-                # Determine thinking: respect global config, then channel_type
-                from config import conf
-                global_thinking = conf().get("enable_thinking", True)
-                if not global_thinking:
-                    kwargs['thinking'] = {"type": "disabled"}
-                else:
-                    kwargs['thinking'] = {"type": "enabled"} if channel_type == "web" else {"type": "disabled"}
+                thinking_enabled = _resolve_thinking_enabled(channel_type)
+                kwargs['thinking'] = {"type": "enabled"} if thinking_enabled else {"type": "disabled"}
 
                 response = self.bot.call_with_tools(**kwargs)
                 return self._format_response(response)
@@ -233,13 +246,8 @@ class AgentLLMModel(LLMModel):
                 if session_id:
                     kwargs['session_id'] = session_id
 
-                # Determine thinking: respect global config, then channel_type
-                from config import conf
-                global_thinking = conf().get("enable_thinking", True)
-                if not global_thinking:
-                    kwargs['thinking'] = {"type": "disabled"}
-                else:
-                    kwargs['thinking'] = {"type": "enabled"} if channel_type == "web" else {"type": "disabled"}
+                thinking_enabled = _resolve_thinking_enabled(channel_type)
+                kwargs['thinking'] = {"type": "enabled"} if thinking_enabled else {"type": "disabled"}
 
                 stream = self.bot.call_with_tools(**kwargs)
                 

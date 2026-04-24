@@ -1,18 +1,11 @@
-import type { BubbleItemType } from '@ant-design/x';
+import { ThoughtChain, type BubbleItemType, type ThoughtChainItemType } from '@ant-design/x';
 import {
-  BulbFilled,
   CheckOutlined,
-  CheckCircleFilled,
-  CloseCircleFilled,
   CopyOutlined,
   LinkOutlined,
   Loading3QuartersOutlined,
-  PauseCircleFilled,
-  RightOutlined,
-  SettingOutlined,
 } from '@ant-design/icons';
-import { Typography } from 'antd';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { MarkdownBlock } from './ChatMarkdown';
 import type { AssistantBubbleContent, AssistantMedia, AssistantStep } from '../types';
 
@@ -23,13 +16,6 @@ interface AssistantMessageFlowProps {
 
 function joinClassNames(...values: Array<string | false | null | undefined>): string {
   return values.filter(Boolean).join(' ');
-}
-
-function getToolIcon(status: AssistantStep['status']) {
-  if (status === 'loading') return <SettingOutlined spin />;
-  if (status === 'error') return <CloseCircleFilled />;
-  if (status === 'abort') return <PauseCircleFilled />;
-  return <CheckCircleFilled />;
 }
 
 function unfoldCodeFence(content?: string): string {
@@ -158,138 +144,111 @@ function renderMediaItem(media: AssistantMedia, index: number) {
   );
 }
 
-function ToolStepItem({ step }: { step: AssistantStep }) {
-  const hasDetail = Boolean(step.inputMarkdown || step.outputMarkdown || step.markdown);
-  const [expanded, setExpanded] = useState(step.status !== 'success');
+function renderToolContent(step: AssistantStep) {
   const inputText = step.inputMarkdown ? unfoldCodeFence(step.inputMarkdown) : '';
   const outputText = step.outputMarkdown ? unfoldCodeFence(step.outputMarkdown) : '';
   const detailText = !step.inputMarkdown && !step.outputMarkdown && step.markdown
     ? unfoldCodeFence(step.markdown)
     : '';
+  const hasDetail = Boolean(inputText || outputText || detailText);
 
-  useEffect(() => {
-    if (step.status === 'loading' || step.status === 'error' || step.status === 'abort') {
-      setExpanded(true);
-    }
-  }, [step.status]);
+  if (!hasDetail) return undefined;
 
   return (
-    <div
-      className={joinClassNames(
-        'agent-step',
-        'agent-tool-step',
-        `chat-step-tool--${step.status}`,
-        expanded && 'expanded',
-        step.status === 'error' && 'tool-failed',
-      )}
-    >
-      <button
-        type="button"
-        className="tool-header"
-        onClick={() => {
-          if (hasDetail) setExpanded((value) => !value);
-        }}
-      >
-        <span className="tool-icon">{getToolIcon(step.status)}</span>
-        <span className="tool-name">{step.toolName || step.title.replace(/^工具\s·\s/, '')}</span>
-        {step.footer ? <span className="tool-time">{step.footer}</span> : null}
-        <span className="tool-chevron">{hasDetail ? <RightOutlined /> : null}</span>
-      </button>
-
-      {hasDetail ? (
-        <div className="tool-detail">
-          {step.inputMarkdown ? (
-            <ToolDetailPanel label="Input" text={inputText} />
-          ) : null}
-
-          {step.outputMarkdown ? (
-            <ToolDetailPanel
-              label={step.status === 'error' ? 'Error' : 'Output'}
-              text={outputText}
-              error={step.status === 'error'}
-            />
-          ) : null}
-
-          {!step.inputMarkdown && !step.outputMarkdown && step.markdown ? (
-            <ToolDetailPanel label="Output" text={detailText} />
-          ) : null}
-        </div>
+    <div className="chat-thought-chain-tool-panels">
+      {inputText ? <ToolDetailPanel label="Input" text={inputText} /> : null}
+      {outputText ? (
+        <ToolDetailPanel
+          label={step.status === 'error' ? 'Error' : 'Output'}
+          text={outputText}
+          error={step.status === 'error'}
+        />
+      ) : null}
+      {!inputText && !outputText && detailText ? (
+        <ToolDetailPanel label="Output" text={detailText} />
       ) : null}
     </div>
   );
 }
 
-function ReasoningStepItem({ step }: { step: AssistantStep }) {
-  const loading = step.status === 'loading';
-  const [expanded, setExpanded] = useState(loading);
-
-  useEffect(() => {
-    if (loading) setExpanded(true);
-  }, [loading]);
-
-  return (
-    <div className={joinClassNames('agent-step', 'agent-thinking-step', loading && 'chat-step-think--loading', expanded && 'expanded')}>
-      <button type="button" className="thinking-header" onClick={() => setExpanded((value) => !value)}>
-        <span className="thinking-bulb"><BulbFilled /></span>
-        <span className="thinking-summary">{loading ? '深度思考中' : '已深度思考'}</span>
-        <span className="thinking-chevron"><RightOutlined /></span>
-      </button>
-      <div className="thinking-full">
-        {!loading && step.durationSeconds ? (
-          <div className="thinking-duration">耗时 {step.durationSeconds.toFixed(1)}s</div>
-        ) : null}
-        {step.markdown ? (
-          <MarkdownBlock content={step.markdown} loading={loading} className="msg-content" />
-        ) : (
-          <Typography.Text type="secondary">思考中…</Typography.Text>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ContentStepItem({ step }: { step: AssistantStep }) {
-  if (step.kind === 'phase' || step.kind === 'status') {
+function renderStepMarkdown(step: AssistantStep) {
+  if (step.markdown) {
     return (
-      <div className={joinClassNames('agent-step', 'chat-phase-line', `chat-phase-line--${step.status}`)}>
-        <span>{step.markdown || step.title}</span>
-      </div>
+      <MarkdownBlock
+        content={step.markdown}
+        loading={step.status === 'loading'}
+        className="msg-content chat-thought-chain-markdown"
+      />
     );
   }
 
-  return (
-    <div className={joinClassNames('agent-step', 'agent-content-step', `chat-step-content--${step.kind}`, `chat-step-content--${step.status}`)}>
-      {step.markdown ? (
-        <div className="agent-content-body">
-          <MarkdownBlock
-            content={step.markdown}
-            loading={step.status === 'loading'}
-            className="msg-content"
-            withSources={step.kind === 'output'}
-          />
-        </div>
-      ) : null}
-    </div>
-  );
+  return undefined;
+}
+
+function buildThoughtChainItems(steps: AssistantStep[]): ThoughtChainItemType[] {
+  return steps.map((step) => {
+    const toolContent = step.kind === 'tool' ? renderToolContent(step) : undefined;
+    const markdownContent = step.kind !== 'tool' ? renderStepMarkdown(step) : undefined;
+    const chainContent = toolContent || markdownContent;
+    const isCollapsible = (step.kind === 'reasoning' || step.kind === 'tool') && Boolean(chainContent);
+    const footer = step.kind === 'reasoning' && step.durationSeconds
+      ? `耗时 ${step.durationSeconds.toFixed(1)}s`
+      : step.footer;
+
+    let title = step.title;
+    if (step.kind === 'tool') {
+      title = step.toolName || step.title.replace(/^工具\s*[·:：-]\s*/, '');
+    }
+
+    return {
+      key: step.key,
+      title,
+      status: step.status,
+      content: chainContent,
+      footer,
+      collapsible: isCollapsible,
+      blink: step.status === 'loading',
+    };
+  });
+}
+
+function collectAutoExpandedKeys(steps: AssistantStep[]): string[] {
+  return steps
+    .filter((step) => (
+      (step.kind === 'reasoning' || step.kind === 'tool')
+      && (step.status === 'loading' || step.status === 'error' || step.status === 'abort')
+    ))
+    .map((step) => step.key);
 }
 
 export function AssistantMessageFlow({ content, status }: AssistantMessageFlowProps) {
   const isStreaming = status === 'loading' || status === 'updating' || content.streaming;
-  const hasSteps = content.steps.length > 0;
+  const chainItems = useMemo(() => buildThoughtChainItems(content.steps), [content.steps]);
+  const autoExpandedKeys = useMemo(() => collectAutoExpandedKeys(content.steps), [content.steps]);
+  const [expandedKeys, setExpandedKeys] = useState<string[]>(autoExpandedKeys);
+
+  useEffect(() => {
+    setExpandedKeys((current) => {
+      const availableKeys = new Set(chainItems.map((item) => String(item.key)));
+      const next = current.filter((key) => availableKeys.has(key));
+      autoExpandedKeys.forEach((key) => {
+        if (!next.includes(key)) next.push(key);
+      });
+      return next;
+    });
+  }, [autoExpandedKeys, chainItems]);
 
   return (
     <div className="chat-assistant-card">
-      {hasSteps ? (
+      {chainItems.length > 0 ? (
         <div className="agent-steps">
-          {content.steps.map((step) => {
-            if (step.kind === 'reasoning') {
-              return <ReasoningStepItem key={step.key} step={step} />;
-            }
-            if (step.kind === 'tool') {
-              return <ToolStepItem key={step.key} step={step} />;
-            }
-            return <ContentStepItem key={step.key} step={step} />;
-          })}
+          <ThoughtChain
+            items={chainItems}
+            line="dashed"
+            expandedKeys={expandedKeys}
+            onExpand={(keys) => setExpandedKeys(keys.map((key) => String(key)))}
+            rootClassName="chat-thought-chain"
+          />
         </div>
       ) : null}
 

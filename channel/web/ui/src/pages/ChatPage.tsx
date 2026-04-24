@@ -4,19 +4,22 @@ import {
   Conversations,
   Prompts,
   Sender,
+  Suggestion,
   Welcome,
   type BubbleItemType,
   type ConversationItemType,
 } from '@ant-design/x';
 import {
-  BulbOutlined,
+  AntDesignOutlined,
   CheckOutlined,
+  BulbOutlined,
   CompassOutlined,
   CopyOutlined,
   DeleteOutlined,
   DeploymentUnitOutlined,
   LoadingOutlined,
   MessageOutlined,
+  OpenAIOutlined,
   PaperClipOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -25,28 +28,30 @@ import {
   UnorderedListOutlined,
   UserOutlined,
 } from '@ant-design/icons';
-import { App, Avatar, Button, Empty, Popconfirm, Space, Spin, Tag, Tooltip, Typography } from 'antd';
+import { App, Avatar, Button, Dropdown, Empty, Flex, Space, Spin, Tag, Tooltip, Typography } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
   type CowAgentChatMessage,
   type CowAgentChatRequest,
   createAssistantErrorMessage,
   createAssistantPlaceholderMessage,
-  createContextDividerMessage,
   createCowAgentChatProvider,
   extractAssistantReply,
   parseHistoryMessages,
 } from '../chat/CowAgentChatProvider';
 import { AssistantMessageFlow } from '../chat/AssistantMessageFlow';
 import { MarkdownBlock } from '../chat/ChatMarkdown';
-import { useRuntimeScope } from '../context/runtime';
+import { WORKSPACE_AGENT_VALUE, useRuntimeScope } from '../context/runtime';
 import { asAttachment, api } from '../services/api';
 import { scopeBody } from '../services/http';
 import type { ChatAttachment, RuntimeScope, SessionItem } from '../types';
 import { useXChat, type SSEOutput } from '@ant-design/x-sdk';
 
 const SESSION_KEY_PREFIX = 'cowagent-web-session-id';
+const DEEP_THINK_KEY = 'cowagent-chat-deep-think';
 const HISTORY_PAGE_SIZE = 200;
+const SenderSwitch = Sender.Switch;
+const SenderHeader = Sender.Header;
 const SLASH_COMMANDS = [
   { cmd: '/help', desc: '显示命令帮助' },
   { cmd: '/status', desc: '查看运行状态' },
@@ -69,6 +74,26 @@ const SLASH_COMMANDS = [
   { cmd: '/logs', desc: '查看最近日志' },
   { cmd: '/version', desc: '查看版本' },
 ] as const;
+
+function buildSuggestionItems(query?: string) {
+  const text = (query || '').trimStart().toLowerCase();
+  if (!text.startsWith('/')) return [];
+
+  return SLASH_COMMANDS
+    .filter((item) => item.cmd.toLowerCase().startsWith(text))
+    .map((item) => ({
+      value: item.cmd,
+      label: item.cmd,
+      extra: item.desc,
+    }));
+}
+
+function formatAgentTriggerLabel(label: string): string {
+  return label
+    .replace(/（.*$/, '')
+    .replace(/\s*\(.*\)$/, '')
+    .trim() || '助手';
+}
 
 function createSessionId(): string {
   if (typeof crypto !== 'undefined' && crypto.randomUUID) {
@@ -286,7 +311,7 @@ const promptItems = [
 
 export default function ChatPage() {
   const app = App.useApp();
-  const { scope } = useRuntimeScope();
+  const { scope, agentOptions, setAgentScope } = useRuntimeScope();
   const provider = useMemo(() => createCowAgentChatProvider(), []);
   const attachmentsRef = useRef<ComponentRef<typeof Attachments>>(null);
   const pendingTitleRef = useRef<{
@@ -304,9 +329,13 @@ export default function ChatPage() {
   const [uploading, setUploading] = useState(false);
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [draft, setDraft] = useState('');
+  const [suggestionOpen, setSuggestionOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
-  const [slashActiveIdx, setSlashActiveIdx] = useState(0);
-  const [slashHidden, setSlashHidden] = useState(false);
+  const [deepThink, setDeepThink] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const stored = localStorage.getItem(DEEP_THINK_KEY);
+    return stored == null ? true : stored !== '0';
+  });
   const inputHistoryRef = useRef<string[]>([]);
   const historyIndexRef = useRef(-1);
   const historyDraftRef = useRef('');
@@ -356,7 +385,6 @@ export default function ChatPage() {
 
   const {
     messages,
-    setMessages,
     onRequest,
     abort,
     isRequesting,
@@ -375,10 +403,6 @@ export default function ChatPage() {
     [sessions, sessionId, messages.length],
   );
   const bubbleItems = useMemo(() => buildBubbleItems(messages, scopeLabel), [messages, scopeLabel]);
-  const hasPersistedSession = useMemo(
-    () => sessions.some((session) => session.session_id === sessionId),
-    [sessions, sessionId],
-  );
   const activeSession = useMemo(
     () => sessions.find((session) => session.session_id === sessionId),
     [sessions, sessionId],
@@ -395,27 +419,40 @@ export default function ChatPage() {
         ? '视频附件'
       : '文件附件',
   })), [attachments]);
-  const slashFiltered = useMemo(() => {
-    const query = draft.trimStart();
-    if (!query.startsWith('/')) return [];
-    return SLASH_COMMANDS.filter((item) => item.cmd.toLowerCase().startsWith(query.toLowerCase()));
-  }, [draft]);
-  const slashMenuVisible = slashFiltered.length > 0 && !slashHidden;
+  const suggestionItems = useMemo(() => buildSuggestionItems(draft), [draft]);
+  const agentSelectorOptions = useMemo(
+    () => (agentOptions.length > 0
+      ? agentOptions
+      : [{ label: '默认助手（当前工作区）', value: WORKSPACE_AGENT_VALUE }]),
+    [agentOptions],
+  );
+  const selectedAgentValue = useMemo(
+    () => scope.agentId || WORKSPACE_AGENT_VALUE,
+    [scope.agentId],
+  );
+  const selectedAgentLabel = useMemo(
+    () => agentSelectorOptions.find((item) => item.value === selectedAgentValue)?.label || '默认助手（当前工作区）',
+    [agentSelectorOptions, selectedAgentValue],
+  );
+  const agentMenuItems = useMemo(
+    () => agentSelectorOptions.map((item) => ({
+      key: item.value,
+      icon: item.value === WORKSPACE_AGENT_VALUE ? <AntDesignOutlined /> : <RobotOutlined />,
+      label: item.label,
+    })),
+    [agentSelectorOptions],
+  );
 
-  const refreshConversation = useCallback(async () => {
-    if (!sessionId) return;
-    try {
-      const data = await api.history(scope, sessionId, 1, HISTORY_PAGE_SIZE);
-      setHistoryHasMore(Boolean(data.has_more));
-      setMessages(parseHistoryMessages(data.messages || [], data.context_start_seq || 0));
-    } catch (error) {
-      app.message.error(error instanceof Error ? error.message : '刷新历史失败');
-    }
-  }, [app.message, scope.agentId, scope.bindingId, sessionId, setMessages]);
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(DEEP_THINK_KEY, deepThink ? '1' : '0');
+  }, [deepThink]);
 
   const activateSession = useCallback((nextSessionId: string) => {
     persistSessionId(scope, nextSessionId);
     setSessionId(nextSessionId);
+    setDraft('');
+    setSuggestionOpen(false);
     setAttachments([]);
     setAttachmentPanelOpen(false);
   }, [scope.agentId, scope.bindingId]);
@@ -427,6 +464,8 @@ export default function ChatPage() {
     const now = Math.floor(Date.now() / 1000);
     persistSessionId(scope, nextSessionId);
     setSessionId(nextSessionId);
+    setDraft('');
+    setSuggestionOpen(false);
     setAttachments([]);
     setAttachmentPanelOpen(false);
     setHistoryHasMore(false);
@@ -455,17 +494,6 @@ export default function ChatPage() {
     }
   }, [app.message, loadSessions, newChat, scope.agentId, scope.bindingId, sessionId]);
 
-  const clearContext = useCallback(async () => {
-    if (!sessionId) return;
-    try {
-      await api.clearContext(scope, sessionId);
-      setMessages((prev) => [...prev, createContextDividerMessage()]);
-      app.message.success('上下文已清空');
-    } catch (error) {
-      app.message.error(error instanceof Error ? error.message : '清空上下文失败');
-    }
-  }, [app.message, scope.agentId, scope.bindingId, sessionId, setMessages]);
-
   const uploadFiles = useCallback(async (files: File[]) => {
     if (!files.length || !sessionId) return;
     setUploading(true);
@@ -483,12 +511,31 @@ export default function ChatPage() {
     }
   }, [app.message, scope.agentId, scope.bindingId, sessionId]);
 
-  const openAttachmentPanel = useCallback(() => {
+  const revealAttachmentPanel = useCallback(() => {
     setAttachmentPanelOpen(true);
+
+    window.setTimeout(() => {
+      attachmentsRef.current?.nativeElement?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }, 120);
+  }, []);
+
+  const openAttachmentPanel = useCallback(() => {
+    if (attachmentPanelOpen) {
+      setAttachmentPanelOpen(false);
+      return;
+    }
+
+    revealAttachmentPanel();
+
+    if (uploading || attachments.length > 0) {
+      return;
+    }
+
+    // Wait for Sender.Header motion to settle, then open the native picker.
     window.setTimeout(() => {
       attachmentsRef.current?.select({ multiple: true });
-    }, 0);
-  }, []);
+    }, 180);
+  }, [attachmentPanelOpen, attachments.length, revealAttachmentPanel, uploading]);
 
   const submitMessage = useCallback((rawText: string) => {
     const text = rawText.trim();
@@ -503,6 +550,7 @@ export default function ChatPage() {
     historyIndexRef.current = -1;
     historyDraftRef.current = '';
     setDraft('');
+    setSuggestionOpen(false);
 
     const nextAttachments = [...attachments];
     setAttachments([]);
@@ -533,49 +581,17 @@ export default function ChatPage() {
       session_id: sessionId,
       message: text,
       attachments: nextAttachments,
+      enable_thinking: deepThink,
       timestamp: new Date().toISOString(),
       ...scopeBody(scope),
     });
-  }, [attachments, conversationKey, onRequest, scope.agentId, scope.bindingId, sessionId, sessions]);
+  }, [attachments, conversationKey, deepThink, onRequest, scope.agentId, scope.bindingId, sessionId, sessions]);
 
-  const selectSlashCommand = useCallback((command: string) => {
-    setDraft(command);
-    setSlashHidden(true);
-    setSlashActiveIdx(0);
-  }, []);
-
-  const handleSenderKeyDown = useCallback((event: ReactKeyboardEvent) => {
+  const handleSenderKeyDown = useCallback((event: ReactKeyboardEvent, suggestionOpen: boolean) => {
     if ((event.nativeEvent as KeyboardEvent).isComposing) return;
 
-    if (slashMenuVisible) {
-      if (event.key === 'ArrowDown') {
-        event.preventDefault();
-        setSlashActiveIdx((current) => Math.min(current + 1, slashFiltered.length - 1));
-        return false;
-      }
-
-      if (event.key === 'ArrowUp') {
-        event.preventDefault();
-        setSlashActiveIdx((current) => Math.max(current - 1, 0));
-        return false;
-      }
-
-      if ((event.key === 'Enter' || event.key === 'Tab') && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
-        event.preventDefault();
-        const chosen = slashFiltered[slashActiveIdx];
-        if (chosen) selectSlashCommand(chosen.cmd);
-        return false;
-      }
-
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        setSlashHidden(true);
-        return false;
-      }
-    }
-
     if (event.key === 'ArrowUp') {
-      if (inputHistoryRef.current.length === 0 || draft.includes('\n') || slashMenuVisible) return;
+      if (inputHistoryRef.current.length === 0 || draft.includes('\n') || suggestionOpen) return;
       if (draft.trim() !== '' && historyIndexRef.current < 0) return;
       event.preventDefault();
 
@@ -591,7 +607,7 @@ export default function ChatPage() {
     }
 
     if (event.key === 'ArrowDown') {
-      if (historyIndexRef.current < 0 || draft.includes('\n') || slashMenuVisible) return;
+      if (historyIndexRef.current < 0 || draft.includes('\n') || suggestionOpen) return;
       event.preventDefault();
 
       if (historyIndexRef.current < inputHistoryRef.current.length - 1) {
@@ -603,15 +619,7 @@ export default function ChatPage() {
         historyDraftRef.current = '';
       }
     }
-  }, [draft, selectSlashCommand, slashActiveIdx, slashFiltered, slashMenuVisible]);
-
-  useEffect(() => {
-    if (slashFiltered.length === 0) {
-      setSlashActiveIdx(0);
-      return;
-    }
-    setSlashActiveIdx((current) => Math.min(current, slashFiltered.length - 1));
-  }, [slashFiltered]);
+  }, [draft]);
 
   useEffect(() => {
     if (previousRequestingRef.current && !isRequesting) {
@@ -770,43 +778,20 @@ export default function ChatPage() {
             <Typography.Title level={4} style={{ margin: 0 }}>
               {activeSession?.title || '新对话'}
             </Typography.Title>
-            <Space wrap>
-              <Tag color="blue" icon={<RobotOutlined />}>{scopeLabel}</Tag>
-              {historyHasMore ? <Tag>当前展示最近 {HISTORY_PAGE_SIZE} 条消息</Tag> : null}
-            </Space>
+            {historyHasMore ? (
+              <Typography.Text type="secondary">
+                当前展示最近 {HISTORY_PAGE_SIZE} 条消息
+              </Typography.Text>
+            ) : null}
           </div>
 
-          <Space wrap>
-            <Button icon={<PlusOutlined />} onClick={() => newChat()}>
-              新会话
-            </Button>
-            <Button icon={<ReloadOutlined />} onClick={() => void refreshConversation()} disabled={!sessionId || isRequesting}>
-              刷新历史
-            </Button>
-            {isRequesting ? (
+          {isRequesting ? (
+            <Space wrap>
               <Button danger icon={<StopOutlined />} onClick={abort}>
                 停止回复
               </Button>
-            ) : null}
-            <Popconfirm
-              title="确认清空当前会话上下文？"
-              onConfirm={() => void clearContext()}
-              disabled={!hasPersistedSession || isRequesting}
-            >
-              <Button disabled={!hasPersistedSession || isRequesting}>
-                清空上下文
-              </Button>
-            </Popconfirm>
-            <Popconfirm
-              title="确认删除当前会话？"
-              onConfirm={() => void removeSession(sessionId)}
-              disabled={!sessionId || isRequesting}
-            >
-              <Button danger icon={<DeleteOutlined />} disabled={!sessionId || isRequesting}>
-                删除会话
-              </Button>
-            </Popconfirm>
-          </Space>
+            </Space>
+          ) : null}
         </div>
 
         <div className="chat-main-stage">
@@ -866,85 +851,155 @@ export default function ChatPage() {
               }
             }}
           >
-            {slashMenuVisible ? (
-              <div className="chat-slash-menu" role="listbox" aria-label="命令菜单">
-                <div className="chat-slash-menu-header">命令</div>
-                {slashFiltered.map((item, index) => (
-                  <button
-                    key={item.cmd}
-                    type="button"
-                    className={index === slashActiveIdx ? 'chat-slash-menu-item active' : 'chat-slash-menu-item'}
-                    role="option"
-                    aria-selected={index === slashActiveIdx}
-                    onMouseEnter={() => setSlashActiveIdx(index)}
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      selectSlashCommand(item.cmd);
-                    }}
-                  >
-                    <span className="chat-slash-menu-cmd">{item.cmd}</span>
-                    <span className="chat-slash-menu-desc">{item.desc}</span>
-                  </button>
-                ))}
-              </div>
-            ) : null}
-            <Sender
-              value={draft}
-              loading={isRequesting}
-              disabled={uploading || !sessionId}
-              placeholder={isRequesting ? '模型正在回复...' : '输入消息，输入 / 查看命令'}
-              autoSize={{ minRows: 2, maxRows: 6 }}
-              onChange={(value) => {
+            <Suggestion
+              open={suggestionOpen}
+              onOpenChange={setSuggestionOpen}
+              items={suggestionItems}
+              rootClassName="chat-suggestion"
+              styles={{
+                popup: {
+                  width: 'min(420px, calc(100vw - 64px))',
+                },
+              }}
+              classNames={{
+                popup: 'chat-suggestion-popup',
+                content: 'chat-suggestion-content',
+              }}
+              onSelect={(value) => {
                 setDraft(value);
-                setSlashHidden(false);
+                setSuggestionOpen(false);
               }}
-              onKeyDown={handleSenderKeyDown}
-              onFocus={() => {
-                if (draft.trimStart().startsWith('/')) setSlashHidden(false);
-              }}
-              onBlur={() => {
-                window.setTimeout(() => setSlashHidden(true), 120);
-              }}
-              onSubmit={(value) => submitMessage(value)}
-              onCancel={abort}
-              onPasteFile={(files) => {
-                void uploadFiles(Array.from(files));
-              }}
-              header={attachmentPanelOpen || attachments.length > 0 ? (
-                <div className="chat-attachment-panel">
-                  <Attachments
-                    ref={attachmentsRef}
-                    items={attachmentItems}
-                    multiple
-                    rootClassName="chat-attachments"
-                    beforeUpload={(file) => {
-                      void uploadFiles([file as File]);
-                      return false;
-                    }}
-                    onRemove={(file) => {
-                      setAttachments((prev) => prev.filter((item) => item.file_path !== String(file.uid)));
-                      return true;
-                    }}
-                    placeholder={{
-                      icon: uploading ? <LoadingOutlined /> : <PaperClipOutlined />,
-                      title: uploading ? '正在上传附件…' : '上传附件',
-                      description: '支持图片、视频和文件，可拖拽或点击选择',
-                    }}
-                  />
-                </div>
-              ) : false}
-              footer={(
-                <div className="chat-sender-footer">
-                  <Space size={6} wrap>
-                    <Button icon={<PaperClipOutlined />} onClick={openAttachmentPanel} loading={uploading}>
-                      上传附件
-                    </Button>
-                    {attachments.length > 0 ? <Tag color="blue">已选择 {attachments.length} 个附件</Tag> : null}
-                    {dragOver ? <Tag color="processing">松开以上传附件</Tag> : null}
-                  </Space>
-                </div>
+            >
+              {({ onTrigger, onKeyDown }) => (
+                <Sender
+                  value={draft}
+                  loading={isRequesting}
+                  disabled={uploading || !sessionId}
+                  placeholder={isRequesting ? '模型正在回复...' : '输入消息，输入 / 查看命令'}
+                  autoSize={{ minRows: 2, maxRows: 6 }}
+                  onChange={(value) => {
+                    setDraft(value);
+                    const nextOpen = value.trimStart().startsWith('/');
+                    onTrigger(nextOpen ? value : false);
+                    setSuggestionOpen(nextOpen);
+                  }}
+                  onKeyDown={(event) => {
+                    onKeyDown(event);
+                    if (event.isDefaultPrevented()) return;
+                    handleSenderKeyDown(event, suggestionOpen);
+                  }}
+                  onFocus={() => {
+                    if (draft.trimStart().startsWith('/')) {
+                      onTrigger(draft);
+                      setSuggestionOpen(true);
+                    }
+                  }}
+                  onBlur={() => {
+                    window.setTimeout(() => {
+                      onTrigger(false);
+                      setSuggestionOpen(false);
+                    }, 120);
+                  }}
+                  onSubmit={(value) => submitMessage(value)}
+                  onCancel={abort}
+                  onPasteFile={(files) => {
+                    void uploadFiles(Array.from(files));
+                  }}
+                  header={(
+                    <SenderHeader
+                      open={attachmentPanelOpen}
+                      forceRender
+                      title={uploading ? '正在上传附件…' : attachments.length > 0 ? `附件 (${attachments.length})` : '附件'}
+                      className="chat-sender-header"
+                      classNames={{
+                        content: 'chat-sender-header-content',
+                      }}
+                      onOpenChange={setAttachmentPanelOpen}
+                    >
+                      <div className="chat-attachment-panel">
+                        <Attachments
+                          ref={attachmentsRef}
+                          items={attachmentItems}
+                          multiple
+                          rootClassName="chat-attachments"
+                          beforeUpload={(file) => {
+                            void uploadFiles([file as File]);
+                            return false;
+                          }}
+                          onRemove={(file) => {
+                            setAttachments((prev) => prev.filter((item) => item.file_path !== String(file.uid)));
+                            return true;
+                          }}
+                          placeholder={{
+                            icon: uploading ? <LoadingOutlined /> : <PaperClipOutlined />,
+                            title: uploading ? '正在上传附件…' : '上传附件',
+                            description: '支持图片、视频和文件，可拖拽或点击选择',
+                          }}
+                        />
+                      </div>
+                    </SenderHeader>
+                  )}
+                  footer={(actionNode) => (
+                    <div className="chat-sender-footer">
+                      <Flex justify="space-between" align="center" gap={12} wrap className="chat-sender-footer-bar">
+                        <Flex align="center" gap={8} wrap className="chat-sender-left-tools">
+                          <Button
+                            type="text"
+                            className={attachmentPanelOpen ? 'chat-sender-icon-button chat-sender-icon-button-active' : 'chat-sender-icon-button'}
+                            icon={<PaperClipOutlined />}
+                            aria-label={attachmentPanelOpen ? '收起附件面板' : '上传附件'}
+                            title={attachmentPanelOpen ? '收起附件面板' : '上传附件'}
+                            onClick={openAttachmentPanel}
+                            loading={uploading}
+                          />
+                          <SenderSwitch
+                            value={deepThink}
+                            icon={<OpenAIOutlined />}
+                            rootClassName="chat-sender-trigger"
+                            checkedChildren={(
+                              <>
+                                深度思考：<span className="chat-sender-switch-value">开</span>
+                              </>
+                            )}
+                            unCheckedChildren={(
+                              <>
+                                深度思考：<span className="chat-sender-switch-value">关</span>
+                              </>
+                            )}
+                            onChange={setDeepThink}
+                          />
+                          <Dropdown
+                            trigger={['click']}
+                            menu={{
+                              selectable: true,
+                              selectedKeys: [selectedAgentValue],
+                              items: agentMenuItems,
+                              onClick: ({ key }) => setAgentScope(String(key)),
+                            }}
+                          >
+                            <span>
+                              <SenderSwitch
+                                value={false}
+                                icon={<AntDesignOutlined />}
+                                rootClassName="chat-sender-trigger"
+                              >
+                                {formatAgentTriggerLabel(selectedAgentLabel)}
+                              </SenderSwitch>
+                            </span>
+                          </Dropdown>
+                          {attachments.length > 0 ? <Tag color="blue">已选 {attachments.length} 个附件</Tag> : null}
+                          {dragOver ? <Tag color="processing">松开以上传附件</Tag> : null}
+                        </Flex>
+                        <Flex align="center" gap={8} className="chat-sender-right-tools">
+                          {actionNode}
+                        </Flex>
+                      </Flex>
+                    </div>
+                  )}
+                  suffix={false}
+                />
               )}
-            />
+            </Suggestion>
           </div>
         </div>
       </section>

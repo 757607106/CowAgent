@@ -498,6 +498,8 @@ class WebChannel(ChatChannel):
             prompt = json_data.get('message', '')
             use_sse = json_data.get('stream', True)
             attachments = json_data.get('attachments', [])
+            has_enable_thinking = 'enable_thinking' in json_data
+            enable_thinking = bool(json_data.get('enable_thinking', True))
             target = _resolve_runtime_target(
                 agent_id=json_data.get('agent_id', ''),
                 tenant_id=json_data.get('tenant_id', ''),
@@ -575,6 +577,8 @@ class WebChannel(ChatChannel):
                 context["tenant_id"] = tenant_id
             if binding_id:
                 context["binding_id"] = binding_id
+            if has_enable_thinking:
+                context["enable_thinking"] = enable_thinking
 
             if use_sse:
                 context["on_event"] = self._make_sse_callback(request_id)
