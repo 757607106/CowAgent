@@ -12,7 +12,7 @@ from tests.conftest import REPO_ROOT, find_free_port, wait_for_http
 
 
 @pytest.mark.e2e
-def test_legacy_app_starts_with_temp_config_and_serves_chat_page(tmp_path: Path) -> None:
+def test_web_app_starts_with_temp_config_and_serves_modern_chat_page(tmp_path: Path) -> None:
     port = find_free_port()
     env = os.environ.copy()
     env.update(
@@ -42,7 +42,8 @@ def test_legacy_app_starts_with_temp_config_and_serves_chat_page(tmp_path: Path)
     try:
         response = wait_for_http(f"http://127.0.0.1:{port}/chat", timeout=60)
         assert response.status_code == 200
-        assert "CowAgent" in response.text
+        assert "<div id=\"root\"></div>" in response.text
+        assert "/assets/" in response.text
     finally:
         process.send_signal(signal.SIGTERM)
         process.wait(timeout=20)

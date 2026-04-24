@@ -77,6 +77,7 @@ def build_core_handlers(deps: CoreHandlerDeps) -> dict[str, type]:
     class MessageHandler:
         def POST(self):
             deps.require_auth()
+            web.header("Content-Type", "application/json; charset=utf-8")
             return deps.get_web_channel().post_message()
 
     class UploadHandler:

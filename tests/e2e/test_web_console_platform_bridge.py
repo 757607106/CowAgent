@@ -44,7 +44,9 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
     )
 
     try:
-        wait_for_http(f"{base_url}/chat", timeout=40)
+        chat_resp = wait_for_http(f"{base_url}/chat", timeout=40)
+        assert chat_resp.status_code == 200
+        assert "<div id=\"root\"></div>" in chat_resp.text
 
         list_agents_resp = requests.get(f"{base_url}/api/platform/agents", timeout=5)
         assert list_agents_resp.status_code == 200

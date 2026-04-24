@@ -2,8 +2,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from channel.web.frontend_layout import (
-    FRONTEND_MODE_LEGACY,
     FRONTEND_MODE_MODERN,
     build_frontend_layout,
     render_chat_html,
@@ -18,52 +19,53 @@ def _build_layout(tmp_path: Path):
     return build_frontend_layout(channel_file)
 
 
-def test_modern_mode_falls_back_to_legacy_when_dist_is_missing(tmp_path: Path) -> None:
+def test_frontend_mode_always_resolves_to_modern(tmp_path: Path) -> None:
     layout = _build_layout(tmp_path)
-    assert resolve_frontend_mode(layout, FRONTEND_MODE_MODERN) == FRONTEND_MODE_LEGACY
+    assert resolve_frontend_mode(layout, "legacy") == FRONTEND_MODE_MODERN
+    assert resolve_frontend_mode(layout, "auto") == FRONTEND_MODE_MODERN
+    assert resolve_frontend_mode(layout, None) == FRONTEND_MODE_MODERN
 
 
-def test_auto_mode_prefers_modern_when_dist_exists(tmp_path: Path) -> None:
+def test_render_chat_html_reads_modern_dist_index(tmp_path: Path) -> None:
     layout = _build_layout(tmp_path)
     layout.modern_dist.mkdir(parents=True, exist_ok=True)
     (layout.modern_dist / "index.html").write_text("<html>modern</html>", encoding="utf-8")
 
-    assert resolve_frontend_mode(layout, "auto") == FRONTEND_MODE_MODERN
+    html = render_chat_html(layout, FRONTEND_MODE_MODERN)
+    assert html == "<html>modern</html>"
 
 
-def test_render_legacy_chat_html_injects_cache_bust(tmp_path: Path) -> None:
+def test_render_chat_html_raises_when_dist_missing(tmp_path: Path) -> None:
     layout = _build_layout(tmp_path)
-    layout.legacy_html.write_text(
-        '<script src="assets/js/console.js"></script>'
-        '<link rel="stylesheet" href="assets/css/console.css">',
-        encoding="utf-8",
-    )
-
-    html = render_chat_html(layout, FRONTEND_MODE_LEGACY, cache_bust=True)
-    assert "assets/js/console.js?v=" in html
-    assert "assets/css/console.css?v=" in html
+    with pytest.raises(FileNotFoundError):
+        render_chat_html(layout, FRONTEND_MODE_MODERN)
 
 
 def test_resolve_asset_file_blocks_path_traversal(tmp_path: Path) -> None:
     layout = _build_layout(tmp_path)
-    layout.legacy_assets.mkdir(parents=True, exist_ok=True)
-    (layout.legacy_assets / "favicon.ico").write_bytes(b"ico")
-
-    assert resolve_asset_file(layout, FRONTEND_MODE_LEGACY, "../chat.html") is None
-
-
-def test_modern_asset_resolution_supports_legacy_fallback(tmp_path: Path) -> None:
-    layout = _build_layout(tmp_path)
-
     layout.modern_dist.mkdir(parents=True, exist_ok=True)
-    (layout.modern_dist / "index.html").write_text("<html>modern</html>", encoding="utf-8")
-    modern_asset = layout.modern_dist / "assets" / "main.js"
-    modern_asset.parent.mkdir(parents=True, exist_ok=True)
-    modern_asset.write_text("console.log('modern')", encoding="utf-8")
+    (layout.modern_dist / "assets" / "main.js").parent.mkdir(parents=True, exist_ok=True)
+    (layout.modern_dist / "assets" / "main.js").write_text("console.log('modern')", encoding="utf-8")
 
-    legacy_asset = layout.legacy_assets / "js" / "console.js"
-    legacy_asset.parent.mkdir(parents=True, exist_ok=True)
-    legacy_asset.write_text("console.log('legacy')", encoding="utf-8")
+    assert resolve_asset_file(layout, FRONTEND_MODE_MODERN, "../web_channel.py") is None
 
-    assert resolve_asset_file(layout, FRONTEND_MODE_MODERN, "assets/main.js") == modern_asset
-    assert resolve_asset_file(layout, FRONTEND_MODE_MODERN, "js/console.js") == legacy_asset
+
+def test_modern_asset_resolution_reads_dist_only(tmp_path: Path) -> None:
+    layout = _build_layout(tmp_path)
+    layout.modern_dist.mkdir(parents=True, exist_ok=True)
+    asset = layout.modern_dist / "assets" / "main.js"
+    asset.parent.mkdir(parents=True, exist_ok=True)
+    asset.write_text("console.log('modern')", encoding="utf-8")
+
+    assert resolve_asset_file(layout, FRONTEND_MODE_MODERN, "assets/main.js") == asset
+
+
+def test_modern_asset_resolution_supports_assets_route_filename(tmp_path: Path) -> None:
+    layout = _build_layout(tmp_path)
+    layout.modern_dist.mkdir(parents=True, exist_ok=True)
+    asset = layout.modern_dist / "assets" / "index-abc123.js"
+    asset.parent.mkdir(parents=True, exist_ok=True)
+    asset.write_text("console.log('modern')", encoding="utf-8")
+
+    # /assets/(.*) route passes "index-abc123.js" (without "assets/" prefix)
+    assert resolve_asset_file(layout, FRONTEND_MODE_MODERN, "index-abc123.js") == asset

@@ -1,0 +1,49 @@
+import { Button, Card, Table } from 'antd';
+import { useEffect, useState } from 'react';
+import { useRuntimeScope } from '../context/runtime';
+import { JsonBlock } from '../components/JsonBlock';
+import { PageTitle } from '../components/PageTitle';
+import { api } from '../services/api';
+
+export default function TasksPage() {
+  const { scope } = useRuntimeScope();
+  const [loading, setLoading] = useState(false);
+  const [tasks, setTasks] = useState<any[]>([]);
+
+  const load = async () => {
+    setLoading(true);
+    try {
+      const data = await api.listTasks(scope);
+      setTasks(data.tasks || []);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, [scope.agentId, scope.bindingId]);
+
+  return (
+    <Card>
+      <PageTitle
+        title="任务调度"
+        description="查看当前工作区调度任务状态。"
+        extra={<Button onClick={() => void load()}>刷新</Button>}
+      />
+      <Table
+        rowKey={(row) => row.id || row.task_id || row.name || JSON.stringify(row)}
+        loading={loading}
+        dataSource={tasks}
+        pagination={{ pageSize: 20 }}
+        columns={[
+          { title: '任务ID', render: (_, row) => row.id || row.task_id || '-' },
+          { title: '名称', render: (_, row) => row.name || '-' },
+          { title: '状态', render: (_, row) => row.status || '-' },
+          { title: '下次执行', render: (_, row) => row.next_run_at || row.next_run || '-' },
+        ]}
+        expandable={{ expandedRowRender: (row) => <JsonBlock value={row} /> }}
+      />
+    </Card>
+  );
+}

@@ -20,7 +20,7 @@ from common.log import logger
 from common.singleton import singleton
 from config import conf
 from channel.web.frontend_layout import (
-    FRONTEND_MODE_LEGACY,
+    FRONTEND_MODE_MODERN,
     build_frontend_layout,
     guess_content_type,
     render_chat_html,
@@ -32,10 +32,19 @@ from channel.web.route_table import build_web_routes
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".avi", ".mov", ".mkv"}
 _FRONTEND_LAYOUT = build_frontend_layout(__file__)
+_FRONTEND_MODE_WARNED = False
 
 
 def _frontend_mode() -> str:
-    return str(conf().get("web_frontend_mode", FRONTEND_MODE_LEGACY) or FRONTEND_MODE_LEGACY)
+    global _FRONTEND_MODE_WARNED
+    requested = str(conf().get("web_frontend_mode", FRONTEND_MODE_MODERN) or FRONTEND_MODE_MODERN).strip().lower()
+    if requested and requested != FRONTEND_MODE_MODERN and not _FRONTEND_MODE_WARNED:
+        logger.warning(
+            "[WebChannel] web_frontend_mode=%s is deprecated; modern frontend is always enabled now.",
+            requested,
+        )
+        _FRONTEND_MODE_WARNED = True
+    return FRONTEND_MODE_MODERN
 
 def _is_password_enabled():
     return bool(conf().get("web_password", ""))
@@ -660,7 +669,7 @@ class WebChannel(ChatChannel):
 
     def chat_page(self):
         """Serve the chat HTML page."""
-        return render_chat_html(_FRONTEND_LAYOUT, _frontend_mode(), cache_bust=True)
+        return render_chat_html(_FRONTEND_LAYOUT, _frontend_mode(), cache_bust=False)
 
     def startup(self):
         port = conf().get("web_port", 9899)
@@ -680,12 +689,6 @@ class WebChannel(ChatChannel):
         logger.info("[WebChannel] ✅ Web控制台已运行")
         logger.info(f"[WebChannel] 🌐 本地访问: http://localhost:{port}")
         logger.info(f"[WebChannel] 🌍 服务器访问: http://YOUR_IP:{port} (请将YOUR_IP替换为服务器IP)")
-
-        # 确保静态文件目录存在
-        static_dir = str(_FRONTEND_LAYOUT.legacy_assets)
-        if not os.path.exists(static_dir):
-            os.makedirs(static_dir)
-            logger.debug(f"[WebChannel] Created static directory: {static_dir}")
 
         urls = build_web_routes()
         app = web.application(urls, globals(), autoreload=False)
