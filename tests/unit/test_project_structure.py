@@ -21,6 +21,23 @@ def test_web_frontend_has_explicit_modern_and_legacy_roots() -> None:
     assert not (web_root / "static").exists()
 
 
+def test_web_backend_handlers_are_split_by_responsibility() -> None:
+    web_root = REPO_ROOT / "channel" / "web"
+    for module_name in [
+        "core.py",
+        "configuration.py",
+        "channel_admin.py",
+        "platform.py",
+        "callbacks.py",
+        "workspace.py",
+        "dependencies.py",
+    ]:
+        assert (web_root / "handlers" / module_name).is_file()
+
+    with (web_root / "web_channel.py").open(encoding="utf-8") as f:
+        assert sum(1 for _ in f) < 1500
+
+
 def test_platform_scripts_are_grouped_but_legacy_entrypoints_remain() -> None:
     platform_dir = REPO_ROOT / "scripts" / "platform"
     for script_name in [

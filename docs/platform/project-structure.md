@@ -7,6 +7,7 @@
 - `agent/`、`bridge/`、`channel/`、`common/`、`models/`、`plugins/`、`skills/`、`translate/`、`voice/`：CowAgent 上游内核和 legacy 扩展目录，升级时优先按 `docs/patch-register.md` 做差异复核。
 - `cow_platform/`：平台内核层，包含 API、领域模型、仓储、服务、运行时隔离、worker 和部署检查。
 - `channel/web/`：Web channel 后端入口和前端工程，后端路由仍在该目录，前端源码已收敛到 `channel/web/frontend/`。
+- `channel/web/handlers/`：Web 控制台 route handler 模块；`web_channel.py` 保留 WebChannel 主类、运行时作用域 helper 和旧类名 re-export。
 - `docker/`：容器和 Compose 部署文件。
 - `scripts/`：通用启动脚本和兼容入口；平台真实场景脚本放在 `scripts/platform/`。
 - `tests/`：测试目录，按 `unit/`、`integration/`、`e2e/` 和 `support/` 分层。
@@ -20,6 +21,17 @@
 - `channel/web/frontend/modern/src/services/`：浏览器端 API 和 HTTP scope 工具。
 - `channel/web/frontend/modern/dist/`：构建产物，运行时 `/chat` 和 `/assets/*` 只读取这里。
 - `channel/web/frontend/legacy/`：旧版静态前端历史 patch 参考，不作为默认运行入口。
+
+## Web 后端
+
+- `channel/web/web_channel.py`：WebChannel 主类、认证/租户作用域、Agent 工作区解析、会话 store 适配和 handler 兼容导出。
+- `channel/web/handlers/core.py`：根路由、认证检查、登录/注册、消息、上传、静态资源等基础 handler。
+- `channel/web/handlers/configuration.py`：平台初始化与废弃 `/config` 路由。
+- `channel/web/handlers/channel_admin.py`：legacy 全局渠道与微信扫码登录入口。
+- `channel/web/handlers/platform.py`：平台/租户模型、租户、成员、Agent、绑定、渠道配置、用量等平台化 API。
+- `channel/web/handlers/callbacks.py`：租户渠道回调入口。
+- `channel/web/handlers/workspace.py`：技能、记忆、知识库、任务、会话、日志和 MCP 工作区 API。
+- `channel/web/handlers/dependencies.py`：handler 到 `web_channel.py` 运行时 helper 的延迟代理，避免循环导入并保留测试 monkeypatch 能力。
 
 ## 测试
 

@@ -47,6 +47,12 @@ def test_web_tenant_auth_scopes_default_agent_and_rejects_cross_tenant(tmp_path:
         "agent_id": "default",
         "binding_id": "",
     }
+    assert web_channel._resolve_runtime_target(agent_id="default", tenant_id="default") == {
+        "tenant_id": "tenant-a",
+        "agent_id": "default",
+        "binding_id": "",
+    }
+    assert web_channel._scope_optional_tenant_id("default") == "tenant-a"
     assert workspace_a == tmp_path / "legacy" / "workspaces" / "tenant-a" / "default"
     own_file = workspace_a / "tmp" / "own.txt"
     own_file.parent.mkdir(parents=True, exist_ok=True)

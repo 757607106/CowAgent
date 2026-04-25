@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from fastapi import HTTPException, Request
 
+from cow_platform.runtime.tenant_scope import TenantScopeError, resolve_tenant_scope
 from cow_platform.services.agent_service import DEFAULT_TENANT_ID
 from cow_platform.services.auth_service import TenantAuthService, TenantAuthSession
 
@@ -16,12 +17,16 @@ class PlatformAuthorizer:
     def __init__(self, auth_service: TenantAuthService):
         self.auth_service = auth_service
 
-    def require_session(self, request: Request, *, roles: set[str] | None = None) -> TenantAuthSession:
+    def _verify_bearer_session(self, request: Request) -> TenantAuthSession:
         auth_header = request.headers.get("authorization", "")
         token = auth_header.removeprefix("Bearer ").strip()
         session = self.auth_service.verify_session_token(token)
         if session is None:
             raise HTTPException(status_code=401, detail="unauthorized")
+        return session
+
+    def require_session(self, request: Request, *, roles: set[str] | None = None) -> TenantAuthSession:
+        session = self._verify_bearer_session(request)
         if session.principal_type != "tenant":
             raise HTTPException(status_code=403, detail="tenant session required")
 
@@ -31,22 +36,18 @@ class PlatformAuthorizer:
         return session
 
     def require_platform_admin(self, request: Request) -> TenantAuthSession:
-        auth_header = request.headers.get("authorization", "")
-        token = auth_header.removeprefix("Bearer ").strip()
-        session = self.auth_service.verify_session_token(token)
-        if session is None:
-            raise HTTPException(status_code=401, detail="unauthorized")
+        session = self._verify_bearer_session(request)
         if session.principal_type != "platform" or session.role != "platform_super_admin":
             raise HTTPException(status_code=403, detail="platform admin required")
         return session
 
     @staticmethod
     def scope_tenant_id(session: TenantAuthSession, tenant_id: str = "") -> str:
-        requested = (tenant_id or "").strip()
-        if not requested:
-            return session.tenant_id
-        if requested == DEFAULT_TENANT_ID and session.tenant_id != DEFAULT_TENANT_ID:
-            return session.tenant_id
-        if requested != session.tenant_id:
-            raise HTTPException(status_code=403, detail="cannot access another tenant")
-        return requested
+        try:
+            return resolve_tenant_scope(
+                session_tenant_id=session.tenant_id,
+                requested_tenant_id=tenant_id,
+                default_tenant_id=DEFAULT_TENANT_ID,
+            )
+        except TenantScopeError as exc:
+            raise HTTPException(status_code=403, detail="cannot access another tenant") from exc

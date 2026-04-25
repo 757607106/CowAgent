@@ -78,10 +78,14 @@
 - 支持 `binding_id -> tenant_id + agent_id` 路由
 - 支持 Agent 作用域下的 sessions/history/memory/knowledge API
 - Web 内部轮询队列改为 scoped session key
+- 租户鉴权下将历史默认值 `tenant_id=default` 解析为当前登录租户，避免 Web 缺省参数误触发跨租户拒绝
+- Route handler 已按功能拆到 `channel/web/handlers/`，`web_channel.py` 只保留 WebChannel 主类、运行时 helper 和兼容导出
 
 升级关注点：
 
 - 如果上游重构 web 控制台 API 或消息流处理，需要重新验证 binding 路由和 scoped queue
+- 如果上游调整租户参数默认值，需要重新确认 Web 与 FastAPI 的租户 scope 解析仍一致
+- 如果上游新增 Web API，优先放到对应 `channel/web/handlers/*` 模块，不要继续扩大 `web_channel.py`
 
 ### `channel/web/frontend_layout.py`
 
