@@ -254,8 +254,8 @@
 - `bridge/agent_initializer.py`
 - `bridge/agent_bridge.py`
 - `channel/web/web_channel.py`
-- `channel/web/chat.html`
-- `channel/web/static/js/console.js`
+- `channel/web/frontend/legacy/chat.html`
+- `channel/web/frontend/legacy/static/js/console.js`
 - `pyproject.toml`
 
 ---
@@ -306,7 +306,7 @@ docker compose -p cowagent-prod-smoke \
   up -d --build
 platform-app / platform-web / postgres / redis 均 healthy，/ready 返回 PostgreSQL / Redis / Qdrant / MinIO 全部 ok
 
-cd channel/web/ui && npm run typecheck && npm run build
+cd channel/web/frontend/modern && npm run typecheck && npm run build
 passed
 ```
 

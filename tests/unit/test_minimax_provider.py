@@ -5,14 +5,15 @@ Unit tests for MiniMax provider additions:
   - Default model update in MinimaxBot
   - MinimaxVoice TTS provider
 """
-import sys
 import os
-import json
+import sys
 import unittest
-from unittest.mock import MagicMock, patch, PropertyMock
+from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 # Add project root to path
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+REPO_ROOT = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO_ROOT))
 
 
 class TestMinimaxConst(unittest.TestCase):
@@ -63,9 +64,8 @@ class TestMinimaxBotDefaultModel(unittest.TestCase):
 
     def test_default_model_string(self):
         """Verify the fallback string literal in minimax_bot.py is MiniMax-M2.7."""
-        import ast
-        bot_path = os.path.join(os.path.dirname(__file__), "..", "models", "minimax", "minimax_bot.py")
-        with open(bot_path) as f:
+        bot_path = REPO_ROOT / "models" / "minimax" / "minimax_bot.py"
+        with bot_path.open(encoding="utf-8") as f:
             source = f.read()
         # Verify MiniMax-M2.7 is in the source (not M2.1)
         self.assertIn("MiniMax-M2.7", source)

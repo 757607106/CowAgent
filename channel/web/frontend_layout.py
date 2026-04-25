@@ -17,14 +17,22 @@ _VALID_MODES = {
 @dataclass(frozen=True)
 class FrontendLayout:
     web_root: Path
+    frontend_root: Path
+    legacy_root: Path
+    modern_root: Path
     modern_dist: Path
 
 
 def build_frontend_layout(web_channel_file: str | Path) -> FrontendLayout:
     web_root = Path(web_channel_file).resolve().parent
+    frontend_root = web_root / "frontend"
+    modern_root = frontend_root / "modern"
     return FrontendLayout(
         web_root=web_root,
-        modern_dist=web_root / "ui" / "dist",
+        frontend_root=frontend_root,
+        legacy_root=frontend_root / "legacy",
+        modern_root=modern_root,
+        modern_dist=modern_root / "dist",
     )
 
 

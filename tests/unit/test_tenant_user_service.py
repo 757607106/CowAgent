@@ -2,7 +2,7 @@ import pytest
 
 from cow_platform.services.tenant_service import TenantService
 from cow_platform.services.tenant_user_service import TenantUserService
-from tests.platform_fakes import EmptyPlatformUserService, InMemoryTenantRepository, InMemoryTenantUserRepository
+from tests.support.platform_fakes import EmptyPlatformUserService, InMemoryTenantRepository, InMemoryTenantUserRepository
 
 
 def _build_services() -> tuple[TenantService, TenantUserService]:

@@ -26,6 +26,14 @@ def test_frontend_mode_always_resolves_to_modern(tmp_path: Path) -> None:
     assert resolve_frontend_mode(layout, None) == FRONTEND_MODE_MODERN
 
 
+def test_frontend_layout_uses_grouped_frontend_roots(tmp_path: Path) -> None:
+    layout = _build_layout(tmp_path)
+    assert layout.frontend_root == tmp_path / "frontend"
+    assert layout.legacy_root == tmp_path / "frontend" / "legacy"
+    assert layout.modern_root == tmp_path / "frontend" / "modern"
+    assert layout.modern_dist == tmp_path / "frontend" / "modern" / "dist"
+
+
 def test_render_chat_html_reads_modern_dist_index(tmp_path: Path) -> None:
     layout = _build_layout(tmp_path)
     layout.modern_dist.mkdir(parents=True, exist_ok=True)

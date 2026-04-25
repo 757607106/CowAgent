@@ -3,7 +3,7 @@ from config import conf
 from cow_platform.services.agent_service import AgentService
 from cow_platform.services.binding_service import ChannelBindingService
 from cow_platform.services.tenant_service import TenantService
-from tests.platform_fakes import InMemoryAgentRepository, InMemoryBindingRepository, InMemoryTenantRepository
+from tests.support.platform_fakes import InMemoryAgentRepository, InMemoryBindingRepository, InMemoryTenantRepository
 
 
 def test_tenant_and_binding_services_support_multi_tenant_resources(tmp_path, monkeypatch) -> None:

@@ -4,7 +4,7 @@ from config import conf
 
 from cow_platform.services.audit_service import AuditService
 from cow_platform.services.doctor_service import DoctorService
-from tests.platform_fakes import InMemoryAuditRepository, InMemoryJobRepository
+from tests.support.platform_fakes import InMemoryAuditRepository, InMemoryJobRepository
 
 
 def test_audit_and_doctor_services_work_for_platform_governance(tmp_path, monkeypatch) -> None:

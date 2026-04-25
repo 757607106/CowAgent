@@ -5,7 +5,7 @@ from cow_platform.services.agent_service import AgentService
 from cow_platform.services.binding_service import ChannelBindingService
 from cow_platform.services.tenant_service import TenantService
 from cow_platform.services.tenant_user_service import TenantUserService
-from tests.platform_fakes import (
+from tests.support.platform_fakes import (
     EmptyPlatformUserService,
     InMemoryAgentRepository,
     InMemoryBindingRepository,

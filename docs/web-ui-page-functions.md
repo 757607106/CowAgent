@@ -2,7 +2,7 @@
 
 > 用途：供 Figma 基于现有前端功能完整设计 UI 页面。本文档只整理功能与状态，不包含 UI 改版实现。
 >
-> 源码范围：`channel/web/ui/src/App.tsx`、`channel/web/ui/src/pages/*`、`channel/web/ui/src/chat/*`、`channel/web/ui/src/services/api.ts`、`channel/web/ui/src/types.ts`
+> 源码范围：`channel/web/frontend/modern/src/App.tsx`、`channel/web/frontend/modern/src/pages/*`、`channel/web/frontend/modern/src/chat/*`、`channel/web/frontend/modern/src/services/api.ts`、`channel/web/frontend/modern/src/types.ts`
 >
 > 当前版本标识：CowAgent 2.0.6
 

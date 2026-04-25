@@ -14,7 +14,7 @@ from channel.web.web_channel import _get_workspace_root, _resolve_runtime_target
 from cow_platform.services.agent_service import AgentService
 from cow_platform.services.binding_service import ChannelBindingService
 from cow_platform.services.tenant_service import TenantService
-from tests.platform_fakes import InMemoryAgentRepository, InMemoryBindingRepository, InMemoryTenantRepository
+from tests.support.platform_fakes import InMemoryAgentRepository, InMemoryBindingRepository, InMemoryTenantRepository
 
 
 @pytest.mark.integration

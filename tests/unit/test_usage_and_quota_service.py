@@ -4,7 +4,7 @@ from cow_platform.services.pricing_service import PricingService
 from cow_platform.services.quota_service import QuotaService
 from cow_platform.services.tenant_service import TenantService
 from cow_platform.services.usage_service import UsageService
-from tests.platform_fakes import (
+from tests.support.platform_fakes import (
     InMemoryPricingRepository,
     InMemoryQuotaRepository,
     InMemoryTenantRepository,

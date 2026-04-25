@@ -83,6 +83,16 @@
 
 - 如果上游重构 web 控制台 API 或消息流处理，需要重新验证 binding 路由和 scoped queue
 
+### `channel/web/frontend_layout.py`
+
+- Web 前端入口路径集中在该文件解析
+- modern 前端固定使用 `channel/web/frontend/modern/dist`
+- legacy 静态前端保留在 `channel/web/frontend/legacy` 作为历史 patch 参考
+
+升级关注点：
+
+- 如果上游调整 Web 静态资源目录或路由，需要先复核这里的前端路径解析
+
 ### `channel/channel.py`
 
 - Channel 基类增加 `channel_config_id`、`tenant_id`、`config_overrides`
@@ -133,23 +143,35 @@
 
 - 如果上游调整飞书消息构造流程，需要重新挂回租户渠道上下文
 
-### `channel/web/chat.html`
+### `channel/web/frontend/legacy/chat.html`
 
 - 新增 Agent 选择器
 - 新增 binding 选择器
+- 该文件仅作为旧版静态前端的历史 patch 参考，运行时默认使用 modern 前端
 
 升级关注点：
 
 - 如果上游大改前端结构，需要重新挂回平台选择控件
 
-### `channel/web/static/js/console.js`
+### `channel/web/frontend/legacy/static/js/console.js`
 
 - 前端请求增加 `agent_id` / `binding_id` 透传
 - 增加运行时作用域切换后的历史刷新、会话刷新逻辑
+- 该文件仅作为旧版静态前端的历史 patch 参考，运行时默认使用 modern 前端
 
 升级关注点：
 
 - 如果上游重构前端状态管理，需要重新检查所有带作用域的 API 调用
+
+### `channel/web/frontend/modern/`
+
+- 平台 Web 控制台的 React + TypeScript + Vite 前端源码
+- `/chat` 由 `channel/web/frontend_layout.py` 固定渲染 `frontend/modern/dist/index.html`
+- `/assets/*` 仅从 `frontend/modern/dist/` 解析构建产物
+
+升级关注点：
+
+- 如果上游调整 Web 控制台入口，需要重新确认 modern 前端构建目录和 `/assets/*` 路由仍一致
 
 ### `pyproject.toml`
 

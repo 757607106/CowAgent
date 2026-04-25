@@ -11,7 +11,7 @@ from cow_platform.domain.models import AgentDefinition
 from cow_platform.repositories.agent_repository import AgentRepository
 from cow_platform.services.agent_service import AgentService
 from cow_platform.services.tenant_service import TenantService
-from tests.platform_fakes import InMemoryAgentRepository, InMemoryTenantRepository
+from tests.support.platform_fakes import InMemoryAgentRepository, InMemoryTenantRepository
 
 
 def test_agent_definition_with_tools_skills(tmp_path: Path, monkeypatch) -> None:

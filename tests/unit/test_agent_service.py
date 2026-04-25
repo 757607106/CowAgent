@@ -6,7 +6,7 @@ from config import conf
 
 from cow_platform.services.agent_service import AgentService
 from cow_platform.services.tenant_service import TenantService
-from tests.platform_fakes import InMemoryAgentRepository, InMemoryTenantRepository
+from tests.support.platform_fakes import InMemoryAgentRepository, InMemoryTenantRepository
 
 
 def test_agent_service_can_create_update_and_list_agents(tmp_path: Path, monkeypatch) -> None:

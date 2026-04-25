@@ -41,6 +41,8 @@ ref/
 .qoder/
 local/
 node_modules/
+test-results/
+playwright-report/
 cow/workspaces/
 
 # cow cli
