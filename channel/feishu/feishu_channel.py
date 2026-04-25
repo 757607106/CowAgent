@@ -70,6 +70,7 @@ class FeiShuChanel(ChatChannel):
         self._ws_client = None
         self._ws_thread = None
         self._bot_open_id = None  # cached bot open_id for @-mention matching
+        self.feishu_bot_name = conf().get("feishu_bot_name")
         logger.debug("[FeiShu] app_id={}, app_secret={}, verification_token={}, event_mode={}".format(
             self.feishu_app_id, self.feishu_app_secret, self.feishu_token, self.feishu_event_mode))
         # 无需群校验和前缀
@@ -86,6 +87,7 @@ class FeiShuChanel(ChatChannel):
         self.feishu_app_secret = conf().get('feishu_app_secret')
         self.feishu_token = conf().get('feishu_token')
         self.feishu_event_mode = conf().get('feishu_event_mode', 'websocket')
+        self.feishu_bot_name = conf().get("feishu_bot_name")
         self._fetch_bot_open_id()
         if self.feishu_event_mode == 'websocket':
             self._startup_websocket()
@@ -275,7 +277,7 @@ class FeiShuChanel(ChatChannel):
                 m.get("id", {}).get("open_id") == self._bot_open_id
                 for m in mentions
             )
-        bot_name = conf().get("feishu_bot_name")
+        bot_name = self.feishu_bot_name or conf().get("feishu_bot_name")
         if bot_name:
             return any(m.get("name") == bot_name for m in mentions)
         # Feishu event subscription only delivers messages that @-mention the bot,
@@ -796,6 +798,10 @@ class FeiShuChanel(ChatChannel):
         context.kwargs = kwargs
         if "channel_type" not in context:
             context["channel_type"] = self.channel_type
+        if self.channel_config_id and "channel_config_id" not in context:
+            context["channel_config_id"] = self.channel_config_id
+        if self.tenant_id and "source_tenant_id" not in context:
+            context["source_tenant_id"] = self.tenant_id
         if "origin_ctype" not in context:
             context["origin_ctype"] = ctype
 

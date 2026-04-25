@@ -10,6 +10,7 @@ class AgentCreateRequest(BaseModel):
     agent_id: str | None = None
     name: str
     model: str = ""
+    model_config_id: str = ""
     system_prompt: str = ""
     tools: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
@@ -21,6 +22,7 @@ class AgentUpdateRequest(BaseModel):
     tenant_id: str = Field(default=DEFAULT_TENANT_ID)
     name: str | None = None
     model: str | None = None
+    model_config_id: str | None = None
     system_prompt: str | None = None
     tools: list[str] | None = None
     skills: list[str] | None = None
@@ -83,11 +85,40 @@ class TenantLoginRequest(BaseModel):
     password: str
 
 
+class PlatformAdminRegisterRequest(BaseModel):
+    account: str
+    password: str
+    name: str = ""
+
+
+class ModelConfigCreateRequest(BaseModel):
+    provider: str
+    model_name: str
+    display_name: str = ""
+    api_key: str = ""
+    api_base: str = ""
+    enabled: bool = True
+    is_public: bool = True
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class ModelConfigUpdateRequest(BaseModel):
+    provider: str | None = None
+    model_name: str | None = None
+    display_name: str | None = None
+    api_key: str | None = None
+    api_base: str | None = None
+    enabled: bool | None = None
+    is_public: bool | None = None
+    metadata: dict[str, object] | None = None
+
+
 class BindingCreateRequest(BaseModel):
     tenant_id: str = Field(default=DEFAULT_TENANT_ID)
     binding_id: str = ""
     name: str
     channel_type: str
+    channel_config_id: str = ""
     agent_id: str
     enabled: bool = True
     metadata: dict[str, object] = Field(default_factory=dict)
@@ -97,7 +128,27 @@ class BindingUpdateRequest(BaseModel):
     tenant_id: str | None = None
     name: str | None = None
     channel_type: str | None = None
+    channel_config_id: str | None = None
     agent_id: str | None = None
+    enabled: bool | None = None
+    metadata: dict[str, object] | None = None
+
+
+class ChannelConfigCreateRequest(BaseModel):
+    tenant_id: str = Field(default=DEFAULT_TENANT_ID)
+    channel_config_id: str = ""
+    name: str
+    channel_type: str
+    config: dict[str, object] = Field(default_factory=dict)
+    enabled: bool = True
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class ChannelConfigUpdateRequest(BaseModel):
+    tenant_id: str | None = None
+    name: str | None = None
+    channel_type: str | None = None
+    config: dict[str, object] | None = None
     enabled: bool | None = None
     metadata: dict[str, object] | None = None
 

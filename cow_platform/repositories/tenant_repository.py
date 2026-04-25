@@ -87,6 +87,9 @@ class PostgresTenantRepository:
             raise KeyError(f"tenant not found: {tenant_id}")
         return self._to_definition(row)
 
+    def delete_tenant(self, tenant_id: str) -> TenantDefinition:
+        return self.update_tenant(tenant_id, status="deleted")
+
     def export_record(self, definition: TenantDefinition) -> dict[str, Any]:
         return self.export_record_by_id(definition.tenant_id)
 

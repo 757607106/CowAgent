@@ -7,7 +7,10 @@ from fastapi import FastAPI
 from cow_platform.api.routes import (
     register_agent_binding_routes,
     register_auth_routes,
+    register_channel_config_routes,
     register_governance_routes,
+    register_model_config_routes,
+    register_platform_admin_routes,
     register_system_routes,
     register_tenant_routes,
 )
@@ -17,8 +20,10 @@ from cow_platform.services.agent_service import AgentService
 from cow_platform.services.auth_service import TenantAuthService
 from cow_platform.services.audit_service import AuditService
 from cow_platform.services.binding_service import ChannelBindingService
+from cow_platform.services.channel_config_service import ChannelConfigService
 from cow_platform.services.doctor_service import DoctorService
 from cow_platform.services.job_service import JobService
+from cow_platform.services.model_config_service import ModelConfigService
 from cow_platform.services.pricing_service import PricingService
 from cow_platform.services.quota_service import QuotaService
 from cow_platform.services.tenant_service import TenantService
@@ -32,13 +37,19 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     tenant_service = TenantService()
     agent_service = AgentService(tenant_service=tenant_service)
     tenant_user_service = TenantUserService(tenant_service=tenant_service)
+    model_config_service = ModelConfigService(tenant_service=tenant_service)
+    channel_config_service = ChannelConfigService(tenant_service=tenant_service)
     auth_service = TenantAuthService(
         tenant_service=tenant_service,
         tenant_user_service=tenant_user_service,
         agent_service=agent_service,
     )
     authorizer = PlatformAuthorizer(auth_service)
-    binding_service = ChannelBindingService(agent_service=agent_service, tenant_service=tenant_service)
+    binding_service = ChannelBindingService(
+        agent_service=agent_service,
+        tenant_service=tenant_service,
+        channel_config_service=channel_config_service,
+    )
     pricing_service = PricingService()
     usage_service = UsageService(pricing_service=pricing_service)
     quota_service = QuotaService(usage_service=usage_service)
@@ -92,6 +103,26 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
         app,
         tenant_service=tenant_service,
         tenant_user_service=tenant_user_service,
+        authorizer=authorizer,
+        record_audit=audit_callback,
+    )
+    register_platform_admin_routes(
+        app,
+        tenant_service=tenant_service,
+        agent_service=agent_service,
+        model_config_service=model_config_service,
+        authorizer=authorizer,
+        record_audit=audit_callback,
+    )
+    register_model_config_routes(
+        app,
+        model_config_service=model_config_service,
+        authorizer=authorizer,
+        record_audit=audit_callback,
+    )
+    register_channel_config_routes(
+        app,
+        channel_config_service=channel_config_service,
         authorizer=authorizer,
         record_audit=audit_callback,
     )

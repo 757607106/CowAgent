@@ -18,6 +18,9 @@ class Channel(object):
         self._startup_event = threading.Event()
         self._startup_error = None
         self.cloud_mode = False  # set to True by ChannelManager when running with cloud client
+        self.channel_config_id = ""
+        self.tenant_id = ""
+        self.config_overrides = {}
 
     def startup(self):
         """

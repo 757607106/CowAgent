@@ -14,9 +14,10 @@ export interface RuntimeScope {
 }
 
 export interface AuthUser {
-  tenant_id: string;
+  tenant_id?: string;
   user_id: string;
   role: string;
+  principal_type?: 'tenant' | 'platform';
   tenant_name?: string;
   user_name?: string;
   account?: string;
@@ -88,6 +89,7 @@ export interface AgentItem {
   agent_id: string;
   name: string;
   model: string;
+  model_config_id?: string;
   system_prompt?: string;
   tools?: string[];
   skills?: string[];
@@ -100,6 +102,7 @@ export interface BindingItem {
   binding_id: string;
   name: string;
   channel_type: string;
+  channel_config_id?: string;
   agent_id: string;
   enabled?: boolean;
   metadata?: Record<string, unknown>;
@@ -118,6 +121,21 @@ export interface TenantUserItem {
   name: string;
   role: string;
   status: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ModelConfigItem {
+  model_config_id: string;
+  scope: 'platform' | 'tenant';
+  tenant_id?: string;
+  provider: string;
+  model_name: string;
+  display_name?: string;
+  api_base?: string;
+  enabled: boolean;
+  is_public: boolean;
+  api_key_set?: boolean;
+  api_key_masked?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -142,9 +160,9 @@ export interface ToolItem {
 export interface ChannelField {
   key: string;
   label: string;
-  type: 'text' | 'secret' | 'number' | 'bool';
-  value?: string | number | boolean;
-  default?: string | number | boolean;
+  type: 'text' | 'secret' | 'number' | 'bool' | 'list';
+  value?: string | number | boolean | string[];
+  default?: string | number | boolean | string[];
 }
 
 export interface ChannelItem {
@@ -160,6 +178,28 @@ export interface ChannelItem {
   fields: ChannelField[];
 }
 
+export interface ChannelTypeItem {
+  channel_type: string;
+  label: string;
+  managed_runtime?: boolean;
+  webhook_path_prefix?: string;
+  fields: ChannelField[];
+}
+
+export interface ChannelConfigItem {
+  tenant_id: string;
+  channel_config_id: string;
+  name: string;
+  channel_type: string;
+  label?: string;
+  enabled: boolean;
+  managed_runtime?: boolean;
+  webhook_path?: string;
+  config?: Record<string, string | number | boolean | string[]>;
+  fields?: Array<ChannelField & { secret_set?: boolean }>;
+  metadata?: Record<string, unknown>;
+}
+
 export interface WeixinQrInfo {
   status: 'success' | 'error';
   qrcode_url?: string;
@@ -167,6 +207,7 @@ export interface WeixinQrInfo {
   qr_status?: string;
   source?: string;
   bot_id?: string;
+  channel_config_id?: string;
   message?: string;
 }
 

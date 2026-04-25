@@ -2,6 +2,8 @@ import type {
   AgentItem,
   BindingItem,
   ChannelItem,
+  ChannelConfigItem,
+  ChannelTypeItem,
   ChatAttachment,
   McpTestResult,
   McpServerItem,
@@ -17,6 +19,7 @@ import type {
   UsageSummary,
   WeixinQrInfo,
   AuthUser,
+  ModelConfigItem,
 } from '../types';
 import { buildQuery, requestJson, scopeBody, scopeQuery } from './http';
 
@@ -26,6 +29,7 @@ export const api = {
     auth_required: boolean;
     authenticated?: boolean;
     bootstrap_required?: boolean;
+    platform_bootstrap_required?: boolean;
     auth_mode?: string;
     user?: AuthUser | null;
   }>('/auth/check'),
@@ -34,6 +38,10 @@ export const api = {
     body: JSON.stringify(payload),
   }),
   registerTenant: (payload: Record<string, any>) => requestJson('/auth/register', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  }),
+  registerPlatformAdmin: (payload: Record<string, any>) => requestJson('/auth/platform-register', {
     method: 'POST',
     body: JSON.stringify(payload),
   }),
@@ -67,7 +75,7 @@ export const api = {
   deleteAgent: (tenantId: string, agentId: string) => requestJson(`/api/platform/agents/${encodeURIComponent(agentId)}${buildQuery({ tenant_id: tenantId })}`, { method: 'DELETE' }),
 
   listBindingsSimple: () => requestJson<{ status: string; bindings: BindingItem[] }>('/api/bindings?channel_type=web'),
-  listBindings: (tenantId = '', channelType = '') => requestJson<{ status: string; bindings: BindingItem[] }>(`/api/platform/bindings${buildQuery({ tenant_id: tenantId, channel_type: channelType })}`),
+  listBindings: (tenantId = '', channelType = '', channelConfigId = '') => requestJson<{ status: string; bindings: BindingItem[] }>(`/api/platform/bindings${buildQuery({ tenant_id: tenantId, channel_type: channelType, channel_config_id: channelConfigId })}`),
   createBinding: (payload: Record<string, any>) => requestJson('/api/platform/bindings', { method: 'POST', body: JSON.stringify(payload) }),
   getBindingDetail: (tenantId: string, bindingId: string) => requestJson<{ status: string; binding: BindingItem }>(`/api/platform/bindings/${encodeURIComponent(bindingId)}${buildQuery({ tenant_id: tenantId })}`),
   updateBinding: (bindingId: string, payload: Record<string, any>) => requestJson(`/api/platform/bindings/${encodeURIComponent(bindingId)}`, {
@@ -88,6 +96,39 @@ export const api = {
     method: 'PUT',
     body: JSON.stringify(payload),
   }),
+  listPlatformTenants: () => requestJson<{ status: string; tenants: TenantItem[] }>('/api/platform/admin/tenants'),
+  createPlatformTenant: (payload: Record<string, any>) => requestJson('/api/platform/admin/tenants', { method: 'POST', body: JSON.stringify(payload) }),
+  updatePlatformTenant: (tenantId: string, payload: Record<string, any>) => requestJson(`/api/platform/admin/tenants/${encodeURIComponent(tenantId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }),
+  deletePlatformTenant: (tenantId: string) => requestJson(`/api/platform/admin/tenants/${encodeURIComponent(tenantId)}`, { method: 'DELETE' }),
+
+  listPlatformModels: () => requestJson<{ status: string; models: ModelConfigItem[]; providers?: Array<{ provider: string; bot_type: string }> }>('/api/platform/admin/models'),
+  createPlatformModel: (payload: Record<string, any>) => requestJson('/api/platform/admin/models', { method: 'POST', body: JSON.stringify(payload) }),
+  updatePlatformModel: (modelConfigId: string, payload: Record<string, any>) => requestJson(`/api/platform/admin/models/${encodeURIComponent(modelConfigId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }),
+  deletePlatformModel: (modelConfigId: string) => requestJson(`/api/platform/admin/models/${encodeURIComponent(modelConfigId)}`, { method: 'DELETE' }),
+  listAvailableModels: (tenantId = '') => requestJson<{ status: string; models: ModelConfigItem[] }>(`/api/platform/models/available${buildQuery({ tenant_id: tenantId })}`),
+  listTenantModels: (tenantId = '') => requestJson<{ status: string; models: ModelConfigItem[] }>(`/api/platform/tenant-models${buildQuery({ tenant_id: tenantId })}`),
+  createTenantModel: (payload: Record<string, any>) => requestJson('/api/platform/tenant-models', { method: 'POST', body: JSON.stringify(payload) }),
+  updateTenantModel: (modelConfigId: string, payload: Record<string, any>) => requestJson(`/api/platform/tenant-models/${encodeURIComponent(modelConfigId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }),
+  deleteTenantModel: (modelConfigId: string) => requestJson(`/api/platform/tenant-models/${encodeURIComponent(modelConfigId)}`, { method: 'DELETE' }),
+
+  listChannelConfigs: (tenantId = '', channelType = '') => requestJson<{ status: string; channel_configs: ChannelConfigItem[]; channel_types: ChannelTypeItem[] }>(
+    `/api/platform/channel-configs${buildQuery({ tenant_id: tenantId, channel_type: channelType })}`,
+  ),
+  createChannelConfig: (payload: Record<string, any>) => requestJson('/api/platform/channel-configs', { method: 'POST', body: JSON.stringify(payload) }),
+  updateChannelConfig: (channelConfigId: string, payload: Record<string, any>) => requestJson(`/api/platform/channel-configs/${encodeURIComponent(channelConfigId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }),
+  deleteChannelConfig: (tenantId: string, channelConfigId: string) => requestJson(`/api/platform/channel-configs/${encodeURIComponent(channelConfigId)}${buildQuery({ tenant_id: tenantId })}`, { method: 'DELETE' }),
 
   getTenantUserMeta: () => requestJson<{ status: string; roles: string[]; statuses: string[] }>('/api/platform/tenant-user-meta'),
   listTenantUsers: (tenantId = '', role = '', status = '') => requestJson<{ status: string; tenant_users: TenantUserItem[] }>(
@@ -120,10 +161,10 @@ export const api = {
 
   listChannels: () => requestJson<{ status: string; channels: ChannelItem[] }>('/api/channels'),
   channelAction: (payload: Record<string, any>) => requestJson('/api/channels', { method: 'POST', body: JSON.stringify(payload) }),
-  weixinQrGet: () => requestJson<WeixinQrInfo>('/api/weixin/qrlogin'),
-  weixinQrPost: (action: 'poll' | 'refresh') => requestJson<WeixinQrInfo>('/api/weixin/qrlogin', {
+  weixinQrGet: (channelConfigId = '') => requestJson<WeixinQrInfo>(`/api/weixin/qrlogin${buildQuery({ channel_config_id: channelConfigId })}`),
+  weixinQrPost: (action: 'poll' | 'refresh', channelConfigId = '') => requestJson<WeixinQrInfo>('/api/weixin/qrlogin', {
     method: 'POST',
-    body: JSON.stringify({ action }),
+    body: JSON.stringify({ action, channel_config_id: channelConfigId }),
   }),
 
   listMemory: (scope: RuntimeScope, category = 'memory', page = 1, pageSize = 50) => requestJson<Record<string, any>>(
@@ -189,6 +230,7 @@ export function formatAgentPayload(input: Partial<AgentItem>): Record<string, an
     agent_id: input.agent_id || undefined,
     name: input.name || '',
     model: input.model || '',
+    model_config_id: input.model_config_id || '',
     system_prompt: input.system_prompt || '',
     tools: input.tools || [],
     skills: input.skills || [],
@@ -203,6 +245,7 @@ export function formatBindingPayload(input: Partial<BindingItem>): Record<string
     binding_id: input.binding_id || '',
     name: input.name || '',
     channel_type: input.channel_type || 'web',
+    channel_config_id: input.channel_config_id || '',
     agent_id: input.agent_id || '',
     enabled: input.enabled ?? true,
     metadata: input.metadata || {},

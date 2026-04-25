@@ -18,6 +18,7 @@ class PostgresChannelBindingRepository:
         *,
         tenant_id: str = "",
         channel_type: str = "",
+        channel_config_id: str = "",
     ) -> list[ChannelBindingDefinition]:
         conditions: list[str] = []
         params: list[Any] = []
@@ -27,15 +28,18 @@ class PostgresChannelBindingRepository:
         if channel_type:
             conditions.append("channel_type = %s")
             params.append(channel_type)
+        if channel_config_id:
+            conditions.append("channel_config_id = %s")
+            params.append(channel_config_id)
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
         with connect() as conn:
             rows = conn.execute(
                 f"""
-                SELECT tenant_id, binding_id, name, channel_type, agent_id,
+                SELECT tenant_id, binding_id, name, channel_type, channel_config_id, agent_id,
                        version, enabled, metadata
                 FROM platform_bindings
                 {where}
-                ORDER BY tenant_id, channel_type, binding_id
+                ORDER BY tenant_id, channel_type, channel_config_id, binding_id
                 """,
                 tuple(params),
             ).fetchall()
@@ -49,7 +53,7 @@ class PostgresChannelBindingRepository:
     ) -> ChannelBindingDefinition | None:
         if tenant_id:
             query = """
-                SELECT tenant_id, binding_id, name, channel_type, agent_id,
+                SELECT tenant_id, binding_id, name, channel_type, channel_config_id, agent_id,
                        version, enabled, metadata
                 FROM platform_bindings
                 WHERE tenant_id = %s AND binding_id = %s
@@ -57,7 +61,7 @@ class PostgresChannelBindingRepository:
             params = (tenant_id, binding_id)
         else:
             query = """
-                SELECT tenant_id, binding_id, name, channel_type, agent_id,
+                SELECT tenant_id, binding_id, name, channel_type, channel_config_id, agent_id,
                        version, enabled, metadata
                 FROM platform_bindings
                 WHERE binding_id = %s
@@ -75,6 +79,7 @@ class PostgresChannelBindingRepository:
         name: str,
         channel_type: str,
         agent_id: str,
+        channel_config_id: str = "",
         enabled: bool = True,
         metadata: dict[str, Any] | None = None,
     ) -> ChannelBindingDefinition:
@@ -84,10 +89,10 @@ class PostgresChannelBindingRepository:
                 row = conn.execute(
                     """
                     INSERT INTO platform_bindings
-                        (tenant_id, binding_id, name, channel_type, agent_id, version,
+                        (tenant_id, binding_id, name, channel_type, channel_config_id, agent_id, version,
                          enabled, metadata, created_at, updated_at)
-                    VALUES (%s, %s, %s, %s, %s, 1, %s, %s, %s, %s)
-                    RETURNING tenant_id, binding_id, name, channel_type, agent_id,
+                    VALUES (%s, %s, %s, %s, %s, %s, 1, %s, %s, %s, %s)
+                    RETURNING tenant_id, binding_id, name, channel_type, channel_config_id, agent_id,
                               version, enabled, metadata
                     """,
                     (
@@ -95,6 +100,7 @@ class PostgresChannelBindingRepository:
                         binding_id,
                         name,
                         channel_type,
+                        channel_config_id,
                         agent_id,
                         bool(enabled),
                         jsonb(metadata or {}),
@@ -114,6 +120,7 @@ class PostgresChannelBindingRepository:
         tenant_id: str = "",
         name: str | None = None,
         channel_type: str | None = None,
+        channel_config_id: str | None = None,
         agent_id: str | None = None,
         enabled: bool | None = None,
         metadata: dict[str, Any] | None = None,
@@ -124,15 +131,16 @@ class PostgresChannelBindingRepository:
             row = conn.execute(
                 """
                 UPDATE platform_bindings
-                SET name = %s, channel_type = %s, agent_id = %s, version = %s,
+                SET name = %s, channel_type = %s, channel_config_id = %s, agent_id = %s, version = %s,
                     enabled = %s, metadata = %s, updated_at = %s
                 WHERE tenant_id = %s AND binding_id = %s
-                RETURNING tenant_id, binding_id, name, channel_type, agent_id,
+                RETURNING tenant_id, binding_id, name, channel_type, channel_config_id, agent_id,
                           version, enabled, metadata
                 """,
                 (
                     current["name"] if name is None else name,
                     current["channel_type"] if channel_type is None else channel_type,
+                    current["channel_config_id"] if channel_config_id is None else channel_config_id,
                     current["agent_id"] if agent_id is None else agent_id,
                     version,
                     current["enabled"] if enabled is None else bool(enabled),
@@ -166,7 +174,7 @@ class PostgresChannelBindingRepository:
         with connect() as conn:
             row = conn.execute(
                 f"""
-                SELECT tenant_id, binding_id, name, channel_type, agent_id,
+                SELECT tenant_id, binding_id, name, channel_type, channel_config_id, agent_id,
                        version, enabled, metadata, created_at, updated_at
                 FROM platform_bindings
                 WHERE {where}
@@ -189,7 +197,7 @@ class PostgresChannelBindingRepository:
                 """
                 DELETE FROM platform_bindings
                 WHERE tenant_id = %s AND binding_id = %s
-                RETURNING tenant_id, binding_id, name, channel_type, agent_id,
+                RETURNING tenant_id, binding_id, name, channel_type, channel_config_id, agent_id,
                           version, enabled, metadata
                 """,
                 (current["tenant_id"], current["binding_id"]),
@@ -211,6 +219,7 @@ class PostgresChannelBindingRepository:
             name=record["name"],
             channel_type=record["channel_type"],
             agent_id=record["agent_id"],
+            channel_config_id=record.get("channel_config_id", "") or "",
             version=int(record.get("version", 1)),
             enabled=bool(record.get("enabled", True)),
             metadata=record.get("metadata", {}) or {},

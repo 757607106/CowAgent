@@ -41,7 +41,7 @@ import { useNavigate } from 'react-router-dom';
 import { PageTitle } from '../components/PageTitle';
 import { displayAgentName, useRuntimeScope } from '../context/runtime';
 import { api, formatAgentPayload } from '../services/api';
-import type { AgentItem, RuntimeScope, SkillItem, TenantItem, ToolItem } from '../types';
+import type { AgentItem, ModelConfigItem, RuntimeScope, SkillItem, TenantItem, ToolItem } from '../types';
 import { KnowledgePanel } from './KnowledgePage';
 import { MemoryPanel } from './MemoryPage';
 
@@ -49,7 +49,7 @@ interface AgentFormValues {
   tenant_id: string;
   agent_id: string;
   name: string;
-  model: string | string[];
+  model_config_id: string;
   system_prompt: string;
   tools: string[];
   skills: string[];
@@ -59,10 +59,7 @@ interface AgentFormValues {
 type AgentViewMode = 'table' | 'cards';
 type AgentBadgeStatus = 'success' | 'processing' | 'default' | 'warning' | 'error';
 
-function firstValue(input: string | string[] | undefined): string {
-  if (Array.isArray(input)) return input[0] || '';
-  return input || '';
-}
+const LEGACY_MODEL_PREFIX = 'legacy-model:';
 
 function selectedCountText(count: number): string {
   return count > 0 ? `${count} 已选择` : '未选择';
@@ -153,7 +150,7 @@ export default function AgentsPage() {
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [tools, setTools] = useState<ToolItem[]>([]);
   const [skills, setSkills] = useState<SkillItem[]>([]);
-  const [providerModels, setProviderModels] = useState<string[]>([]);
+  const [availableModels, setAvailableModels] = useState<ModelConfigItem[]>([]);
   const [createOpen, setCreateOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [detailSaving, setDetailSaving] = useState(false);
@@ -169,10 +166,31 @@ export default function AgentsPage() {
   const [createForm] = Form.useForm<AgentFormValues>();
   const [detailForm] = Form.useForm<AgentFormValues>();
 
-  const models = useMemo(() => {
-    const set = new Set([...providerModels, ...agents.map((agent) => agent.model).filter(Boolean)]);
-    return Array.from(set);
-  }, [providerModels, agents]);
+  const modelOptions = useMemo(() => {
+    const options = availableModels.map((item) => ({
+      label: `${item.display_name || item.model_name} (${item.provider})`,
+      value: item.model_config_id,
+    }));
+    const configuredIds = new Set(availableModels.map((item) => item.model_config_id));
+    const legacyModels = agents
+      .filter((agent) => agent.model && (!agent.model_config_id || !configuredIds.has(agent.model_config_id)))
+      .map((agent) => agent.model);
+    for (const model of Array.from(new Set(legacyModels))) {
+      options.push({ label: `${model}（历史配置）`, value: `${LEGACY_MODEL_PREFIX}${model}` });
+    }
+    return options;
+  }, [agents, availableModels]);
+
+  const resolveModelSelection = (selection: string) => {
+    if (selection.startsWith(LEGACY_MODEL_PREFIX)) {
+      return { model: selection.slice(LEGACY_MODEL_PREFIX.length), model_config_id: '' };
+    }
+    const config = availableModels.find((item) => item.model_config_id === selection);
+    return {
+      model: config?.model_name || '',
+      model_config_id: config?.model_config_id || '',
+    };
+  };
 
   const tenantNameById = useMemo(
     () => new Map(tenants.map((tenant) => [tenant.tenant_id, tenant.name])),
@@ -234,21 +252,16 @@ export default function AgentsPage() {
   };
 
   const loadCapabilities = async (tenant = tenantId, agentId = '') => {
-    const [toolData, skillData, configData] = await Promise.all([
+    const [toolData, skillData, modelData] = await Promise.all([
       api.listTools(),
       api.listSkills({ tenantId: tenant, agentId, bindingId: '' }),
-      api.getConfig(),
+      api.listAvailableModels(tenant),
     ]);
     const nextTools = toolData.tools || [];
     const nextSkills = skillData.skills || [];
     setTools(nextTools);
     setSkills(nextSkills);
-    const providers = (configData as Record<string, any>).providers || {};
-    const allModels: string[] = [];
-    for (const provider of Object.values(providers) as Array<{ models?: string[] }>) {
-      if (provider.models) allModels.push(...provider.models);
-    }
-    setProviderModels(Array.from(new Set(allModels)));
+    setAvailableModels(modelData.models || []);
     return { tools: nextTools, skills: nextSkills };
   };
 
@@ -259,7 +272,7 @@ export default function AgentsPage() {
       tenant_id: agent.tenant_id,
       agent_id: agent.agent_id,
       name: displayAgentName(agent.agent_id, agent.name),
-      model: agent.model,
+      model_config_id: agent.model_config_id || (agent.model ? `${LEGACY_MODEL_PREFIX}${agent.model}` : ''),
       system_prompt: agent.system_prompt || '',
       tools: nextTools,
       skills: nextSkills,
@@ -277,7 +290,7 @@ export default function AgentsPage() {
       tenant_id: tenantId,
       agent_id: '',
       name: '',
-      model: '',
+      model_config_id: availableModels[0]?.model_config_id || '',
       system_prompt: '',
       tools: [],
       skills: [],
@@ -304,11 +317,13 @@ export default function AgentsPage() {
   const onCreateSubmit = async () => {
     const values = await createForm.validateFields();
     const effectiveTenantId = values.tenant_id || tenantId || currentTenantId;
+    const modelSelection = resolveModelSelection(values.model_config_id || '');
     const payload = formatAgentPayload({
       tenant_id: effectiveTenantId,
       agent_id: values.agent_id || undefined,
       name: values.name,
-      model: firstValue(values.model),
+      model: modelSelection.model,
+      model_config_id: modelSelection.model_config_id,
       system_prompt: values.system_prompt,
       tools: values.tools || [],
       skills: values.skills || [],
@@ -339,11 +354,13 @@ export default function AgentsPage() {
     const nextSkills = inheritsDefaultSkills(selectedAgent) && sameNameSet(selectedSkills, allSkillNames)
       ? []
       : selectedSkills;
+    const modelSelection = resolveModelSelection(values.model_config_id || '');
     const payload = formatAgentPayload({
       tenant_id: selectedAgent.tenant_id,
       agent_id: selectedAgent.agent_id,
       name: values.name,
-      model: firstValue(values.model),
+      model: modelSelection.model,
+      model_config_id: modelSelection.model_config_id,
       system_prompt: values.system_prompt,
       tools: nextTools,
       skills: nextSkills,
@@ -452,14 +469,12 @@ export default function AgentsPage() {
                       <Form.Item name="name" label="员工名称" rules={[{ required: true, message: '请输入员工名称' }]}>
                         <Input placeholder="例如：支付通客服" />
                       </Form.Item>
-                      <Form.Item name="model" label="模型" rules={[{ required: true, message: '请选择模型' }]}>
+                      <Form.Item name="model_config_id" label="模型" rules={[{ required: true, message: '请选择模型' }]}>
                         <Select
                           showSearch
                           allowClear
-                          mode="tags"
-                          maxCount={1}
-                          options={models.map((model) => ({ label: model, value: model }))}
-                          placeholder="选择或输入模型名称"
+                          options={modelOptions}
+                          placeholder="选择平台或租户模型"
                         />
                       </Form.Item>
                     </div>
@@ -887,14 +902,12 @@ export default function AgentsPage() {
           <Form.Item name="name" label="员工名称" rules={[{ required: true, message: '请输入员工名称' }]}>
             <Input placeholder="例如：支付通客服" />
           </Form.Item>
-          <Form.Item name="model" label="模型" rules={[{ required: true, message: '请选择模型' }]}>
+          <Form.Item name="model_config_id" label="模型" rules={[{ required: true, message: '请选择模型' }]}>
             <Select
               showSearch
               allowClear
-              options={models.map((model) => ({ label: model, value: model }))}
-              placeholder="选择或输入模型名称"
-              mode="tags"
-              maxCount={1}
+              options={modelOptions}
+              placeholder="选择平台或租户模型"
             />
           </Form.Item>
           <Form.Item name="system_prompt" label="角色设定与行为准则">

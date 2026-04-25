@@ -67,12 +67,62 @@ _SCHEMA = [
     )
     """,
     """
+    CREATE TABLE IF NOT EXISTS platform_users (
+        user_id TEXT PRIMARY KEY,
+        name TEXT NOT NULL DEFAULT '',
+        role TEXT NOT NULL DEFAULT 'platform_super_admin',
+        status TEXT NOT NULL DEFAULT 'active',
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL
+    )
+    """,
+    """
+    CREATE TABLE IF NOT EXISTS platform_model_configs (
+        model_config_id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL,
+        tenant_id TEXT NOT NULL DEFAULT '',
+        provider TEXT NOT NULL,
+        model_name TEXT NOT NULL,
+        display_name TEXT NOT NULL DEFAULT '',
+        api_key TEXT NOT NULL DEFAULT '',
+        api_base TEXT NOT NULL DEFAULT '',
+        enabled BOOLEAN NOT NULL DEFAULT true,
+        is_public BOOLEAN NOT NULL DEFAULT true,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_by TEXT NOT NULL DEFAULT '',
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        CHECK (scope IN ('platform', 'tenant')),
+        CHECK (scope != 'tenant' OR tenant_id != '')
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_platform_model_configs_scope ON platform_model_configs (scope, tenant_id, enabled)",
+    """
+    CREATE TABLE IF NOT EXISTS platform_channel_configs (
+        tenant_id TEXT NOT NULL REFERENCES platform_tenants(tenant_id) ON DELETE CASCADE,
+        channel_config_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        channel_type TEXT NOT NULL,
+        config JSONB NOT NULL DEFAULT '{}'::jsonb,
+        enabled BOOLEAN NOT NULL DEFAULT true,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_by TEXT NOT NULL DEFAULT '',
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        PRIMARY KEY (tenant_id, channel_config_id),
+        UNIQUE (channel_config_id)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_platform_channel_configs_scope ON platform_channel_configs (tenant_id, channel_type, enabled)",
+    """
     CREATE TABLE IF NOT EXISTS platform_agents (
         tenant_id TEXT NOT NULL REFERENCES platform_tenants(tenant_id) ON DELETE CASCADE,
         agent_id TEXT NOT NULL,
         name TEXT NOT NULL,
         version INTEGER NOT NULL DEFAULT 1,
         model TEXT NOT NULL DEFAULT '',
+        model_config_id TEXT NOT NULL DEFAULT '',
         system_prompt TEXT NOT NULL DEFAULT '',
         metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
         tools JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -85,6 +135,7 @@ _SCHEMA = [
         PRIMARY KEY (tenant_id, agent_id)
     )
     """,
+    "ALTER TABLE platform_agents ADD COLUMN IF NOT EXISTS model_config_id TEXT NOT NULL DEFAULT ''",
     """
     CREATE TABLE IF NOT EXISTS platform_tenant_users (
         tenant_id TEXT NOT NULL REFERENCES platform_tenants(tenant_id) ON DELETE CASCADE,
@@ -118,6 +169,7 @@ _SCHEMA = [
         binding_id TEXT NOT NULL,
         name TEXT NOT NULL,
         channel_type TEXT NOT NULL,
+        channel_config_id TEXT NOT NULL DEFAULT '',
         agent_id TEXT NOT NULL,
         version INTEGER NOT NULL DEFAULT 1,
         enabled BOOLEAN NOT NULL DEFAULT true,
@@ -130,6 +182,8 @@ _SCHEMA = [
             REFERENCES platform_agents(tenant_id, agent_id) ON DELETE CASCADE
     )
     """,
+    "ALTER TABLE platform_bindings ADD COLUMN IF NOT EXISTS channel_config_id TEXT NOT NULL DEFAULT ''",
+    "CREATE INDEX IF NOT EXISTS idx_platform_bindings_channel_config ON platform_bindings (channel_config_id)",
     """
     CREATE TABLE IF NOT EXISTS platform_pricing (
         model TEXT PRIMARY KEY,

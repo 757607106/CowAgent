@@ -1,49 +1,12 @@
-import {
-  Alert,
-  Avatar,
-  Button,
-  Card,
-  Col,
-  Empty,
-  Input,
-  Popconfirm,
-  Row,
-  Select,
-  Space,
-  Spin,
-  Statistic,
-  Switch,
-  Tag,
-  Typography,
-  message,
-} from 'antd';
-import {
-  DisconnectOutlined,
-  LinkOutlined,
-  LockOutlined,
-  PlusOutlined,
-  QrcodeOutlined,
-  ReloadOutlined,
-  RobotOutlined,
-  SafetyCertificateOutlined,
-  SyncOutlined,
-  ThunderboltOutlined,
-  WechatOutlined,
-} from '@ant-design/icons';
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Alert, Button, Form, Input, InputNumber, Modal, Popconfirm, QRCode, Select, Space, Spin, Switch, Table, Tag, Typography, message } from 'antd';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { PageTitle } from '../components/PageTitle';
+import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
-import type { ChannelField, ChannelItem, WeixinQrInfo } from '../types';
+import type { ChannelConfigItem, ChannelField, ChannelItem, ChannelTypeItem, WeixinQrInfo } from '../types';
 
 const WECOM_BOT_SDK_URL = 'https://wwcdn.weixin.qq.com/node/wework/js/wecom-aibot-sdk@0.1.0.min.js';
 const WECOM_BOT_SOURCE = 'cowagent';
-
-type ChannelDraft = Record<string, string | number | boolean>;
-type SecretTouchedMap = Record<string, boolean>;
-type WecomAuthState = {
-  status: 'idle' | 'pending' | 'success' | 'error';
-  text?: string;
-};
 
 declare global {
   interface Window {
@@ -57,119 +20,66 @@ declare global {
   }
 }
 
-function getChannelLabel(channel: Pick<ChannelItem, 'name' | 'label'>): string {
-  return channel.label?.zh || channel.label?.en || channel.name;
+interface ChannelsPageProps {
+  embedded?: boolean;
 }
 
-function isMaskedSecret(value: unknown): boolean {
-  return typeof value === 'string' && value.includes('*');
+interface ChannelConfigFormValues {
+  name: string;
+  channel_type: string;
+  enabled: boolean;
+  config: Record<string, string | number | boolean>;
 }
 
-function getInitialDraft(channel: ChannelItem): ChannelDraft {
-  const next: ChannelDraft = {};
-  channel.fields.forEach((field) => {
-    next[field.key] = field.value ?? field.default ?? (field.type === 'bool' ? false : '');
-  });
-  return next;
+function channelTypeLabel(item: ChannelConfigItem, defs: ChannelTypeItem[]) {
+  return item.label || defs.find((def) => def.channel_type === item.channel_type)?.label || item.channel_type;
 }
 
-function getInitialSecretTouched(channel: ChannelItem): SecretTouchedMap {
-  const next: SecretTouchedMap = {};
-  channel.fields.forEach((field) => {
-    if (field.type === 'secret') {
-      next[field.key] = !isMaskedSecret(field.value);
-    }
-  });
-  return next;
-}
-
-function getStatusMeta(channel: ChannelItem): { color: string; text: string; tone: 'success' | 'processing' | 'warning' } {
-  if (!channel.active) {
-    return { color: 'default', text: '未接入', tone: 'warning' };
+function fieldInput(field: ChannelField) {
+  if (field.type === 'secret') {
+    return <Input.Password autoComplete="new-password" />;
   }
-
-  if (channel.name === 'weixin') {
-    if (channel.login_status === 'logged_in') {
-      return { color: 'green', text: '已连接', tone: 'success' };
-    }
-    if (channel.login_status === 'scanned' || channel.login_status === 'scaned') {
-      return { color: 'gold', text: '已扫码待确认', tone: 'processing' };
-    }
-    return { color: 'gold', text: '等待扫码恢复登录', tone: 'processing' };
+  if (field.type === 'number') {
+    return <InputNumber style={{ width: '100%' }} />;
   }
-
-  if (channel.name === 'wecom_bot' && !wecomBotHasCreds(channel)) {
-    return { color: 'gold', text: '等待授权完成', tone: 'processing' };
+  if (field.type === 'bool') {
+    return <Switch />;
   }
-
-  return { color: 'green', text: '已连接', tone: 'success' };
+  if (field.type === 'list') {
+    return <Input />;
+  }
+  if (field.key === 'feishu_event_mode') {
+    return (
+      <Select
+        options={[
+          { label: 'websocket', value: 'websocket' },
+          { label: 'webhook', value: 'webhook' },
+        ]}
+      />
+    );
+  }
+  return <Input />;
 }
 
-function getChannelAvatar(channel: ChannelItem) {
-  const styleMap: Record<string, { bg: string; color: string; icon: ReactNode }> = {
-    weixin: { bg: '#ecfdf5', color: '#059669', icon: <WechatOutlined /> },
-    wecom_bot: { bg: '#ecfdf5', color: '#059669', icon: <RobotOutlined /> },
-    feishu: { bg: '#eff4ff', color: '#1a6ff5', icon: <LinkOutlined /> },
-    dingtalk: { bg: '#eff4ff', color: '#1a6ff5', icon: <SafetyCertificateOutlined /> },
-    qq: { bg: '#eff4ff', color: '#4f46e5', icon: <ThunderboltOutlined /> },
-    wechatcom_app: { bg: '#ecfdf5', color: '#059669', icon: <SafetyCertificateOutlined /> },
-    wechatmp: { bg: '#ecfdf5', color: '#059669', icon: <WechatOutlined /> },
-  };
-  const current = styleMap[channel.name] || { bg: '#f5f7fa', color: '#4b5362', icon: <LinkOutlined /> };
-  return (
-    <Avatar style={{ background: current.bg, color: current.color }} icon={current.icon} />
-  );
-}
-
-function wecomBotHasCreds(channel: ChannelItem): boolean {
-  const botId = channel.fields.find((field) => field.key === 'wecom_bot_id')?.value;
-  const secret = channel.fields.find((field) => field.key === 'wecom_bot_secret')?.value;
-  return Boolean(botId && secret);
-}
-
-function buildPayloadFromDraft(
-  channel: ChannelItem,
-  draft: ChannelDraft,
-  secretTouched: SecretTouchedMap,
-): Record<string, string | number | boolean> {
-  const next: Record<string, string | number | boolean> = {};
-
-  channel.fields.forEach((field) => {
-    const rawValue = draft[field.key];
-    if (field.type === 'secret' && !secretTouched[field.key] && isMaskedSecret(rawValue)) {
-      return;
-    }
-
-    if (field.type === 'bool') {
-      next[field.key] = Boolean(rawValue);
-      return;
-    }
-
-    if (field.type === 'number') {
-      const normalized = rawValue === '' || rawValue === undefined || rawValue === null
-        ? field.default
-        : rawValue;
-      if (normalized === '' || normalized === undefined || normalized === null) {
-        return;
-      }
-      next[field.key] = Number(normalized);
-      return;
-    }
-
-    if (rawValue === undefined || rawValue === null) {
-      return;
-    }
-
-    next[field.key] = String(rawValue);
+function configValuesFromRow(row: ChannelConfigItem | null, typeDef?: ChannelTypeItem) {
+  const config: Record<string, string | number | boolean> = {};
+  typeDef?.fields.forEach((field) => {
+    const value = row?.config?.[field.key] ?? field.default ?? (field.type === 'bool' ? false : '');
+    config[field.key] = field.type === 'list' && Array.isArray(value) ? value.join(',') : value as string | number | boolean;
   });
+  return config;
+}
 
-  return next;
+function renderQrStatus(info: WeixinQrInfo | null): string {
+  if (!info?.qr_status) return '等待扫码';
+  if (info.qr_status === 'confirmed') return '扫码成功，正在启动微信渠道';
+  if (info.qr_status === 'scanned' || info.qr_status === 'scaned') return '已扫码，请在微信中确认';
+  if (info.qr_status === 'expired') return '二维码已过期，已自动刷新';
+  return '等待扫码';
 }
 
 async function ensureWecomSdkLoaded(): Promise<void> {
-  if (window.WecomAIBotSDK) {
-    return;
-  }
+  if (window.WecomAIBotSDK) return;
 
   await new Promise<void>((resolve, reject) => {
     const existing = document.querySelector<HTMLScriptElement>(`script[src="${WECOM_BOT_SDK_URL}"]`);
@@ -188,191 +98,169 @@ async function ensureWecomSdkLoaded(): Promise<void> {
   });
 }
 
-function renderQrStatus(info: WeixinQrInfo | null): string {
-  if (!info?.qr_status) return '等待扫码';
-  if (info.qr_status === 'confirmed') return '扫码成功，正在接入';
-  if (info.qr_status === 'scanned' || info.qr_status === 'scaned') return '已扫码，请在微信中确认';
-  if (info.qr_status === 'expired') return '二维码已过期，已自动刷新';
-  return '等待扫码';
-}
-
-interface ChannelsPageProps {
-  embedded?: boolean;
-}
-
 export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
-  const [channels, setChannels] = useState<ChannelItem[]>([]);
+  const { tenantId, authUser } = useRuntimeScope();
+  const canManage = authUser?.role === 'owner' || authUser?.role === 'admin';
   const [loading, setLoading] = useState(false);
-  const [drafts, setDrafts] = useState<Record<string, ChannelDraft>>({});
-  const [secretTouchedMap, setSecretTouchedMap] = useState<Record<string, SecretTouchedMap>>({});
-  const [savingChannel, setSavingChannel] = useState('');
-  const [disconnectingChannel, setDisconnectingChannel] = useState('');
-  const [connectingChannel, setConnectingChannel] = useState('');
-  const [selectedChannelName, setSelectedChannelName] = useState('');
-  const [weixinMode, setWeixinMode] = useState<'connect' | 'active' | null>(null);
-  const [weixinInfo, setWeixinInfo] = useState<WeixinQrInfo | null>(null);
-  const [weixinLoading, setWeixinLoading] = useState(false);
-  const [wecomMode, setWecomMode] = useState<'scan' | 'manual'>('scan');
-  const [wecomAuth, setWecomAuth] = useState<WecomAuthState>({ status: 'idle' });
+  const [submitting, setSubmitting] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [channelTypes, setChannelTypes] = useState<ChannelTypeItem[]>([]);
+  const [configs, setConfigs] = useState<ChannelConfigItem[]>([]);
+  const [legacyChannels, setLegacyChannels] = useState<ChannelItem[]>([]);
+  const [editing, setEditing] = useState<ChannelConfigItem | null>(null);
+  const [qrOpen, setQrOpen] = useState(false);
+  const [qrConfig, setQrConfig] = useState<ChannelConfigItem | null>(null);
+  const [qrInfo, setQrInfo] = useState<WeixinQrInfo | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+  const [wecomAuthorizingId, setWecomAuthorizingId] = useState('');
+  const qrTimerRef = useRef<number | null>(null);
+  const [form] = Form.useForm<ChannelConfigFormValues>();
+  const selectedType = Form.useWatch('channel_type', form);
 
-  const weixinQrTimerRef = useRef<number | null>(null);
-  const weixinStatusTimerRef = useRef<number | null>(null);
-  const mountedRef = useRef(true);
+  const typeOptions = useMemo(
+    () => channelTypes.map((item) => ({ label: `${item.label} (${item.channel_type})`, value: item.channel_type })),
+    [channelTypes],
+  );
+  const selectedTypeDef = channelTypes.find((item) => item.channel_type === selectedType);
+  const qrValue = qrInfo?.qrcode_url || '';
 
-  const syncChannelStates = (nextChannels: ChannelItem[], resetDrafts = false) => {
-    setChannels(nextChannels);
-    setDrafts((prev) => {
-      const next: Record<string, ChannelDraft> = {};
-      nextChannels.forEach((channel) => {
-        const initial = getInitialDraft(channel);
-        next[channel.name] = resetDrafts || !prev[channel.name]
-          ? initial
-          : { ...initial, ...prev[channel.name] };
-      });
-      return next;
-    });
-    setSecretTouchedMap((prev) => {
-      const next: Record<string, SecretTouchedMap> = {};
-      nextChannels.forEach((channel) => {
-        const initial = getInitialSecretTouched(channel);
-        next[channel.name] = resetDrafts || !prev[channel.name]
-          ? initial
-          : { ...initial, ...prev[channel.name] };
-      });
-      return next;
-    });
-  };
-
-  const clearWeixinTimers = () => {
-    if (weixinQrTimerRef.current) {
-      window.clearTimeout(weixinQrTimerRef.current);
-      weixinQrTimerRef.current = null;
-    }
-    if (weixinStatusTimerRef.current) {
-      window.clearTimeout(weixinStatusTimerRef.current);
-      weixinStatusTimerRef.current = null;
-    }
-  };
-
-  const loadChannels = async ({ resetDrafts = false, silent = false }: { resetDrafts?: boolean; silent?: boolean } = {}) => {
-    if (!silent) {
-      setLoading(true);
-    }
+  const load = async () => {
+    setLoading(true);
     try {
-      const data = await api.listChannels();
-      if (!mountedRef.current) return;
-      syncChannelStates(data.channels || [], resetDrafts);
+      const [data, legacyData] = await Promise.all([
+        api.listChannelConfigs(tenantId),
+        api.listChannels().catch(() => ({ channels: [] as ChannelItem[] })),
+      ]);
+      setChannelTypes(data.channel_types || []);
+      setConfigs(data.channel_configs || []);
+      setLegacyChannels(legacyData.channels || []);
     } finally {
-      if (!silent && mountedRef.current) {
-        setLoading(false);
-      }
+      setLoading(false);
     }
   };
 
-  const pollActiveWeixinStatus = () => {
-    clearWeixinTimers();
-    weixinStatusTimerRef.current = window.setTimeout(async () => {
-      try {
-        const data = await api.listChannels();
-        if (!mountedRef.current) return;
-        const list = data.channels || [];
-        syncChannelStates(list, false);
-        const weixinChannel = list.find((channel) => channel.name === 'weixin');
-        if (!weixinChannel || !weixinChannel.active) {
-          setWeixinInfo(null);
-          setWeixinMode(null);
-          return;
-        }
-        if (weixinChannel.login_status === 'logged_in') {
-          setWeixinInfo((prev) => (prev ? { ...prev, qr_status: 'confirmed' } : prev));
-          message.success('微信通道已恢复登录');
-          return;
-        }
-        setWeixinInfo((prev) => ({ ...(prev || { status: 'success' }), qr_status: weixinChannel.login_status }));
-        pollActiveWeixinStatus();
-      } catch {
-        if (mountedRef.current) {
-          pollActiveWeixinStatus();
-        }
-      }
-    }, 3000);
+  const clearQrTimer = () => {
+    if (qrTimerRef.current) {
+      window.clearTimeout(qrTimerRef.current);
+      qrTimerRef.current = null;
+    }
   };
 
-  const pollWeixinQrSession = () => {
-    clearWeixinTimers();
-    weixinQrTimerRef.current = window.setTimeout(async () => {
+  const pollWeixinQr = (channelConfigId: string) => {
+    clearQrTimer();
+    qrTimerRef.current = window.setTimeout(async () => {
       try {
-        const data = await api.weixinQrPost('poll');
-        if (!mountedRef.current) return;
-        setWeixinInfo(data);
-
+        const data = await api.weixinQrPost('poll', channelConfigId);
+        setQrInfo(data);
         if (data.qr_status === 'confirmed') {
-          message.success('微信扫码确认成功，正在接入渠道');
-          setConnectingChannel('weixin');
-          await api.channelAction({ action: 'connect', channel: 'weixin', config: {} });
-          await loadChannels({ resetDrafts: true, silent: true });
-          setConnectingChannel('');
-          setSelectedChannelName('');
-          setWeixinMode(null);
+          message.success('微信扫码确认成功');
+          clearQrTimer();
+          await load();
           return;
         }
-
-        pollWeixinQrSession();
+        pollWeixinQr(channelConfigId);
       } catch {
-        if (mountedRef.current) {
-          pollWeixinQrSession();
-        }
+        pollWeixinQr(channelConfigId);
       }
     }, 2000);
   };
 
-  const startWeixinQrLogin = async (mode: 'connect' | 'active') => {
-    clearWeixinTimers();
-    setWeixinMode(mode);
-    setWeixinLoading(true);
+  const openWeixinQr = async (row: ChannelConfigItem) => {
+    clearQrTimer();
+    setQrConfig(row);
+    setQrInfo(null);
+    setQrOpen(true);
+    setQrLoading(true);
     try {
-      const data = await api.weixinQrGet();
-      if (!mountedRef.current) return;
-      setWeixinInfo(data);
-      if (mode === 'active' || data.source === 'channel') {
-        pollActiveWeixinStatus();
-      } else {
-        pollWeixinQrSession();
-      }
+      const data = await api.weixinQrGet(row.channel_config_id);
+      setQrInfo(data);
+      pollWeixinQr(row.channel_config_id);
     } catch (error) {
       message.error(error instanceof Error ? error.message : '获取微信二维码失败');
     } finally {
-      if (mountedRef.current) {
-        setWeixinLoading(false);
-      }
+      setQrLoading(false);
     }
   };
 
-  const connectWecomByAuth = async (botId: string, secret: string) => {
-    setConnectingChannel('wecom_bot');
+  const refreshWeixinQr = async () => {
+    if (!qrConfig) return;
+    clearQrTimer();
+    setQrLoading(true);
     try {
-      await api.channelAction({
-        action: 'connect',
-        channel: 'wecom_bot',
-        config: {
-          wecom_bot_id: botId,
-          wecom_bot_secret: secret,
-        },
-      });
-      setWecomAuth({ status: 'success', text: '企微机器人授权成功，渠道正在接入。' });
-      await loadChannels({ resetDrafts: true, silent: true });
-      setSelectedChannelName('');
+      const data = await api.weixinQrPost('refresh', qrConfig.channel_config_id);
+      setQrInfo(data);
+      pollWeixinQr(qrConfig.channel_config_id);
     } catch (error) {
-      setWecomAuth({ status: 'error', text: error instanceof Error ? error.message : '企微授权失败' });
+      message.error(error instanceof Error ? error.message : '刷新微信二维码失败');
     } finally {
-      if (mountedRef.current) {
-        setConnectingChannel('');
-      }
+      setQrLoading(false);
     }
   };
 
-  const startWecomBotAuth = async () => {
-    setWecomAuth({ status: 'pending', text: '正在打开企微授权窗口...' });
+  const openCreate = () => {
+    const firstType = channelTypes[0]?.channel_type || 'feishu';
+    const typeDef = channelTypes.find((item) => item.channel_type === firstType);
+    setEditing(null);
+    form.setFieldsValue({
+      name: '',
+      channel_type: firstType,
+      enabled: true,
+      config: configValuesFromRow(null, typeDef),
+    });
+    setOpen(true);
+  };
+
+  const openEdit = (row: ChannelConfigItem) => {
+    const typeDef = channelTypes.find((item) => item.channel_type === row.channel_type);
+    setEditing(row);
+    form.setFieldsValue({
+      name: row.name,
+      channel_type: row.channel_type,
+      enabled: row.enabled,
+      config: configValuesFromRow(row, typeDef),
+    });
+    setOpen(true);
+  };
+
+  const submit = async () => {
+    const values = await form.validateFields();
+    setSubmitting(true);
+    try {
+      const payload = {
+        tenant_id: tenantId,
+        name: values.name,
+        channel_type: values.channel_type,
+        enabled: values.enabled ?? true,
+        config: values.config || {},
+      };
+      if (editing) {
+        await api.updateChannelConfig(editing.channel_config_id, payload);
+        message.success('渠道配置已更新');
+      } else {
+        const response = await api.createChannelConfig(payload) as { channel_config?: ChannelConfigItem };
+        message.success('渠道配置已创建');
+        if (response.channel_config?.channel_type === 'weixin') {
+          setOpen(false);
+          await load();
+          await openWeixinQr(response.channel_config);
+          return;
+        }
+      }
+      setOpen(false);
+      await load();
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const remove = async (row: ChannelConfigItem) => {
+    await api.deleteChannelConfig(row.tenant_id, row.channel_config_id);
+    message.success('渠道配置已删除');
+    await load();
+  };
+
+  const startWecomBotAuth = async (row: ChannelConfigItem) => {
+    setWecomAuthorizingId(row.channel_config_id);
     try {
       await ensureWecomSdkLoaded();
       if (!window.WecomAIBotSDK) {
@@ -380,535 +268,234 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
       }
       window.WecomAIBotSDK.openBotInfoAuthWindow({
         source: WECOM_BOT_SOURCE,
-        onCreated: (bot) => {
-          void connectWecomByAuth(bot.botid, bot.secret);
+        onCreated: async (bot) => {
+          try {
+            await api.updateChannelConfig(row.channel_config_id, {
+              tenant_id: tenantId,
+              enabled: true,
+              config: {
+                wecom_bot_id: bot.botid,
+                wecom_bot_secret: bot.secret,
+              },
+            });
+            message.success('企微机器人授权成功');
+            await load();
+          } catch (error) {
+            message.error(error instanceof Error ? error.message : '保存企微授权失败');
+          } finally {
+            setWecomAuthorizingId('');
+          }
         },
         onError: (error) => {
-          setWecomAuth({
-            status: 'error',
-            text: error.message || error.code || '企微授权失败',
-          });
+          setWecomAuthorizingId('');
+          message.error(error.message || error.code || '企微授权失败');
         },
       });
     } catch (error) {
-      setWecomAuth({ status: 'error', text: error instanceof Error ? error.message : '企微授权失败' });
-    }
-  };
-
-  const updateDraftValue = (channelName: string, field: ChannelField, value: string | number | boolean) => {
-    setDrafts((prev) => ({
-      ...prev,
-      [channelName]: {
-        ...(prev[channelName] || {}),
-        [field.key]: value,
-      },
-    }));
-
-    if (field.type === 'secret') {
-      setSecretTouchedMap((prev) => ({
-        ...prev,
-        [channelName]: {
-          ...(prev[channelName] || {}),
-          [field.key]: true,
-        },
-      }));
-    }
-  };
-
-  const handleSecretFocus = (channelName: string, field: ChannelField) => {
-    const currentValue = drafts[channelName]?.[field.key];
-    if (!isMaskedSecret(currentValue)) {
-      return;
-    }
-    updateDraftValue(channelName, field, '');
-  };
-
-  const saveChannelConfig = async (channel: ChannelItem) => {
-    setSavingChannel(channel.name);
-    try {
-      const config = buildPayloadFromDraft(channel, drafts[channel.name] || {}, secretTouchedMap[channel.name] || {});
-      await api.channelAction({ action: 'save', channel: channel.name, config });
-      message.success(channel.active ? '渠道配置已保存' : '配置已更新');
-      await loadChannels({ resetDrafts: true, silent: true });
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : '保存渠道配置失败');
-    } finally {
-      if (mountedRef.current) {
-        setSavingChannel('');
-      }
-    }
-  };
-
-  const connectSelectedChannel = async () => {
-    if (!selectedChannelName) {
-      return;
-    }
-
-    const target = channels.find((channel) => channel.name === selectedChannelName);
-    if (!target) {
-      return;
-    }
-
-    if (target.name === 'weixin') {
-      await startWeixinQrLogin('connect');
-      return;
-    }
-
-    if (target.name === 'wecom_bot' && wecomMode === 'scan') {
-      await startWecomBotAuth();
-      return;
-    }
-
-    setConnectingChannel(target.name);
-    try {
-      const config = buildPayloadFromDraft(target, drafts[target.name] || {}, secretTouchedMap[target.name] || {});
-      await api.channelAction({ action: 'connect', channel: target.name, config });
-      message.success(`${getChannelLabel(target)} 渠道接入请求已提交`);
-      setSelectedChannelName('');
-      setWeixinInfo(null);
-      setWeixinMode(null);
-      setWecomAuth({ status: 'idle' });
-      await loadChannels({ resetDrafts: true, silent: true });
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : '接入渠道失败');
-    } finally {
-      if (mountedRef.current) {
-        setConnectingChannel('');
-      }
-    }
-  };
-
-  const disconnectChannel = async (channel: ChannelItem) => {
-    setDisconnectingChannel(channel.name);
-    try {
-      await api.channelAction({ action: 'disconnect', channel: channel.name });
-      message.success(`${getChannelLabel(channel)} 已断开`);
-      if (channel.name === 'weixin') {
-        setWeixinInfo(null);
-        setWeixinMode(null);
-        clearWeixinTimers();
-      }
-      await loadChannels({ resetDrafts: true, silent: true });
-    } catch (error) {
-      message.error(error instanceof Error ? error.message : '断开渠道失败');
-    } finally {
-      if (mountedRef.current) {
-        setDisconnectingChannel('');
-      }
+      setWecomAuthorizingId('');
+      message.error(error instanceof Error ? error.message : '企微授权失败');
     }
   };
 
   useEffect(() => {
-    mountedRef.current = true;
-    void loadChannels({ resetDrafts: true });
-    return () => {
-      mountedRef.current = false;
-      clearWeixinTimers();
-    };
-  }, []);
+    void load();
+    return () => clearQrTimer();
+  }, [tenantId]);
 
-  useEffect(() => {
-    const channel = channels.find((item) => item.name === selectedChannelName);
-    if (!channel) {
-      setWeixinInfo(null);
-      setWeixinMode(null);
-      setWecomAuth({ status: 'idle' });
-      clearWeixinTimers();
-      return;
-    }
+  const legacyWeixinActive = legacyChannels.some((channel) => channel.name === 'weixin' && channel.active);
+  const tenantWeixinConfigs = configs.filter((config) => config.channel_type === 'weixin');
 
-    if (channel.name === 'wecom_bot') {
-      setWecomMode(wecomBotHasCreds(channel) ? 'manual' : 'scan');
-      setWecomAuth({ status: 'idle' });
-      clearWeixinTimers();
-      setWeixinInfo(null);
-      setWeixinMode(null);
-      return;
-    }
-
-    if (channel.name === 'weixin') {
-      void startWeixinQrLogin('connect');
-      setWecomAuth({ status: 'idle' });
-      return;
-    }
-
-    clearWeixinTimers();
-    setWeixinInfo(null);
-    setWeixinMode(null);
-    setWecomAuth({ status: 'idle' });
-  }, [selectedChannelName]);
-
-  const activeChannels = useMemo(() => channels.filter((channel) => channel.active), [channels]);
-  const availableChannels = useMemo(() => channels.filter((channel) => !channel.active), [channels]);
-  const waitingCount = useMemo(
-    () => activeChannels.filter((channel) => getStatusMeta(channel).tone !== 'success').length,
-    [activeChannels],
-  );
-  const selectedChannel = channels.find((channel) => channel.name === selectedChannelName) || null;
-  const pageBootstrapping = loading && channels.length === 0;
-
-  const renderField = (channel: ChannelItem, field: ChannelField) => {
-    const channelName = channel.name;
-    const value = drafts[channelName]?.[field.key] ?? '';
-
-    if (field.type === 'bool') {
-      return (
-        <div key={field.key} className="channel-field channel-field-switch">
-          <div>
-            <Typography.Text strong>{field.label}</Typography.Text>
-            <div className="channel-field-hint">开关配置会在保存或接入时生效。</div>
-          </div>
-          <Switch
-            checked={Boolean(value)}
-            onChange={(checked) => updateDraftValue(channelName, field, checked)}
-          />
-        </div>
-      );
-    }
-
-    return (
-      <div key={field.key} className="channel-field">
-        <Typography.Text strong>{field.label}</Typography.Text>
-        <Input
-          value={String(value ?? '')}
-          type={field.type === 'number' ? 'number' : 'text'}
-          placeholder={field.label}
-          onFocus={() => {
-            if (field.type === 'secret') {
-              handleSecretFocus(channelName, field);
-            }
-          }}
-          onChange={(event) => updateDraftValue(channelName, field, event.target.value)}
-          prefix={field.type === 'secret' ? <LockOutlined /> : undefined}
-        />
-      </div>
-    );
-  };
-
-  const toolbar = (
-    <Space>
-      <Button icon={<ReloadOutlined />} onClick={() => void loadChannels({ resetDrafts: true })}>
-        刷新渠道
-      </Button>
-    </Space>
-  );
-
-  return (
-    <div className={embedded ? 'channels-page channels-page-embedded' : 'channels-page'}>
-      {embedded ? (
-        <div className="channel-tab-toolbar">{toolbar}</div>
-      ) : (
+  const content = (
+    <>
+      {!embedded ? (
         <PageTitle
-          title="渠道管理"
-          description="按旧版能力补齐渠道接入、二维码授权和运行状态查看。"
-          extra={toolbar}
+          title="渠道配置"
+          description="维护本租户自己的飞书、公众号、QQ 等渠道接入密钥。"
+          extra={(
+            <Space>
+              <Button onClick={() => void load()}>刷新</Button>
+              {canManage && <Button type="primary" onClick={openCreate}>新增渠道配置</Button>}
+            </Space>
+          )}
         />
+      ) : (
+        <div className="channel-tab-toolbar">
+          <Space>
+            <Button onClick={() => void load()}>刷新</Button>
+            {canManage && <Button type="primary" onClick={openCreate}>新增渠道配置</Button>}
+          </Space>
+        </div>
       )}
 
-      <div className="console-summary-grid">
-        <Card>
-          <Statistic title="已接入渠道" value={pageBootstrapping ? '--' : activeChannels.length} prefix={<LinkOutlined />} />
-        </Card>
-        <Card>
-          <Statistic title="可新增渠道" value={pageBootstrapping ? '--' : availableChannels.length} prefix={<PlusOutlined />} />
-        </Card>
-        <Card>
-          <Statistic
-            title="待完成授权"
-            value={pageBootstrapping ? '--' : waitingCount}
-            prefix={<SyncOutlined spin={waitingCount > 0} />}
-          />
-        </Card>
-      </div>
+      {legacyWeixinActive ? (
+        <Alert
+          type={tenantWeixinConfigs.length ? 'info' : 'warning'}
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="检测到旧全局微信通道正在运行"
+          description={tenantWeixinConfigs.length
+            ? '当前服务仍有 config.json / 本机凭证启动的全局微信通道；租户级微信请以本页的微信渠道配置和绑定为准。'
+            : '这个微信登录态不属于任何租户，所以无法显示绑定在哪个租户上。请新建“微信”渠道配置并扫码迁移，确认后再从 config.json 的 channel_type 中移除 weixin。'}
+        />
+      ) : null}
 
-      <Row gutter={[16, 16]}>
-        <Col xs={24} xl={15}>
-          <Card
-            loading={pageBootstrapping}
-            title="已接入渠道"
-            extra={<Tag color={activeChannels.length ? 'green' : 'default'}>{activeChannels.length} 个在线渠道</Tag>}
-          >
-            {activeChannels.length === 0 ? (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description="当前还没有接入任何外部渠道。"
-              />
-            ) : (
-              <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                {activeChannels.map((channel) => {
-                  const status = getStatusMeta(channel);
-                  const needsWeixinQr = channel.name === 'weixin' && channel.login_status !== 'logged_in';
-                  const needsWecomAuth = channel.name === 'wecom_bot' && !wecomBotHasCreds(channel);
-
-                  return (
-                    <Card key={channel.name} className="channel-card">
-                      <div className="channel-card-header">
-                        <Space align="start" size={12}>
-                          {getChannelAvatar(channel)}
-                          <div>
-                            <Typography.Title level={5} style={{ margin: 0 }}>
-                              {getChannelLabel(channel)}
-                            </Typography.Title>
-                            <Typography.Text type="secondary" style={{ fontFamily: 'monospace' }}>
-                              {channel.name}
-                            </Typography.Text>
-                          </div>
-                        </Space>
-                        <Space wrap>
-                          <Tag color={status.color}>{status.text}</Tag>
-                          <Popconfirm
-                            title={`确认断开 ${getChannelLabel(channel)} 吗？`}
-                            onConfirm={() => void disconnectChannel(channel)}
-                          >
-                            <Button
-                              danger
-                              icon={<DisconnectOutlined />}
-                              loading={disconnectingChannel === channel.name}
-                            >
-                              断开
-                            </Button>
-                          </Popconfirm>
-                        </Space>
-                      </div>
-
-                      {needsWeixinQr ? (
-                        <Alert
-                          type="warning"
-                          showIcon
-                          message="微信通道已存在，但当前登录态未完成。"
-                          description="重新打开扫码面板后，扫描二维码即可恢复在线。"
-                          action={(
-                            <Button size="small" icon={<QrcodeOutlined />} onClick={() => void startWeixinQrLogin('active')}>
-                              打开扫码面板
-                            </Button>
-                          )}
-                          style={{ marginBottom: 16 }}
-                        />
-                      ) : null}
-
-                      {needsWecomAuth ? (
-                        <Alert
-                          type="info"
-                          showIcon
-                          message="企微机器人还未完成授权"
-                          description="可以重新发起扫码授权，也可以在下方直接补齐 Bot ID / Secret。"
-                          action={(
-                            <Button size="small" icon={<RobotOutlined />} onClick={() => void startWecomBotAuth()}>
-                              重新授权
-                            </Button>
-                          )}
-                          style={{ marginBottom: 16 }}
-                        />
-                      ) : null}
-
-                      {weixinMode === 'active' && weixinInfo && channel.name === 'weixin' ? (
-                        <div className="channel-qr-panel">
-                          <div>
-                            <Typography.Text strong>微信扫码登录</Typography.Text>
-                            <div className="channel-field-hint">{renderQrStatus(weixinInfo)}</div>
-                          </div>
-                          <div className="channel-qr-box">
-                            {weixinLoading ? <Spin /> : weixinInfo.qr_image ? <img src={weixinInfo.qr_image} alt="weixin-qr" /> : null}
-                          </div>
-                          <Space>
-                            <Button icon={<ReloadOutlined />} onClick={() => void startWeixinQrLogin('active')}>
-                              刷新二维码
-                            </Button>
-                            <Typography.Text type="secondary">
-                              {weixinInfo.qr_status === 'confirmed' ? '登录恢复成功' : '使用微信扫码后将自动轮询状态'}
-                            </Typography.Text>
-                          </Space>
-                        </div>
-                      ) : null}
-
-                      {channel.fields.length > 0 ? (
-                        <>
-                          <div className="channel-form-grid">
-                            {channel.fields.map((field) => renderField(channel, field))}
-                          </div>
-                          <div className="channel-card-actions">
-                            <Typography.Text type="secondary">
-                              密钥字段保持掩码时不会覆盖原值。
-                            </Typography.Text>
-                            <Button
-                              type="primary"
-                              loading={savingChannel === channel.name}
-                              onClick={() => void saveChannelConfig(channel)}
-                            >
-                              保存配置
-                            </Button>
-                          </div>
-                        </>
-                      ) : (
-                        <Typography.Text type="secondary">
-                          当前渠道没有额外配置项，可直接通过扫码或登录状态维持在线。
-                        </Typography.Text>
-                      )}
-                    </Card>
-                  );
-                })}
-              </Space>
-            )}
-          </Card>
-        </Col>
-
-        <Col xs={24} xl={9}>
-          <Card
-            loading={pageBootstrapping}
-            title="新增接入"
-            extra={availableChannels.length > 0 ? <Tag color="blue">{availableChannels.length} 个可接入</Tag> : null}
-          >
-            {availableChannels.length === 0 ? (
-              <Alert
-                type="success"
-                showIcon
-                message="所有渠道都已接入"
-                description="如果需要重新配置，请在左侧已接入渠道卡片中操作。"
-              />
-            ) : (
-              <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                <div className="channel-field">
-                  <Typography.Text strong>选择要接入的渠道</Typography.Text>
-                  <Select
-                    placeholder="请选择渠道"
-                    value={selectedChannelName || undefined}
-                    onChange={setSelectedChannelName}
-                    options={availableChannels.map((channel) => ({
-                      label: `${getChannelLabel(channel)} (${channel.name})`,
-                      value: channel.name,
-                    }))}
-                  />
-                </div>
-
-                {!selectedChannel ? (
-                  <Empty
-                    image={Empty.PRESENTED_IMAGE_SIMPLE}
-                    description="选择一个未接入渠道后即可开始配置或扫码授权。"
-                  />
-                ) : (
-                  <div className="channel-onboarding-panel">
-                    <div className="channel-onboarding-head">
-                      <Space size={12}>
-                        {getChannelAvatar(selectedChannel)}
-                        <div>
-                          <Typography.Title level={5} style={{ margin: 0 }}>
-                            {getChannelLabel(selectedChannel)}
-                          </Typography.Title>
-                          <Typography.Text type="secondary">{selectedChannel.name}</Typography.Text>
-                        </div>
-                      </Space>
-                    </div>
-
-                    {selectedChannel.name === 'weixin' ? (
-                      <div className="channel-qr-panel">
-                        <Alert
-                          type="info"
-                          showIcon
-                          message="微信接入需要扫码确认"
-                          description="二维码会自动刷新并轮询确认状态，扫码成功后会自动发起接入。"
-                        />
-                        <div className="channel-qr-box channel-qr-box-large">
-                          {weixinLoading ? <Spin /> : weixinInfo?.qr_image ? <img src={weixinInfo.qr_image} alt="weixin-qr" /> : null}
-                        </div>
-                        <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                          <Typography.Text strong>{renderQrStatus(weixinInfo)}</Typography.Text>
-                          <Typography.Text type="secondary">
-                            {weixinInfo?.message || '保持当前页面打开，确认后会自动接入微信通道。'}
-                          </Typography.Text>
-                        </Space>
-                        <Button icon={<ReloadOutlined />} onClick={() => void startWeixinQrLogin('connect')}>
-                          刷新二维码
-                        </Button>
-                      </div>
-                    ) : null}
-
-                    {selectedChannel.name === 'wecom_bot' ? (
-                      <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                        <div className="channel-mode-switch">
-                          <Button
-                            type={wecomMode === 'scan' ? 'primary' : 'default'}
-                            icon={<QrcodeOutlined />}
-                            onClick={() => setWecomMode('scan')}
-                          >
-                            扫码授权
-                          </Button>
-                          <Button
-                            type={wecomMode === 'manual' ? 'primary' : 'default'}
-                            icon={<LockOutlined />}
-                            onClick={() => setWecomMode('manual')}
-                          >
-                            手动填写
-                          </Button>
-                        </div>
-
-                        {wecomMode === 'scan' ? (
-                          <>
-                            <Alert
-                              type="info"
-                              showIcon
-                              message="使用企微官方授权窗口完成接入"
-                              description="点击下方按钮后会打开企微授权窗口，完成授权后自动回填 Bot ID 与 Secret。"
-                            />
-                            <Button
-                              type="primary"
-                              icon={<RobotOutlined />}
-                              loading={connectingChannel === 'wecom_bot' && wecomAuth.status === 'pending'}
-                              onClick={() => void startWecomBotAuth()}
-                            >
-                              发起企微授权
-                            </Button>
-                          </>
-                        ) : (
-                          <>
-                            <div className="channel-form-grid">
-                              {selectedChannel.fields.map((field) => renderField(selectedChannel, field))}
-                            </div>
-                            <Button
-                              type="primary"
-                              loading={connectingChannel === selectedChannel.name}
-                              onClick={() => void connectSelectedChannel()}
-                            >
-                              接入企微机器人
-                            </Button>
-                          </>
-                        )}
-
-                        {wecomAuth.status !== 'idle' ? (
-                          <Alert
-                            type={wecomAuth.status === 'error' ? 'error' : wecomAuth.status === 'success' ? 'success' : 'info'}
-                            showIcon
-                            message={wecomAuth.text}
-                          />
-                        ) : null}
-                      </Space>
-                    ) : null}
-
-                    {selectedChannel.name !== 'weixin' && selectedChannel.name !== 'wecom_bot' ? (
-                      <>
-                        <div className="channel-form-grid">
-                          {selectedChannel.fields.map((field) => renderField(selectedChannel, field))}
-                        </div>
-                        <div className="channel-card-actions">
-                          <Typography.Text type="secondary">
-                            可直接复用已保存配置，未修改的密钥不会被覆盖。
-                          </Typography.Text>
-                          <Button
-                            type="primary"
-                            loading={connectingChannel === selectedChannel.name}
-                            onClick={() => void connectSelectedChannel()}
-                          >
-                            发起接入
-                          </Button>
-                        </div>
-                      </>
-                    ) : null}
-                  </div>
+      <Table<ChannelConfigItem>
+        rowKey="channel_config_id"
+        loading={loading}
+        dataSource={configs}
+        pagination={{ pageSize: 12 }}
+        columns={[
+          { title: '名称', dataIndex: 'name' },
+          {
+            title: '渠道',
+            dataIndex: 'channel_type',
+            render: (_value: string, row) => <Tag color="blue">{channelTypeLabel(row, channelTypes)}</Tag>,
+          },
+          {
+            title: '状态',
+            dataIndex: 'enabled',
+            render: (value: boolean) => (value ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>),
+          },
+          {
+            title: '回调路径',
+            dataIndex: 'webhook_path',
+            render: (value: string, row) => {
+              if (row.channel_type === 'weixin') return <Typography.Text type="secondary">扫码登录</Typography.Text>;
+              return value ? <Typography.Text copyable code>{value}</Typography.Text> : <Typography.Text type="secondary">长连接</Typography.Text>;
+            },
+          },
+          {
+            title: '密钥',
+            render: (_, row) => {
+              const secretFields = (row.fields || []).filter((field) => field.type === 'secret');
+              if (!secretFields.length) return <Typography.Text type="secondary">无</Typography.Text>;
+              return (
+                <Space wrap size={[4, 4]}>
+                  {secretFields.map((field) => (
+                    <Tag key={field.key} color={field.secret_set ? 'green' : 'default'}>
+                      {field.label}{field.secret_set ? ' 已设置' : ' 未设置'}
+                    </Tag>
+                  ))}
+                </Space>
+              );
+            },
+          },
+          {
+            title: '操作',
+            render: (_, row) => canManage ? (
+              <Space>
+                {row.channel_type === 'weixin' && (
+                  <Button size="small" type="primary" onClick={() => void openWeixinQr(row)}>扫码登录</Button>
                 )}
+                {row.channel_type === 'wecom_bot' && (
+                  <Button
+                    size="small"
+                    type="primary"
+                    loading={wecomAuthorizingId === row.channel_config_id}
+                    onClick={() => void startWecomBotAuth(row)}
+                  >
+                    扫码授权
+                  </Button>
+                )}
+                <Button size="small" onClick={() => openEdit(row)}>编辑</Button>
+                <Popconfirm title="确认删除该渠道配置？相关绑定将无法继续路由。" onConfirm={() => void remove(row)}>
+                  <Button size="small" danger>删除</Button>
+                </Popconfirm>
               </Space>
-            )}
-          </Card>
-        </Col>
-      </Row>
-    </div>
+            ) : null,
+          },
+        ]}
+      />
+
+      <Modal
+        open={open}
+        title={editing ? '编辑渠道配置' : '新增渠道配置'}
+        onCancel={() => setOpen(false)}
+        onOk={() => void submit()}
+        confirmLoading={submitting}
+        destroyOnClose
+        width={720}
+      >
+        <Form form={form} layout="vertical">
+          <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
+            <Input />
+          </Form.Item>
+          <Form.Item name="channel_type" label="渠道类型" rules={[{ required: true, message: '请选择渠道类型' }]}>
+            <Select
+              showSearch
+              options={typeOptions}
+              disabled={Boolean(editing)}
+              onChange={(value) => {
+                const typeDef = channelTypes.find((item) => item.channel_type === value);
+                form.setFieldValue('config', configValuesFromRow(null, typeDef));
+              }}
+            />
+          </Form.Item>
+          {selectedTypeDef?.fields.map((field) => (
+            <Form.Item
+              key={field.key}
+              name={['config', field.key]}
+              label={field.type === 'secret' && editing ? `${field.label}（留空或保留掩码则不覆盖）` : field.label}
+              valuePropName={field.type === 'bool' ? 'checked' : 'value'}
+            >
+              {fieldInput(field)}
+            </Form.Item>
+          ))}
+          <Form.Item name="enabled" label="启用" valuePropName="checked">
+            <Switch />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
+        open={qrOpen}
+        title={qrConfig ? `${qrConfig.name} - 微信扫码登录` : '微信扫码登录'}
+        onCancel={() => {
+          setQrOpen(false);
+          clearQrTimer();
+        }}
+        footer={(
+          <Space>
+            <Button onClick={() => {
+              setQrOpen(false);
+              clearQrTimer();
+            }}>关闭</Button>
+            <Button onClick={() => void refreshWeixinQr()} loading={qrLoading}>刷新二维码</Button>
+          </Space>
+        )}
+        width={520}
+      >
+        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <Alert
+            type="info"
+            showIcon
+            message="使用微信扫码确认"
+            description="扫码成功后，Bot Token 会写入当前租户的渠道配置，并自动启动该微信渠道。"
+          />
+          <div className="channel-qr-box channel-qr-box-large">
+            {qrLoading ? (
+              <Spin />
+            ) : qrValue ? (
+              <QRCode value={qrValue} size={240} bordered={false} />
+            ) : qrInfo?.qr_image ? (
+              <img src={qrInfo.qr_image} alt="weixin-qr" />
+            ) : null}
+          </div>
+          <Space direction="vertical" size={4}>
+            <Typography.Text strong>{renderQrStatus(qrInfo)}</Typography.Text>
+            <Typography.Text type="secondary">
+              {qrInfo?.message || '保持弹窗打开，确认后系统会自动更新渠道配置。'}
+            </Typography.Text>
+            {qrValue ? (
+              <Typography.Text type="secondary" copyable={{ text: qrValue }}>
+                二维码链接
+              </Typography.Text>
+            ) : null}
+          </Space>
+        </Space>
+      </Modal>
+    </>
   );
+
+  return embedded ? content : <div>{content}</div>;
 }

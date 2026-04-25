@@ -231,6 +231,9 @@ class Config(dict):
         # 跳过以下划线开头的注释字段
         if not key.startswith("_") and key not in available_setting:
             logger.warning("[Config] key '{}' not in available_setting, may not take effect".format(key))
+        override_found, override_value = self._get_runtime_override(key)
+        if override_found:
+            return override_value
         return super().__getitem__(key)
 
     def __setitem__(self, key, value):
@@ -243,6 +246,10 @@ class Config(dict):
         # 跳过以下划线开头的注释字段
         if key.startswith("_"):
             return super().get(key, default)
+
+        override_found, override_value = self._get_runtime_override(key)
+        if override_found:
+            return override_value
         
         # 如果key不在available_setting中，直接返回default
         if key not in available_setting:
@@ -254,6 +261,18 @@ class Config(dict):
             return default
         except Exception as e:
             raise e
+
+    @staticmethod
+    def _get_runtime_override(key):
+        try:
+            from cow_platform.runtime.scope import get_current_config_overrides
+
+            overrides = get_current_config_overrides()
+            if key in overrides:
+                return True, overrides[key]
+        except Exception:
+            pass
+        return False, None
 
     # Make sure to return a dictionary to ensure atomic
     def get_user_data(self, user) -> dict:

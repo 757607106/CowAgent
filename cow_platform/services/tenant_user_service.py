@@ -275,7 +275,7 @@ class TenantUserService:
         TenantAuthService._validate_password(resolved_password)
         if not resolved_account:
             resolved_account = self._normalize_account(fallback_account)
-        if self._find_users_by_account(resolved_account):
+        if self._find_users_by_account(resolved_account) or self._find_platform_users_by_account(resolved_account):
             raise ValueError("account already registered")
 
         resolved_metadata = dict(metadata)
@@ -305,6 +305,19 @@ class TenantUserService:
             for user in self.repository.list_users()
             if self._get_auth_account(user.metadata) == account
         ]
+
+    @classmethod
+    def _find_platform_users_by_account(cls, account: str) -> list[Any]:
+        try:
+            from cow_platform.services.platform_user_service import PlatformUserService
+
+            return [
+                user
+                for user in PlatformUserService().list_users()
+                if cls._get_auth_account(user.metadata) == account
+            ]
+        except Exception:
+            return []
 
     @staticmethod
     def _sanitize_user_record(record: dict[str, Any]) -> dict[str, Any]:

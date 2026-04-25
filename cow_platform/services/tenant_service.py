@@ -72,6 +72,10 @@ class TenantService:
         )
         return self.serialize_tenant(definition)
 
+    def delete_tenant(self, tenant_id: str) -> dict[str, Any]:
+        definition = self.repository.delete_tenant(tenant_id=tenant_id)
+        return self.serialize_tenant(definition)
+
     def serialize_tenant(self, definition: TenantDefinition) -> dict[str, Any]:
         return self.repository.export_record(definition)
 

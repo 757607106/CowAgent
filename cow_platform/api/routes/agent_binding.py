@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 
 from cow_platform.api.security import MANAGE_ROLES, PlatformAuthorizer
 from cow_platform.api.schemas import (
@@ -57,6 +57,7 @@ def register_agent_binding_routes(
                 agent_id=payload.agent_id,
                 name=payload.name,
                 model=payload.model,
+                model_config_id=payload.model_config_id,
                 system_prompt=payload.system_prompt,
                 tools=payload.tools,
                 skills=payload.skills,
@@ -85,6 +86,7 @@ def register_agent_binding_routes(
                 tenant_id=tenant_id,
                 name=payload.name,
                 model=payload.model,
+                model_config_id=payload.model_config_id,
                 system_prompt=payload.system_prompt,
                 tools=payload.tools,
                 skills=payload.skills,
@@ -128,7 +130,12 @@ def register_agent_binding_routes(
         return {"status": "success", "agent": deleted, "agent_id": agent_id}
 
     @app.get("/api/platform/bindings")
-    def list_bindings(request: Request, tenant_id: str = "", channel_type: str = "") -> dict[str, object]:
+    def list_bindings(
+        request: Request,
+        tenant_id: str = "",
+        channel_type: str = "",
+        channel_config_id: str = "",
+    ) -> dict[str, object]:
         session = authorizer.require_session(request)
         tenant_id = authorizer.scope_tenant_id(session, tenant_id)
         return {
@@ -136,6 +143,7 @@ def register_agent_binding_routes(
             "bindings": binding_service.list_binding_records(
                 tenant_id=tenant_id,
                 channel_type=channel_type,
+                channel_config_id=channel_config_id,
             ),
         }
 
@@ -143,7 +151,10 @@ def register_agent_binding_routes(
     def get_binding(binding_id: str, request: Request, tenant_id: str = "") -> dict[str, object]:
         session = authorizer.require_session(request)
         tenant_id = authorizer.scope_tenant_id(session, tenant_id)
-        definition = binding_service.resolve_binding(binding_id=binding_id, tenant_id=tenant_id)
+        try:
+            definition = binding_service.resolve_binding(binding_id=binding_id, tenant_id=tenant_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
         return {
             "status": "success",
             "binding": binding_service.serialize_binding(definition),
@@ -153,18 +164,22 @@ def register_agent_binding_routes(
     def create_binding(payload: BindingCreateRequest, request: Request) -> dict[str, object]:
         session = authorizer.require_session(request, roles=MANAGE_ROLES)
         tenant_id = authorizer.scope_tenant_id(session, payload.tenant_id)
-        result = {
-            "status": "success",
-            "binding": binding_service.create_binding(
+        try:
+            binding = binding_service.create_binding(
                 tenant_id=tenant_id,
                 binding_id=payload.binding_id,
                 name=payload.name,
                 channel_type=payload.channel_type,
+                channel_config_id=payload.channel_config_id,
                 agent_id=payload.agent_id,
                 enabled=payload.enabled,
                 metadata=payload.metadata,
-            ),
-        }
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        result = {"status": "success", "binding": binding}
         record_audit(
             action="create_binding",
             resource_type="binding",
@@ -178,18 +193,24 @@ def register_agent_binding_routes(
     def update_binding(binding_id: str, payload: BindingUpdateRequest, request: Request) -> dict[str, object]:
         session = authorizer.require_session(request, roles=MANAGE_ROLES)
         tenant_id = authorizer.scope_tenant_id(session, payload.tenant_id or "")
-        result = {
-            "status": "success",
-            "binding": binding_service.update_binding(
+        try:
+            binding = binding_service.update_binding(
                 binding_id=binding_id,
                 tenant_id=tenant_id,
                 name=payload.name,
                 channel_type=payload.channel_type,
+                channel_config_id=payload.channel_config_id,
                 agent_id=payload.agent_id,
                 enabled=payload.enabled,
                 metadata=payload.metadata,
-            ),
-        }
+            )
+        except PermissionError as exc:
+            raise HTTPException(status_code=403, detail=str(exc)) from exc
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        result = {"status": "success", "binding": binding}
         record_audit(
             action="update_binding",
             resource_type="binding",
@@ -203,10 +224,11 @@ def register_agent_binding_routes(
     def delete_binding(binding_id: str, request: Request, tenant_id: str = "") -> dict[str, object]:
         session = authorizer.require_session(request, roles=MANAGE_ROLES)
         tenant_id = authorizer.scope_tenant_id(session, tenant_id)
-        result = {
-            "status": "success",
-            "binding": binding_service.delete_binding(binding_id=binding_id, tenant_id=tenant_id),
-        }
+        try:
+            binding = binding_service.delete_binding(binding_id=binding_id, tenant_id=tenant_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        result = {"status": "success", "binding": binding}
         record_audit(
             action="delete_binding",
             resource_type="binding",

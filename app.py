@@ -57,6 +57,9 @@ class ChannelManager:
     def get_channel(self, channel_name: str):
         return self._channels.get(channel_name)
 
+    def get_channel_config(self, channel_config_id: str):
+        return self._channels.get(channel_config_id)
+
     def start(self, channel_names: list, first_start: bool = False):
         """
         Create and start one or more channels in sub-threads.
@@ -114,9 +117,76 @@ class ChannelManager:
                 t.start()
                 logger.debug(f"[ChannelManager] Channel '{name}' started in sub-thread")
 
+    def start_channel_config(self, definition):
+        """Start one tenant channel config when the channel needs a managed runtime."""
+        channel_type = getattr(definition, "channel_type", "")
+        channel_config_id = getattr(definition, "channel_config_id", "")
+        if not channel_type or not channel_config_id:
+            return
+
+        from cow_platform.services.channel_config_service import ChannelConfigService
+
+        service = ChannelConfigService()
+        overrides = service.build_runtime_overrides(definition)
+        if channel_type in ("wechatmp", "wechatmp_service"):
+            logger.info(
+                f"[ChannelManager] Channel config '{channel_config_id}' uses web callback routing; no background runtime needed"
+            )
+            return
+        if channel_type == const.WEIXIN and not str(overrides.get("weixin_token", "") or "").strip():
+            logger.info(
+                f"[ChannelManager] Weixin config '{channel_config_id}' is waiting for QR login; no runtime started"
+            )
+            return
+        if channel_type == const.FEISHU and str(overrides.get("feishu_event_mode", "websocket")) != "websocket":
+            logger.info(
+                f"[ChannelManager] Feishu config '{channel_config_id}' uses webhook mode; no websocket runtime needed"
+            )
+            return
+
+        with self._lock:
+            existing = self._channels.get(channel_config_id)
+        if existing is not None:
+            self.remove_channel_config(channel_config_id)
+
+        logger.info(f"[ChannelManager] Starting tenant channel config '{channel_config_id}' ({channel_type})")
+        _clear_singleton_cache(channel_type)
+        from cow_platform.runtime.scope import activate_config_overrides
+
+        with activate_config_overrides(overrides):
+            ch = channel_factory.create_channel(channel_type, singleton_key=channel_config_id)
+        ch.cloud_mode = self.cloud_mode
+        ch.channel_config_id = channel_config_id
+        ch.tenant_id = getattr(definition, "tenant_id", "")
+        ch.config_overrides = overrides
+
+        with self._lock:
+            self._channels[channel_config_id] = ch
+        t = threading.Thread(target=self._run_channel, args=(channel_config_id, ch), daemon=True)
+        with self._lock:
+            self._threads[channel_config_id] = t
+        t.start()
+        logger.debug(f"[ChannelManager] Tenant channel config '{channel_config_id}' started in sub-thread")
+
+    def start_channel_configs(self, definitions: list):
+        for definition in definitions:
+            try:
+                self.start_channel_config(definition)
+            except Exception as e:
+                logger.error(
+                    f"[ChannelManager] Failed to start channel config '{getattr(definition, 'channel_config_id', '')}': {e}"
+                )
+                logger.exception(e)
+
+    def remove_channel_config(self, channel_config_id: str):
+        self.stop(channel_config_id)
+
     def _run_channel(self, name: str, channel):
         try:
-            channel.startup()
+            from cow_platform.runtime.scope import activate_config_overrides
+
+            with activate_config_overrides(getattr(channel, "config_overrides", {}) or {}):
+                channel.startup()
         except Exception as e:
             logger.error(f"[ChannelManager] Channel '{name}' startup error: {e}")
             logger.exception(e)
@@ -303,6 +373,12 @@ def run():
 
         _channel_mgr = ChannelManager()
         _channel_mgr.start(channel_names, first_start=True)
+        try:
+            from cow_platform.services.channel_config_service import ChannelConfigService
+
+            _channel_mgr.start_channel_configs(ChannelConfigService().list_enabled_runtime_configs())
+        except Exception as e:
+            logger.warning(f"[App] Failed to auto-start tenant channel configs: {e}")
 
         while True:
             time.sleep(1)

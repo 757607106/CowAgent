@@ -38,6 +38,7 @@ client_config.json
 ref/
 **/.dev.vars
 .cursor/
+.qoder/
 local/
 node_modules/
 

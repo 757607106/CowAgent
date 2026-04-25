@@ -4,7 +4,7 @@ from collections.abc import Callable
 
 from fastapi import FastAPI, HTTPException, Request
 
-from cow_platform.api.schemas import TenantLoginRequest, TenantRegisterRequest
+from cow_platform.api.schemas import PlatformAdminRegisterRequest, TenantLoginRequest, TenantRegisterRequest
 from cow_platform.services.auth_service import TenantAuthService
 
 
@@ -37,6 +37,34 @@ def register_auth_routes(
                     password=payload.password,
                 )
             _record_registration_audit(result, record_audit)
+            return {
+                "status": "success",
+                **result,
+                "user": session.to_public_dict(),
+                "token": auth_service.create_session_token(session),
+            }
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/api/platform/auth/register-platform-admin")
+    def register_platform_admin(payload: PlatformAdminRegisterRequest) -> dict[str, object]:
+        try:
+            result = auth_service.register_platform_admin(
+                account=payload.account,
+                password=payload.password,
+                name=payload.name,
+            )
+            session = auth_service.authenticate_account(
+                account=payload.account,
+                password=payload.password,
+            )
+            if record_audit:
+                record_audit(
+                    action="create_platform_admin",
+                    resource_type="platform_user",
+                    resource_id=str(result["platform_user"]["user_id"]),
+                    metadata={"account": payload.account},
+                )
             return {
                 "status": "success",
                 **result,

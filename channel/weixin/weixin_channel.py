@@ -449,6 +449,10 @@ class WeixinChannel(ChatChannel):
         context.kwargs = kwargs
         if "channel_type" not in context:
             context["channel_type"] = self.channel_type
+        if self.channel_config_id and "channel_config_id" not in context:
+            context["channel_config_id"] = self.channel_config_id
+        if self.tenant_id and "source_tenant_id" not in context:
+            context["source_tenant_id"] = self.tenant_id
         if "origin_ctype" not in context:
             context["origin_ctype"] = ctype
 

@@ -12,6 +12,7 @@ from typing import Any
 
 from cow_platform.db import connect
 from cow_platform.services.agent_service import AgentService
+from cow_platform.services.platform_user_service import PLATFORM_SUPER_ADMIN_ROLE, PlatformUserService
 from cow_platform.services.tenant_service import TenantService
 from cow_platform.services.tenant_user_service import TenantUserService
 
@@ -26,6 +27,7 @@ class TenantAuthSession:
     user_id: str
     role: str
     expires_at: int
+    principal_type: str = "tenant"
     tenant_name: str = ""
     user_name: str = ""
     account: str = ""
@@ -36,6 +38,7 @@ class TenantAuthSession:
             "user_id": self.user_id,
             "role": self.role,
             "expires_at": self.expires_at,
+            "principal_type": self.principal_type,
         }
         if self.tenant_name:
             data["tenant_name"] = self.tenant_name
@@ -55,6 +58,7 @@ class TenantAuthService:
         tenant_service: TenantService | None = None,
         tenant_user_service: TenantUserService | None = None,
         agent_service: AgentService | None = None,
+        platform_user_service: PlatformUserService | None = None,
         session_expire_seconds: int = 30 * 86400,
     ):
         self.tenant_service = tenant_service or TenantService()
@@ -62,7 +66,30 @@ class TenantAuthService:
             tenant_service=self.tenant_service,
         )
         self.agent_service = agent_service or AgentService(tenant_service=self.tenant_service)
+        self.platform_user_service = platform_user_service or PlatformUserService()
         self.session_expire_seconds = session_expire_seconds
+
+    def register_platform_admin(
+        self,
+        *,
+        account: str,
+        password: str,
+        name: str = "",
+    ) -> dict[str, Any]:
+        resolved_account = self._normalize_account(account)
+        if not resolved_account:
+            raise ValueError("account must not be empty")
+        if self.has_platform_admin():
+            raise ValueError("platform admin already exists")
+        self._validate_password(password)
+        self._ensure_account_available(resolved_account)
+        return {
+            "platform_user": self.platform_user_service.create_platform_admin(
+                account=resolved_account,
+                password=password,
+                name=name,
+            )
+        }
 
     def register_tenant(
         self,
@@ -138,6 +165,18 @@ class TenantAuthService:
 
     def authenticate_account(self, *, account: str, password: str) -> TenantAuthSession:
         resolved_account = self._normalize_required("account", self._normalize_account(account))
+        platform_matches = self._find_platform_users_by_account(resolved_account)
+        if platform_matches:
+            if len(platform_matches) != 1:
+                raise PermissionError("invalid account or password")
+            platform_user = platform_matches[0]
+            if platform_user.status != "active" or platform_user.role != PLATFORM_SUPER_ADMIN_ROLE:
+                raise PermissionError("invalid account or password")
+            password_hash = self._get_password_hash(platform_user.metadata)
+            if not password_hash or not self.verify_password(password, password_hash):
+                raise PermissionError("invalid account or password")
+            return self._build_platform_session(platform_user)
+
         matches = self._find_users_by_account(resolved_account)
         if len(matches) != 1:
             raise PermissionError("invalid account or password")
@@ -159,11 +198,15 @@ class TenantAuthService:
                 return True
         return False
 
+    def has_platform_admin(self) -> bool:
+        return self.platform_user_service.has_platform_admin()
+
     def create_session_token(self, session: TenantAuthSession) -> str:
         payload = {
             "tenant_id": session.tenant_id,
             "user_id": session.user_id,
             "role": session.role,
+            "principal_type": session.principal_type,
             "exp": session.expires_at,
             "iat": int(time.time()),
         }
@@ -195,10 +238,31 @@ class TenantAuthService:
         if expires_at <= int(time.time()):
             return None
 
+        principal_type = str(payload.get("principal_type", "tenant") or "tenant").strip() or "tenant"
         tenant_id = str(payload.get("tenant_id", "")).strip()
         user_id = str(payload.get("user_id", "")).strip()
         role = str(payload.get("role", "")).strip()
-        if not tenant_id or not user_id or not role:
+        if not user_id or not role:
+            return None
+
+        if principal_type == "platform":
+            try:
+                platform_user = self.platform_user_service.resolve_user(user_id)
+            except Exception:
+                return None
+            if platform_user.status != "active" or platform_user.role != PLATFORM_SUPER_ADMIN_ROLE:
+                return None
+            return TenantAuthSession(
+                tenant_id="",
+                user_id=platform_user.user_id,
+                role=platform_user.role,
+                expires_at=expires_at,
+                principal_type="platform",
+                user_name=platform_user.name,
+                account=self._get_auth_account(platform_user.metadata),
+            )
+
+        if not tenant_id:
             return None
 
         try:
@@ -214,6 +278,7 @@ class TenantAuthService:
             user_id=user_id,
             role=user.role,
             expires_at=expires_at,
+            principal_type="tenant",
             tenant_name=tenant.name,
             user_name=user.name,
             account=self._get_auth_account(user.metadata),
@@ -300,19 +365,38 @@ class TenantAuthService:
             user_id=user.user_id,
             role=user.role,
             expires_at=int(time.time()) + self.session_expire_seconds,
+            principal_type="tenant",
             tenant_name=tenant.name,
             user_name=user.name,
             account=self._get_auth_account(user.metadata),
         )
 
+    def _build_platform_session(self, platform_user: Any) -> TenantAuthSession:
+        return TenantAuthSession(
+            tenant_id="",
+            user_id=platform_user.user_id,
+            role=platform_user.role,
+            expires_at=int(time.time()) + self.session_expire_seconds,
+            principal_type="platform",
+            user_name=platform_user.name,
+            account=self._get_auth_account(platform_user.metadata),
+        )
+
     def _ensure_account_available(self, account: str) -> None:
-        if self._find_users_by_account(account):
+        if self._find_users_by_account(account) or self._find_platform_users_by_account(account):
             raise ValueError("account already registered")
 
     def _find_users_by_account(self, account: str) -> list[Any]:
         return [
             user
             for user in self.tenant_user_service.list_users()
+            if self._get_auth_account(user.metadata) == account
+        ]
+
+    def _find_platform_users_by_account(self, account: str) -> list[Any]:
+        return [
+            user
+            for user in self.platform_user_service.list_users()
             if self._get_auth_account(user.metadata) == account
         ]
 

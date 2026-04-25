@@ -37,7 +37,7 @@ class PostgresAgentRepository:
         with connect() as conn:
             rows = conn.execute(
                 """
-                SELECT tenant_id, agent_id, name, version, model, system_prompt,
+                SELECT tenant_id, agent_id, name, version, model, model_config_id, system_prompt,
                        metadata, tools, skills, knowledge_enabled, mcp_servers
                 FROM platform_agents
                 WHERE tenant_id = %s
@@ -51,7 +51,7 @@ class PostgresAgentRepository:
         with connect() as conn:
             row = conn.execute(
                 """
-                SELECT tenant_id, agent_id, name, version, model, system_prompt,
+                SELECT tenant_id, agent_id, name, version, model, model_config_id, system_prompt,
                        metadata, tools, skills, knowledge_enabled, mcp_servers
                 FROM platform_agents
                 WHERE tenant_id = %s AND agent_id = %s
@@ -66,6 +66,7 @@ class PostgresAgentRepository:
         agent_id: str,
         name: str,
         model: str = "",
+        model_config_id: str = "",
         system_prompt: str = "",
         metadata: dict[str, Any] | None = None,
         tools: tuple[str, ...] | list[str] | None = None,
@@ -83,6 +84,7 @@ class PostgresAgentRepository:
                 "version": 1,
                 "name": name,
                 "model": model,
+                "model_config_id": model_config_id,
                 "system_prompt": system_prompt,
                 "metadata": metadata_obj,
                 "tools": tools_list,
@@ -97,11 +99,11 @@ class PostgresAgentRepository:
                 row = conn.execute(
                     """
                     INSERT INTO platform_agents
-                        (tenant_id, agent_id, name, version, model, system_prompt,
+                        (tenant_id, agent_id, name, version, model, model_config_id, system_prompt,
                          metadata, tools, skills, knowledge_enabled, mcp_servers,
                          versions, created_at, updated_at)
-                    VALUES (%s, %s, %s, 1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    RETURNING tenant_id, agent_id, name, version, model, system_prompt,
+                    VALUES (%s, %s, %s, 1, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING tenant_id, agent_id, name, version, model, model_config_id, system_prompt,
                               metadata, tools, skills, knowledge_enabled, mcp_servers
                     """,
                     (
@@ -109,6 +111,7 @@ class PostgresAgentRepository:
                         agent_id,
                         name,
                         model,
+                        model_config_id,
                         system_prompt,
                         jsonb(metadata_obj),
                         jsonb(tools_list),
@@ -132,6 +135,7 @@ class PostgresAgentRepository:
         *,
         name: str | None = None,
         model: str | None = None,
+        model_config_id: str | None = None,
         system_prompt: str | None = None,
         metadata: dict[str, Any] | None = None,
         tools: tuple[str, ...] | list[str] | None = None,
@@ -144,6 +148,7 @@ class PostgresAgentRepository:
         next_record = {
             "name": current["name"] if name is None else name,
             "model": current.get("model", "") if model is None else model,
+            "model_config_id": current.get("model_config_id", "") if model_config_id is None else model_config_id,
             "system_prompt": current.get("system_prompt", "") if system_prompt is None else system_prompt,
             "metadata": current.get("metadata", {}) if metadata is None else metadata,
             "tools": current.get("tools", []) if tools is None else list(tools),
@@ -166,17 +171,18 @@ class PostgresAgentRepository:
             row = conn.execute(
                 """
                 UPDATE platform_agents
-                SET name = %s, version = %s, model = %s, system_prompt = %s,
+                SET name = %s, version = %s, model = %s, model_config_id = %s, system_prompt = %s,
                     metadata = %s, tools = %s, skills = %s, knowledge_enabled = %s,
                     mcp_servers = %s, versions = %s, updated_at = %s
                 WHERE tenant_id = %s AND agent_id = %s
-                RETURNING tenant_id, agent_id, name, version, model, system_prompt,
+                RETURNING tenant_id, agent_id, name, version, model, model_config_id, system_prompt,
                           metadata, tools, skills, knowledge_enabled, mcp_servers
                 """,
                 (
                     next_record["name"],
                     version,
                     next_record["model"],
+                    next_record["model_config_id"],
                     next_record["system_prompt"],
                     jsonb(next_record["metadata"]),
                     jsonb(next_record["tools"]),
@@ -207,6 +213,7 @@ class PostgresAgentRepository:
                 "name": definition.name,
                 "version": definition.version,
                 "model": definition.model,
+                "model_config_id": definition.model_config_id,
                 "system_prompt": definition.system_prompt,
                 "metadata": dict(definition.metadata) if definition.metadata else {},
                 "tools": list(definition.tools),
@@ -224,7 +231,7 @@ class PostgresAgentRepository:
         with connect() as conn:
             row = conn.execute(
                 """
-                SELECT tenant_id, agent_id, name, version, model, system_prompt,
+                SELECT tenant_id, agent_id, name, version, model, model_config_id, system_prompt,
                        metadata, tools, skills, knowledge_enabled, mcp_servers,
                        versions, created_at, updated_at
                 FROM platform_agents
@@ -244,7 +251,7 @@ class PostgresAgentRepository:
                 """
                 DELETE FROM platform_agents
                 WHERE tenant_id = %s AND agent_id = %s
-                RETURNING tenant_id, agent_id, name, version, model, system_prompt,
+                RETURNING tenant_id, agent_id, name, version, model, model_config_id, system_prompt,
                           metadata, tools, skills, knowledge_enabled, mcp_servers
                 """,
                 (tenant_id, agent_id),
@@ -262,6 +269,7 @@ class PostgresAgentRepository:
             name=record["name"],
             version=int(record.get("version", 1)),
             model=record.get("model", ""),
+            model_config_id=record.get("model_config_id", ""),
             system_prompt=record.get("system_prompt", ""),
             metadata=record.get("metadata", {}) or {},
             tools=tuple(record.get("tools", []) or []),

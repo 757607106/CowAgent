@@ -20,13 +20,15 @@ import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'r
 import { XProvider } from '@ant-design/x';
 import xZhCN from '@ant-design/x/locale/zh_CN';
 import ChatPage from './pages/ChatPage';
-import ConfigPage from './pages/ConfigPage';
 import AgentsPage from './pages/AgentsPage';
 import ChannelAccessPage from './pages/ChannelAccessPage';
 import SkillsPage from './pages/SkillsPage';
 import McpPage from './pages/McpPage';
 import TenantsPage from './pages/TenantsPage';
 import TenantUsersPage from './pages/TenantUsersPage';
+import TenantModelsPage from './pages/TenantModelsPage';
+import PlatformModelsPage from './pages/PlatformModelsPage';
+import PlatformTenantsPage from './pages/PlatformTenantsPage';
 import TasksPage from './pages/TasksPage';
 import LogsPage from './pages/LogsPage';
 import UsagePage from './pages/UsagePage';
@@ -150,24 +152,29 @@ const appTheme = {
   },
 };
 
-const menuItems = [
+const tenantMenuItems = [
   { key: '/chat', icon: <MessageOutlined />, label: '对话' },
-  { key: '/config', icon: <SettingOutlined />, label: '配置' },
+  { key: '/tenant-models', icon: <SettingOutlined />, label: '租户模型' },
   { key: '/agents', icon: <AppstoreOutlined />, label: 'AI 员工' },
   { key: '/skills', icon: <BuildOutlined />, label: '技能' },
   { key: '/mcp', icon: <ApiOutlined />, label: 'MCP' },
   { key: '/channels', icon: <ClusterOutlined />, label: '渠道接入' },
   { key: '/usage', icon: <BarChartOutlined />, label: '用量' },
-  { key: '/tenants', icon: <ApartmentOutlined />, label: '租户' },
   { key: '/tenant-users', icon: <TeamOutlined />, label: '租户成员' },
   { key: '/tasks', icon: <ScheduleOutlined />, label: '任务' },
   { key: '/logs', icon: <FileTextOutlined />, label: '日志' },
+];
+
+const platformMenuItems = [
+  { key: '/platform/models', icon: <SettingOutlined />, label: '平台模型' },
+  { key: '/platform/tenants', icon: <ApartmentOutlined />, label: '租户管理' },
 ];
 
 interface AuthCheckState {
   authRequired: boolean;
   authenticated: boolean;
   bootstrapRequired: boolean;
+  platformBootstrapRequired: boolean;
   authMode: string;
   user: AuthUser | null;
 }
@@ -194,7 +201,9 @@ function SidebarContent({
       {authUser && (
         <div className="app-tenant-session">
           <div className="app-tenant-session-meta">
-            <Tag color="blue">{authUser.tenant_name || '当前团队'}</Tag>
+            <Tag color={authUser.principal_type === 'platform' ? 'purple' : 'blue'}>
+              {authUser.principal_type === 'platform' ? '平台超管' : authUser.tenant_name || '当前团队'}
+            </Tag>
             <Typography.Text className="app-tenant-user">
               {authUser.user_name || authUser.account || '已登录'}
             </Typography.Text>
@@ -210,7 +219,7 @@ function SidebarContent({
       <Menu
         mode="inline"
         selectedKeys={selectedMenu}
-        items={menuItems}
+        items={authUser?.principal_type === 'platform' ? platformMenuItems : tenantMenuItems}
         onClick={({ key }) => onMenuClick(String(key))}
         className="app-nav-menu"
       />
@@ -221,10 +230,12 @@ function SidebarContent({
 function LoginScreen({
   onLogin,
   bootstrapRequired,
+  platformBootstrapRequired,
   authMode,
 }: {
   onLogin: () => Promise<void>;
   bootstrapRequired: boolean;
+  platformBootstrapRequired: boolean;
   authMode: string;
 }) {
   const [loginForm] = Form.useForm<{ account: string; password: string }>();
@@ -235,7 +246,13 @@ function LoginScreen({
     password: string;
     confirm_password: string;
   }>();
-  const [activeKey, setActiveKey] = useState(bootstrapRequired ? 'register' : 'login');
+  const [platformForm] = Form.useForm<{
+    account: string;
+    name: string;
+    password: string;
+    confirm_password: string;
+  }>();
+  const [activeKey, setActiveKey] = useState(platformBootstrapRequired ? 'platform' : (bootstrapRequired ? 'register' : 'login'));
   const [submitting, setSubmitting] = useState(false);
 
   const submitLogin = async () => {
@@ -279,6 +296,28 @@ function LoginScreen({
     }
   };
 
+  const submitPlatformRegister = async () => {
+    const values = await platformForm.validateFields();
+    if (values.password !== values.confirm_password) {
+      message.error('两次输入的密码不一致');
+      return;
+    }
+    setSubmitting(true);
+    try {
+      await api.registerPlatformAdmin({
+        account: values.account,
+        name: values.name,
+        password: values.password,
+      });
+      await onLogin();
+      message.success('平台管理员已创建');
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '创建失败');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="app-login-wrap">
       <div className="app-login-panel">
@@ -287,6 +326,27 @@ function LoginScreen({
           activeKey={activeKey}
           onChange={setActiveKey}
           items={[
+            ...(platformBootstrapRequired ? [{
+              key: 'platform',
+              label: '平台初始化',
+              children: (
+                <Form form={platformForm} layout="vertical">
+                  <Form.Item name="account" label="平台账号" rules={[{ required: true, message: '请输入平台账号' }]}>
+                    <Input autoComplete="username" />
+                  </Form.Item>
+                  <Form.Item name="name" label="姓名">
+                    <Input autoComplete="name" />
+                  </Form.Item>
+                  <Form.Item name="password" label="密码" rules={[{ required: true, min: 8, message: '密码至少 8 位' }]}>
+                    <Input.Password autoComplete="new-password" />
+                  </Form.Item>
+                  <Form.Item name="confirm_password" label="确认密码" rules={[{ required: true, message: '请再次输入密码' }]}>
+                    <Input.Password autoComplete="new-password" onPressEnter={() => void submitPlatformRegister()} />
+                  </Form.Item>
+                  <Button type="primary" block loading={submitting} onClick={() => void submitPlatformRegister()}>创建平台超管</Button>
+                </Form>
+              ),
+            }] : []),
             {
               key: 'login',
               label: '登录',
@@ -339,6 +399,8 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
   const navigate = useNavigate();
   const location = useLocation();
   const tenantId = authUser?.tenant_id || 'default';
+  const isPlatformAdmin = authUser?.principal_type === 'platform';
+  const activeMenuItems = isPlatformAdmin ? platformMenuItems : tenantMenuItems;
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [scope, setScope] = useState<RuntimeScope>({
@@ -349,6 +411,10 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
   const [agentOptions, setAgentOptions] = useState<RuntimeAgentOption[]>([]);
 
   const loadRuntimeOptions = useCallback(async () => {
+    if (isPlatformAdmin) {
+      setAgentOptions([]);
+      return;
+    }
     const agentData = await api.listAgentsSimple();
     const options = (agentData.agents || []).map((agent) => ({
       label: displayAgentName(agent.agent_id, agent.name),
@@ -357,7 +423,7 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
     setAgentOptions(options.some((item) => item.value === DEFAULT_AGENT_ID)
       ? options
       : [DEFAULT_AGENT_OPTION, ...options]);
-  }, []);
+  }, [isPlatformAdmin]);
 
   useEffect(() => {
     localStorage.removeItem(BINDING_KEY);
@@ -378,14 +444,14 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
 
   const selectedMenu = useMemo(() => {
     if (location.pathname.startsWith('/bindings')) return ['/channels'];
-    const target = menuItems.find((item) => location.pathname.startsWith(item.key));
-    return target ? [target.key] : ['/chat'];
-  }, [location.pathname]);
+    const target = activeMenuItems.find((item) => location.pathname.startsWith(item.key));
+    return target ? [target.key] : [isPlatformAdmin ? '/platform/models' : '/chat'];
+  }, [activeMenuItems, isPlatformAdmin, location.pathname]);
 
   const currentMenuLabel = useMemo(() => {
     const selectedKey = selectedMenu[0] || '/chat';
-    return menuItems.find((item) => item.key === selectedKey)?.label || '控制台';
-  }, [selectedMenu]);
+    return activeMenuItems.find((item) => item.key === selectedKey)?.label || '控制台';
+  }, [activeMenuItems, selectedMenu]);
 
   const handleMenuClick = useCallback((key: string) => {
     navigate(key);
@@ -427,27 +493,30 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
               <Typography.Text strong>CowAgent</Typography.Text>
               <Typography.Text type="secondary">{currentMenuLabel}</Typography.Text>
             </div>
-            {authUser ? <Tag color="blue">{authUser.tenant_name || '当前团队'}</Tag> : null}
+            {authUser ? <Tag color={isPlatformAdmin ? 'purple' : 'blue'}>{isPlatformAdmin ? '平台超管' : authUser.tenant_name || '当前团队'}</Tag> : null}
           </div>
           <Content className="app-content">
             <Routes>
-              <Route path="/" element={<Navigate to="/chat" replace />} />
-              <Route path="/chat" element={<ChatPage />} />
-              <Route path="/config" element={<ConfigPage />} />
-              <Route path="/agents" element={<AgentsPage />} />
+              <Route path="/" element={<Navigate to={isPlatformAdmin ? '/platform/models' : '/chat'} replace />} />
+              <Route path="/platform/models" element={isPlatformAdmin ? <PlatformModelsPage /> : <Navigate to="/chat" replace />} />
+              <Route path="/platform/tenants" element={isPlatformAdmin ? <PlatformTenantsPage /> : <Navigate to="/chat" replace />} />
+              <Route path="/chat" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <ChatPage />} />
+              <Route path="/config" element={<Navigate to={isPlatformAdmin ? '/platform/models' : '/tenant-models'} replace />} />
+              <Route path="/tenant-models" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <TenantModelsPage />} />
+              <Route path="/agents" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <AgentsPage />} />
               <Route path="/tools" element={<Navigate to="/agents" replace />} />
-              <Route path="/skills" element={<SkillsPage />} />
-              <Route path="/mcp" element={<McpPage />} />
+              <Route path="/skills" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <SkillsPage />} />
+              <Route path="/mcp" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <McpPage />} />
               <Route path="/memory" element={<Navigate to="/agents" replace />} />
               <Route path="/knowledge" element={<Navigate to="/agents" replace />} />
-              <Route path="/bindings" element={<ChannelAccessPage defaultTab="bindings" />} />
-              <Route path="/channels" element={<ChannelAccessPage defaultTab="channels" />} />
-              <Route path="/usage" element={<UsagePage />} />
-              <Route path="/tenants" element={<TenantsPage />} />
-              <Route path="/tenant-users" element={<TenantUsersPage />} />
-              <Route path="/tasks" element={<TasksPage />} />
-              <Route path="/logs" element={<LogsPage />} />
-              <Route path="*" element={<Navigate to="/chat" replace />} />
+              <Route path="/bindings" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <ChannelAccessPage defaultTab="bindings" />} />
+              <Route path="/channels" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <ChannelAccessPage defaultTab="channels" />} />
+              <Route path="/usage" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <UsagePage />} />
+              <Route path="/tenants" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <TenantsPage />} />
+              <Route path="/tenant-users" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <TenantUsersPage />} />
+              <Route path="/tasks" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <TasksPage />} />
+              <Route path="/logs" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <LogsPage />} />
+              <Route path="*" element={<Navigate to={isPlatformAdmin ? '/platform/models' : '/chat'} replace />} />
             </Routes>
           </Content>
         </Layout>
@@ -477,6 +546,7 @@ export default function App() {
     authRequired: false,
     authenticated: false,
     bootstrapRequired: false,
+    platformBootstrapRequired: false,
     authMode: 'none',
     user: null,
   });
@@ -489,6 +559,7 @@ export default function App() {
         authRequired: Boolean(result.auth_required),
         authenticated: Boolean(result.authenticated || !result.auth_required),
         bootstrapRequired: Boolean(result.bootstrap_required),
+        platformBootstrapRequired: Boolean(result.platform_bootstrap_required),
         authMode: result.auth_mode || 'none',
         user: result.user || null,
       });
@@ -497,6 +568,7 @@ export default function App() {
         authRequired: false,
         authenticated: true,
         bootstrapRequired: false,
+        platformBootstrapRequired: false,
         authMode: 'none',
         user: null,
       });
@@ -530,6 +602,7 @@ export default function App() {
           <LoginScreen
             onLogin={checkAuth}
             bootstrapRequired={authState.bootstrapRequired}
+            platformBootstrapRequired={authState.platformBootstrapRequired}
             authMode={authState.authMode}
           />
         </AntdApp>

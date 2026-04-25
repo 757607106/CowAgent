@@ -115,6 +115,11 @@ def _get_authenticated_tenant_session():
     return _get_auth_service().verify_session_token(_get_cookie_value(_TENANT_AUTH_COOKIE))
 
 
+def _is_platform_admin_session(session=None) -> bool:
+    session = session or _get_authenticated_tenant_session()
+    return bool(session and session.principal_type == "platform" and session.role == "platform_super_admin")
+
+
 def _check_auth():
     """Return True if request is authenticated or password not enabled."""
     if _is_tenant_auth_enabled():
@@ -134,6 +139,7 @@ def _check_auth_payload() -> dict[str, object]:
             "auth_mode": "tenant",
             "authenticated": session is not None,
             "bootstrap_required": not service.has_credentials(),
+            "platform_bootstrap_required": not service.has_platform_admin(),
             "user": session.to_public_dict() if session else None,
         }
     if not _is_password_enabled():
@@ -226,6 +232,29 @@ def _register(data: dict[str, object]) -> dict[str, object]:
         return {"status": "error", "message": str(e)}
 
 
+def _register_platform_admin(data: dict[str, object]) -> dict[str, object]:
+    if not _is_tenant_auth_enabled():
+        return {"status": "error", "message": "tenant auth is disabled"}
+
+    try:
+        service = _get_auth_service()
+        result = service.register_platform_admin(
+            account=str(data.get("account", "") or ""),
+            name=str(data.get("name", "") or data.get("user_name", "") or ""),
+            password=str(data.get("password", "") or ""),
+        )
+        session = service.authenticate_account(
+            account=str(data.get("account", "") or ""),
+            password=str(data.get("password", "") or ""),
+        )
+        _set_auth_cookie(_TENANT_AUTH_COOKIE, service.create_session_token(session))
+        web.setcookie(_AUTH_COOKIE, "", expires=-1, path="/")
+        return {"status": "success", **result, "user": session.to_public_dict()}
+    except Exception as e:
+        logger.warning(f"[WebChannel] Platform admin register failed: {e}")
+        return {"status": "error", "message": str(e)}
+
+
 def _logout() -> None:
     web.setcookie(_AUTH_COOKIE, "", expires=-1, path="/")
     web.setcookie(_TENANT_AUTH_COOKIE, "", expires=-1, path="/")
@@ -237,6 +266,21 @@ def _require_auth():
         raise web.HTTPError("401 Unauthorized",
                             {"Content-Type": "application/json; charset=utf-8"},
                             json.dumps({"status": "error", "message": "Unauthorized"}))
+
+
+def _require_platform_admin():
+    _require_auth()
+    if _is_tenant_auth_enabled() and not _is_platform_admin_session():
+        _raise_forbidden("需要平台超级管理员权限")
+
+
+def _require_tenant_manage():
+    _require_auth()
+    session = _get_authenticated_tenant_session()
+    if session and session.principal_type != "tenant":
+        _raise_forbidden("需要租户用户权限")
+    if session and session.role not in {"owner", "admin"}:
+        _raise_forbidden("需要租户管理员权限")
 
 
 def _raise_forbidden(message: str = "Forbidden"):
@@ -271,6 +315,8 @@ def _scope_tenant_id(tenant_id: str = "", *, default: str = "default") -> str:
     session = _get_authenticated_tenant_session()
     requested = (tenant_id or "").strip()
     if session:
+        if session.principal_type == "platform":
+            _raise_forbidden("需要租户用户权限")
         if requested and requested != session.tenant_id:
             _raise_forbidden("不能访问其他租户的数据")
         return session.tenant_id
@@ -282,6 +328,8 @@ def _scope_optional_tenant_id(tenant_id: str = "") -> str:
     session = _get_authenticated_tenant_session()
     requested = (tenant_id or "").strip()
     if session:
+        if session.principal_type == "platform":
+            _raise_forbidden("需要租户用户权限")
         if requested and requested != session.tenant_id:
             _raise_forbidden("不能访问其他租户的数据")
         return session.tenant_id
@@ -322,6 +370,18 @@ def _get_tenant_user_service():
     return TenantUserService()
 
 
+def _get_model_config_service():
+    from cow_platform.services.model_config_service import ModelConfigService
+
+    return ModelConfigService()
+
+
+def _get_channel_config_service():
+    from cow_platform.services.channel_config_service import ChannelConfigService
+
+    return ChannelConfigService()
+
+
 def _get_binding_service():
     from cow_platform.services.binding_service import ChannelBindingService
 
@@ -344,6 +404,35 @@ def _get_runtime_adapter():
     from cow_platform.adapters.cowagent_runtime_adapter import CowAgentRuntimeAdapter
 
     return CowAgentRuntimeAdapter()
+
+
+def _restart_channel_config_runtime(channel_config_id: str):
+    try:
+        import sys
+
+        app_module = sys.modules.get('__main__') or sys.modules.get('app')
+        mgr = getattr(app_module, '_channel_mgr', None) if app_module else None
+        if not mgr:
+            return
+        definition = _get_channel_config_service().resolve_channel_config(channel_config_id=channel_config_id)
+        if definition.enabled:
+            mgr.start_channel_config(definition)
+        else:
+            mgr.remove_channel_config(channel_config_id)
+    except Exception as e:
+        logger.warning(f"[WebChannel] channel config runtime refresh skipped: {e}")
+
+
+def _stop_channel_config_runtime(channel_config_id: str):
+    try:
+        import sys
+
+        app_module = sys.modules.get('__main__') or sys.modules.get('app')
+        mgr = getattr(app_module, '_channel_mgr', None) if app_module else None
+        if mgr:
+            mgr.remove_channel_config(channel_config_id)
+    except Exception as e:
+        logger.warning(f"[WebChannel] channel config runtime stop skipped: {e}")
 
 
 def _is_file_access_allowed(file_path: str) -> bool:
@@ -974,6 +1063,16 @@ globals().update(
 )
 
 
+class AuthPlatformRegisterHandler:
+    def POST(self):
+        web.header("Content-Type", "application/json; charset=utf-8")
+        try:
+            data = json.loads(web.data())
+        except Exception:
+            return json.dumps({"status": "error", "message": "Invalid request"})
+        return json.dumps(_register_platform_admin(data), ensure_ascii=False)
+
+
 class ConfigHandler:
 
     _RECOMMENDED_MODELS = [
@@ -1093,6 +1192,17 @@ class ConfigHandler:
             local_config = conf()
             use_agent = local_config.get("agent", False)
             title = "CowAgent" if use_agent else "AI Assistant"
+            if _is_tenant_auth_enabled() and not _is_platform_admin_session():
+                return json.dumps({
+                    "status": "success",
+                    "use_agent": use_agent,
+                    "title": title,
+                    "channel_type": local_config.get("channel_type", ""),
+                    "agent_max_context_tokens": local_config.get("agent_max_context_tokens", 50000),
+                    "agent_max_context_turns": local_config.get("agent_max_context_turns", 20),
+                    "agent_max_steps": local_config.get("agent_max_steps", 20),
+                    "enable_thinking": bool(local_config.get("enable_thinking", True)),
+                }, ensure_ascii=False)
 
             api_bases = {}
             api_keys_masked = {}
@@ -1140,7 +1250,10 @@ class ConfigHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def POST(self):
-        _require_auth()
+        if _is_tenant_auth_enabled():
+            _require_platform_admin()
+        else:
+            _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             data = json.loads(web.data())
@@ -1198,7 +1311,6 @@ class ChannelsHandler:
             "fields": [
                 {"key": "feishu_app_id", "label": "App ID", "type": "text"},
                 {"key": "feishu_app_secret", "label": "App Secret", "type": "secret"},
-                {"key": "feishu_token", "label": "Verification Token", "type": "secret"},
                 {"key": "feishu_bot_name", "label": "Bot Name", "type": "text"},
             ],
         }),
@@ -1234,10 +1346,11 @@ class ChannelsHandler:
             "icon": "fa-building",
             "color": "emerald",
             "fields": [
+                {"key": "single_chat_prefix", "label": "Single Chat Prefix", "type": "list", "default": [""]},
                 {"key": "wechatcom_corp_id", "label": "Corp ID", "type": "text"},
-                {"key": "wechatcomapp_agent_id", "label": "Agent ID", "type": "text"},
-                {"key": "wechatcomapp_secret", "label": "Secret", "type": "secret"},
                 {"key": "wechatcomapp_token", "label": "Token", "type": "secret"},
+                {"key": "wechatcomapp_secret", "label": "Secret", "type": "secret"},
+                {"key": "wechatcomapp_agent_id", "label": "Agent ID", "type": "text"},
                 {"key": "wechatcomapp_aes_key", "label": "AES Key", "type": "secret"},
                 {"key": "wechatcomapp_port", "label": "Port", "type": "number", "default": 9898},
             ],
@@ -1247,11 +1360,12 @@ class ChannelsHandler:
             "icon": "fa-comment-dots",
             "color": "emerald",
             "fields": [
+                {"key": "single_chat_prefix", "label": "Single Chat Prefix", "type": "list", "default": [""]},
                 {"key": "wechatmp_app_id", "label": "App ID", "type": "text"},
                 {"key": "wechatmp_app_secret", "label": "App Secret", "type": "secret"},
-                {"key": "wechatmp_token", "label": "Token", "type": "secret"},
                 {"key": "wechatmp_aes_key", "label": "AES Key", "type": "secret"},
-                {"key": "wechatmp_port", "label": "Port", "type": "number", "default": 8080},
+                {"key": "wechatmp_token", "label": "Token", "type": "secret"},
+                {"key": "wechatmp_port", "label": "Port", "type": "number", "default": 80},
             ],
         }),
     ])
@@ -1327,7 +1441,7 @@ class ChannelsHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def POST(self):
-        _require_auth()
+        _require_tenant_manage()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             body = json.loads(web.data())
@@ -1371,6 +1485,13 @@ class ChannelsHandler:
                     value = int(value)
                 elif field_def["type"] == "bool":
                     value = bool(value)
+                elif field_def["type"] == "list":
+                    if isinstance(value, str):
+                        value = [item.strip() for item in value.split(",")]
+                    elif isinstance(value, (list, tuple)):
+                        value = [str(item).strip() for item in value]
+                    else:
+                        value = [str(value).strip()]
             local_config[key] = value
             applied[key] = value
 
@@ -1569,69 +1690,115 @@ class WeixinQrHandler:
             return ""
 
     @staticmethod
-    def _get_running_channel():
+    def _get_running_channel(channel_config_id: str = ""):
         try:
             import sys
             app_module = sys.modules.get('__main__') or sys.modules.get('app')
             mgr = getattr(app_module, '_channel_mgr', None) if app_module else None
             if mgr:
+                if channel_config_id and hasattr(mgr, "get_channel_config"):
+                    return mgr.get_channel_config(channel_config_id)
                 return mgr.get_channel("weixin")
         except Exception:
             pass
         return None
 
+    @staticmethod
+    def _state_key(channel_config_id: str = "") -> str:
+        return (channel_config_id or "").strip() or "__global__"
+
+    @staticmethod
+    def _resolve_weixin_channel_config(channel_config_id: str):
+        service = _get_channel_config_service()
+        params = web.input(tenant_id='')
+        tenant_id = _scope_tenant_id(params.tenant_id)
+        definition = service.resolve_channel_config(
+            tenant_id=tenant_id,
+            channel_config_id=str(channel_config_id).strip(),
+        )
+        if definition.channel_type != "weixin":
+            raise ValueError("channel config is not a weixin config")
+        return service, definition, service.build_runtime_overrides(definition)
+
+    def _fetch_qr(self, channel_config_id: str = ""):
+        channel_config_id = str(channel_config_id or "").strip()
+        if channel_config_id:
+            _require_tenant_manage()
+            _service, definition, overrides = self._resolve_weixin_channel_config(channel_config_id)
+            running_ch = self._get_running_channel(definition.channel_config_id)
+            base_url = str(overrides.get("weixin_base_url", "") or conf().get("weixin_base_url", ""))
+        else:
+            running_ch = self._get_running_channel()
+            base_url = conf().get("weixin_base_url", "")
+            definition = None
+            overrides = {}
+
+        if running_ch and hasattr(running_ch, '_current_qr_url') and running_ch._current_qr_url:
+            qr_image = self._qr_to_data_uri(running_ch._current_qr_url)
+            return json.dumps({
+                "status": "success",
+                "qrcode_url": running_ch._current_qr_url,
+                "qr_image": qr_image,
+                "source": "channel",
+                "channel_config_id": channel_config_id,
+            }, ensure_ascii=False)
+
+        from channel.weixin.weixin_api import WeixinApi, DEFAULT_BASE_URL
+
+        resolved_base_url = base_url or DEFAULT_BASE_URL
+        api = WeixinApi(base_url=resolved_base_url)
+        qr_resp = api.fetch_qr_code()
+        qrcode = qr_resp.get("qrcode", "")
+        qrcode_url = qr_resp.get("qrcode_img_content", "")
+        if not qrcode:
+            return json.dumps({"status": "error", "message": "No QR code returned"}, ensure_ascii=False)
+        qr_image = self._qr_to_data_uri(qrcode_url)
+        WeixinQrHandler._qr_state[self._state_key(channel_config_id)] = {
+            "qrcode": qrcode,
+            "qrcode_url": qrcode_url,
+            "base_url": resolved_base_url,
+            "channel_config_id": channel_config_id,
+            "tenant_id": getattr(definition, "tenant_id", ""),
+            "credentials_path": str(overrides.get("weixin_credentials_path", "") or ""),
+        }
+        return json.dumps({
+            "status": "success",
+            "qrcode_url": qrcode_url,
+            "qr_image": qr_image,
+            "channel_config_id": channel_config_id,
+        }, ensure_ascii=False)
+
     def GET(self):
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            running_ch = self._get_running_channel()
-            if running_ch and hasattr(running_ch, '_current_qr_url') and running_ch._current_qr_url:
-                qr_image = self._qr_to_data_uri(running_ch._current_qr_url)
-                return json.dumps({
-                    "status": "success",
-                    "qrcode_url": running_ch._current_qr_url,
-                    "qr_image": qr_image,
-                    "source": "channel",
-                })
-
-            from channel.weixin.weixin_api import WeixinApi, DEFAULT_BASE_URL
-            base_url = conf().get("weixin_base_url", DEFAULT_BASE_URL)
-            api = WeixinApi(base_url=base_url)
-            qr_resp = api.fetch_qr_code()
-            qrcode = qr_resp.get("qrcode", "")
-            qrcode_url = qr_resp.get("qrcode_img_content", "")
-            if not qrcode:
-                return json.dumps({"status": "error", "message": "No QR code returned"})
-            qr_image = self._qr_to_data_uri(qrcode_url)
-            WeixinQrHandler._qr_state = {
-                "qrcode": qrcode,
-                "qrcode_url": qrcode_url,
-                "base_url": base_url,
-            }
-            return json.dumps({"status": "success", "qrcode_url": qrcode_url, "qr_image": qr_image})
+            params = web.input(channel_config_id='')
+            return self._fetch_qr(str(params.channel_config_id or "").strip())
         except Exception as e:
             logger.error(f"[WebChannel] WeixinQr GET error: {e}")
             return json.dumps({"status": "error", "message": str(e)})
 
     def POST(self):
-        _require_auth()
+        _require_tenant_manage()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             body = json.loads(web.data())
             action = body.get("action", "poll")
+            channel_config_id = str(body.get("channel_config_id", "") or "").strip()
 
             if action == "poll":
-                return self._poll_status()
+                return self._poll_status(channel_config_id=channel_config_id)
             elif action == "refresh":
-                return self.GET()
+                return self._fetch_qr(channel_config_id)
             else:
                 return json.dumps({"status": "error", "message": f"unknown action: {action}"})
         except Exception as e:
             logger.error(f"[WebChannel] WeixinQr POST error: {e}")
             return json.dumps({"status": "error", "message": str(e)})
 
-    def _poll_status(self):
-        state = WeixinQrHandler._qr_state
+    def _poll_status(self, *, channel_config_id: str = ""):
+        state_key = self._state_key(channel_config_id)
+        state = WeixinQrHandler._qr_state.get(state_key, {})
         qrcode = state.get("qrcode", "")
         base_url = state.get("base_url", "")
         if not qrcode:
@@ -1656,7 +1823,7 @@ class WeixinQrHandler:
                 return json.dumps({"status": "error", "message": "Login confirmed but missing token"})
 
             cred_path = os.path.expanduser(
-                conf().get("weixin_credentials_path", "~/.weixin_cow_credentials.json")
+                state.get("credentials_path") or conf().get("weixin_credentials_path", "~/.weixin_cow_credentials.json")
             )
             from channel.weixin.weixin_channel import _save_credentials
             _save_credentials(cred_path, {
@@ -1665,16 +1832,35 @@ class WeixinQrHandler:
                 "bot_id": bot_id,
                 "user_id": user_id,
             })
-            conf()["weixin_token"] = bot_token
-            conf()["weixin_base_url"] = result_base_url
+            if channel_config_id:
+                service = _get_channel_config_service()
+                definition = service.resolve_channel_config(
+                    tenant_id=str(state.get("tenant_id", "") or ""),
+                    channel_config_id=channel_config_id,
+                )
+                service.update_channel_config(
+                    channel_config_id=definition.channel_config_id,
+                    tenant_id=definition.tenant_id,
+                    enabled=True,
+                    config={
+                        "weixin_token": bot_token,
+                        "weixin_base_url": result_base_url,
+                        "weixin_credentials_path": state.get("credentials_path", ""),
+                    },
+                )
+                _restart_channel_config_runtime(definition.channel_config_id)
+            else:
+                conf()["weixin_token"] = bot_token
+                conf()["weixin_base_url"] = result_base_url
 
-            WeixinQrHandler._qr_state = {}
+            WeixinQrHandler._qr_state.pop(state_key, None)
             logger.info(f"[WebChannel] WeChat QR login confirmed: bot_id={bot_id}")
 
             return json.dumps({
                 "status": "success",
                 "qr_status": "confirmed",
                 "bot_id": bot_id,
+                "channel_config_id": channel_config_id,
             })
 
         if qr_status == "expired":
@@ -1682,16 +1868,17 @@ class WeixinQrHandler:
             new_qrcode = new_resp.get("qrcode", "")
             new_qrcode_url = new_resp.get("qrcode_img_content", "")
             new_qr_image = self._qr_to_data_uri(new_qrcode_url)
-            WeixinQrHandler._qr_state["qrcode"] = new_qrcode
-            WeixinQrHandler._qr_state["qrcode_url"] = new_qrcode_url
+            WeixinQrHandler._qr_state[state_key]["qrcode"] = new_qrcode
+            WeixinQrHandler._qr_state[state_key]["qrcode_url"] = new_qrcode_url
             return json.dumps({
                 "status": "success",
                 "qr_status": "expired",
                 "qrcode_url": new_qrcode_url,
                 "qr_image": new_qr_image,
+                "channel_config_id": channel_config_id,
             })
 
-        return json.dumps({"status": "success", "qr_status": qr_status})
+        return json.dumps({"status": "success", "qr_status": qr_status, "channel_config_id": channel_config_id})
 
 
 def _get_workspace_root(agent_id: str = "", tenant_id: str = "", binding_id: str = ""):
@@ -1731,7 +1918,7 @@ class AgentsHandler:
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(tenant_id='', channel_type='')
+            params = web.input(tenant_id='', channel_type='', channel_config_id='')
             service = _get_agent_service()
             tenant_id = _scope_optional_tenant_id(params.tenant_id)
             return json.dumps(
@@ -1763,6 +1950,243 @@ class PlatformTenantUserMetaHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
 
+class PlatformAdminTenantsHandler:
+    def GET(self):
+        _require_platform_admin()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            service = _get_tenant_service()
+            return json.dumps({"status": "success", "tenants": service.list_tenant_records()}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformAdminTenants GET error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+    def POST(self):
+        _require_platform_admin()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            body = json.loads(web.data() or "{}")
+            service = _get_tenant_service()
+            result = service.create_tenant(
+                tenant_id=str(body.get("tenant_id", "")).strip(),
+                name=str(body.get("name", "")).strip(),
+                status=str(body.get("status", "active")).strip() or "active",
+                metadata=body.get("metadata", {}),
+            )
+            _get_agent_service().ensure_default_agent(result["tenant_id"])
+            return json.dumps({"status": "success", "tenant": result}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformAdminTenants POST error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+
+class PlatformAdminTenantDetailHandler:
+    def PUT(self, tenant_id):
+        _require_platform_admin()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            body = json.loads(web.data() or "{}")
+            result = _get_tenant_service().update_tenant(
+                tenant_id=str(tenant_id).strip(),
+                name=body.get("name"),
+                status=body.get("status"),
+                metadata=body.get("metadata"),
+            )
+            return json.dumps({"status": "success", "tenant": result}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformAdminTenantDetail PUT error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+    def DELETE(self, tenant_id):
+        _require_platform_admin()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            result = _get_tenant_service().delete_tenant(str(tenant_id).strip())
+            return json.dumps({"status": "success", "tenant": result}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformAdminTenantDetail DELETE error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+
+class PlatformAdminModelsHandler:
+    def GET(self):
+        _require_platform_admin()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            service = _get_model_config_service()
+            return json.dumps(
+                {
+                    "status": "success",
+                    "providers": service.list_provider_options(),
+                    "models": [service.serialize_model(item) for item in service.list_platform_models()],
+                },
+                ensure_ascii=False,
+            )
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformAdminModels GET error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+    def POST(self):
+        _require_platform_admin()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            body = json.loads(web.data() or "{}")
+            session = _get_authenticated_tenant_session()
+            model = _get_model_config_service().create_platform_model(
+                provider=str(body.get("provider", "")).strip(),
+                model_name=str(body.get("model_name", "")).strip(),
+                display_name=str(body.get("display_name", "")).strip(),
+                api_key=str(body.get("api_key", "") or ""),
+                api_base=str(body.get("api_base", "") or ""),
+                enabled=_parse_bool(body.get("enabled"), True),
+                is_public=_parse_bool(body.get("is_public"), True),
+                metadata=body.get("metadata", {}),
+                created_by=session.user_id if session else "",
+            )
+            return json.dumps({"status": "success", "model": model}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformAdminModels POST error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+
+class PlatformAdminModelDetailHandler:
+    def PUT(self, model_config_id):
+        _require_platform_admin()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            body = json.loads(web.data() or "{}")
+            model = _get_model_config_service().update_model(
+                str(model_config_id).strip(),
+                expected_scope="platform",
+                provider=body.get("provider"),
+                model_name=body.get("model_name"),
+                display_name=body.get("display_name"),
+                api_key=body.get("api_key"),
+                api_base=body.get("api_base"),
+                enabled=body.get("enabled"),
+                is_public=body.get("is_public"),
+                metadata=body.get("metadata"),
+            )
+            return json.dumps({"status": "success", "model": model}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformAdminModelDetail PUT error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+    def DELETE(self, model_config_id):
+        _require_platform_admin()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            model = _get_model_config_service().delete_model(str(model_config_id).strip(), expected_scope="platform")
+            return json.dumps({"status": "success", "model": model}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformAdminModelDetail DELETE error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+
+class PlatformAvailableModelsHandler:
+    def GET(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            params = web.input(tenant_id='')
+            tenant_id = _scope_tenant_id(params.tenant_id)
+            service = _get_model_config_service()
+            return json.dumps(
+                {
+                    "status": "success",
+                    "models": [service.serialize_model(item) for item in service.list_available_models(tenant_id)],
+                },
+                ensure_ascii=False,
+            )
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformAvailableModels GET error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+
+class PlatformTenantModelsHandler:
+    def GET(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            params = web.input(tenant_id='')
+            tenant_id = _scope_tenant_id(params.tenant_id)
+            service = _get_model_config_service()
+            return json.dumps(
+                {
+                    "status": "success",
+                    "models": [service.serialize_model(item) for item in service.list_tenant_models(tenant_id)],
+                },
+                ensure_ascii=False,
+            )
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformTenantModels GET error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+    def POST(self):
+        _require_tenant_manage()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            body = json.loads(web.data() or "{}")
+            tenant_id = _scope_tenant_id(str(body.get("tenant_id", "")).strip())
+            session = _get_authenticated_tenant_session()
+            model = _get_model_config_service().create_tenant_model(
+                tenant_id=tenant_id,
+                provider=str(body.get("provider", "")).strip(),
+                model_name=str(body.get("model_name", "")).strip(),
+                display_name=str(body.get("display_name", "")).strip(),
+                api_key=str(body.get("api_key", "") or ""),
+                api_base=str(body.get("api_base", "") or ""),
+                enabled=_parse_bool(body.get("enabled"), True),
+                metadata=body.get("metadata", {}),
+                created_by=session.user_id if session else "",
+            )
+            return json.dumps({"status": "success", "model": model}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformTenantModels POST error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+
+class PlatformTenantModelDetailHandler:
+    def PUT(self, model_config_id):
+        _require_tenant_manage()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            body = json.loads(web.data() or "{}")
+            session = _get_authenticated_tenant_session()
+            model = _get_model_config_service().update_model(
+                str(model_config_id).strip(),
+                expected_scope="tenant",
+                tenant_id=session.tenant_id if session else "",
+                provider=body.get("provider"),
+                model_name=body.get("model_name"),
+                display_name=body.get("display_name"),
+                api_key=body.get("api_key"),
+                api_base=body.get("api_base"),
+                enabled=body.get("enabled"),
+                is_public=False,
+                metadata=body.get("metadata"),
+            )
+            return json.dumps({"status": "success", "model": model}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformTenantModelDetail PUT error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+    def DELETE(self, model_config_id):
+        _require_tenant_manage()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            session = _get_authenticated_tenant_session()
+            model = _get_model_config_service().delete_model(
+                str(model_config_id).strip(),
+                expected_scope="tenant",
+                tenant_id=session.tenant_id if session else "",
+            )
+            return json.dumps({"status": "success", "model": model}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformTenantModelDetail DELETE error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+
 class PlatformTenantsHandler:
     def GET(self):
         _require_auth()
@@ -1770,7 +2194,9 @@ class PlatformTenantsHandler:
         try:
             service = _get_tenant_service()
             session = _get_authenticated_tenant_session()
-            if session:
+            if session and session.principal_type == "platform":
+                _raise_forbidden("请使用平台租户管理入口")
+            if session and session.principal_type == "tenant":
                 definition = service.resolve_tenant(session.tenant_id)
                 tenants = [service.serialize_tenant(definition)]
             else:
@@ -1784,7 +2210,10 @@ class PlatformTenantsHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def POST(self):
-        _require_auth()
+        if _is_tenant_auth_enabled():
+            _require_platform_admin()
+        else:
+            _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             body = json.loads(web.data() or "{}")
@@ -1819,7 +2248,10 @@ class PlatformTenantDetailHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def PUT(self, tenant_id):
-        _require_auth()
+        if _is_tenant_auth_enabled():
+            _require_platform_admin()
+        else:
+            _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             body = json.loads(web.data() or "{}")
@@ -1861,7 +2293,7 @@ class PlatformTenantUsersHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def POST(self):
-        _require_auth()
+        _require_tenant_manage()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             body = json.loads(web.data() or "{}")
@@ -1900,7 +2332,7 @@ class PlatformTenantUserDetailHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def PUT(self, tenant_id, user_id):
-        _require_auth()
+        _require_tenant_manage()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             body = json.loads(web.data() or "{}")
@@ -1920,7 +2352,7 @@ class PlatformTenantUserDetailHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def DELETE(self, tenant_id, user_id):
-        _require_auth()
+        _require_tenant_manage()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             service = _get_tenant_user_service()
@@ -1959,7 +2391,7 @@ class PlatformTenantUserIdentitiesHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def POST(self):
-        _require_auth()
+        _require_tenant_manage()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             body = json.loads(web.data() or "{}")
@@ -1980,7 +2412,7 @@ class PlatformTenantUserIdentitiesHandler:
 
 class PlatformTenantUserIdentityDetailHandler:
     def DELETE(self, tenant_id, channel_type, external_user_id):
-        _require_auth()
+        _require_tenant_manage()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             service = _get_tenant_user_service()
@@ -1993,6 +2425,116 @@ class PlatformTenantUserIdentityDetailHandler:
             return json.dumps({"status": "success", "identity": result}, ensure_ascii=False)
         except Exception as e:
             logger.error(f"[WebChannel] PlatformTenantUserIdentityDetail DELETE error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+
+class PlatformChannelConfigsHandler:
+    def GET(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            params = web.input(tenant_id='', channel_type='', channel_config_id='')
+            service = _get_channel_config_service()
+            tenant_id = _scope_tenant_id(params.tenant_id)
+            return json.dumps(
+                {
+                    "status": "success",
+                    "channel_types": service.list_channel_type_defs(),
+                    "channel_configs": [
+                        service.serialize_channel_config(item)
+                        for item in service.list_channel_configs(
+                            tenant_id=tenant_id,
+                            channel_type=(params.channel_type or "").strip(),
+                        )
+                    ],
+                },
+                ensure_ascii=False,
+            )
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformChannelConfigs GET error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+    def POST(self):
+        _require_tenant_manage()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            body = json.loads(web.data() or "{}")
+            service = _get_channel_config_service()
+            tenant_id = _scope_tenant_id(str(body.get("tenant_id", "default")).strip())
+            result = service.create_channel_config(
+                tenant_id=tenant_id,
+                channel_config_id=str(body.get("channel_config_id", "") or ""),
+                name=str(body.get("name", "") or ""),
+                channel_type=str(body.get("channel_type", "") or ""),
+                config=body.get("config", {}) or {},
+                enabled=bool(body.get("enabled", True)),
+                metadata=body.get("metadata", {}) or {},
+                created_by=(_get_authenticated_tenant_session().user_id if _get_authenticated_tenant_session() else ""),
+            )
+            _restart_channel_config_runtime(result["channel_config_id"])
+            return json.dumps({"status": "success", "channel_config": result}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformChannelConfigs POST error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+
+class PlatformChannelConfigDetailHandler:
+    def GET(self, channel_config_id):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            params = web.input(tenant_id='')
+            service = _get_channel_config_service()
+            tenant_id = _scope_tenant_id(params.tenant_id)
+            definition = service.resolve_channel_config(
+                tenant_id=tenant_id,
+                channel_config_id=str(channel_config_id).strip(),
+            )
+            return json.dumps(
+                {"status": "success", "channel_config": service.serialize_channel_config(definition)},
+                ensure_ascii=False,
+            )
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformChannelConfigDetail GET error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+    def PUT(self, channel_config_id):
+        _require_tenant_manage()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            body = json.loads(web.data() or "{}")
+            service = _get_channel_config_service()
+            tenant_id = _scope_tenant_id(str(body.get("tenant_id", "") or ""))
+            result = service.update_channel_config(
+                channel_config_id=str(channel_config_id).strip(),
+                tenant_id=tenant_id,
+                name=body.get("name"),
+                channel_type=body.get("channel_type"),
+                config=body.get("config"),
+                enabled=body.get("enabled"),
+                metadata=body.get("metadata"),
+            )
+            _restart_channel_config_runtime(result["channel_config_id"])
+            return json.dumps({"status": "success", "channel_config": result}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformChannelConfigDetail PUT error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+    def DELETE(self, channel_config_id):
+        _require_tenant_manage()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            params = web.input(tenant_id='')
+            service = _get_channel_config_service()
+            tenant_id = _scope_tenant_id(params.tenant_id)
+            result = service.delete_channel_config(
+                channel_config_id=str(channel_config_id).strip(),
+                tenant_id=tenant_id,
+            )
+            _stop_channel_config_runtime(result["channel_config_id"])
+            return json.dumps({"status": "success", "channel_config": result}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformChannelConfigDetail DELETE error: {e}")
             return json.dumps({"status": "error", "message": str(e)})
 
 
@@ -2013,7 +2555,7 @@ class PlatformAgentsHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def POST(self):
-        _require_auth()
+        _require_tenant_manage()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             body = json.loads(web.data() or "{}")
@@ -2024,6 +2566,7 @@ class PlatformAgentsHandler:
                 agent_id=(body.get("agent_id") or None),
                 name=str(body.get("name", "")),
                 model=str(body.get("model", "")),
+                model_config_id=str(body.get("model_config_id", "") or ""),
                 system_prompt=str(body.get("system_prompt", "")),
                 tools=body.get("tools", []),
                 skills=body.get("skills", []),
@@ -2054,7 +2597,7 @@ class PlatformAgentDetailHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def PUT(self, agent_id):
-        _require_auth()
+        _require_tenant_manage()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             body = json.loads(web.data() or "{}")
@@ -2065,6 +2608,7 @@ class PlatformAgentDetailHandler:
                 tenant_id=tenant_id,
                 name=body.get("name"),
                 model=body.get("model"),
+                model_config_id=body.get("model_config_id"),
                 system_prompt=body.get("system_prompt"),
                 tools=body.get("tools"),
                 skills=body.get("skills"),
@@ -2087,7 +2631,7 @@ class PlatformAgentDetailHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def DELETE(self, agent_id):
-        _require_auth()
+        _require_tenant_manage()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             params = web.input(tenant_id='default')
@@ -2116,7 +2660,7 @@ class BindingsHandler:
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(tenant_id='', channel_type='')
+            params = web.input(tenant_id='', channel_type='', channel_config_id='')
             service = _get_binding_service()
             tenant_id = _scope_optional_tenant_id(params.tenant_id)
             return json.dumps(
@@ -2125,6 +2669,7 @@ class BindingsHandler:
                     "bindings": service.list_binding_records(
                         tenant_id=tenant_id,
                         channel_type=(params.channel_type or "").strip(),
+                        channel_config_id=(params.channel_config_id or "").strip(),
                     ),
                 },
                 ensure_ascii=False,
@@ -2148,6 +2693,7 @@ class PlatformBindingsHandler:
                     "bindings": service.list_binding_records(
                         tenant_id=tenant_id,
                         channel_type=(params.channel_type or "").strip(),
+                        channel_config_id=(params.channel_config_id or "").strip(),
                     ),
                 },
                 ensure_ascii=False,
@@ -2157,7 +2703,7 @@ class PlatformBindingsHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def POST(self):
-        _require_auth()
+        _require_tenant_manage()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             body = json.loads(web.data() or "{}")
@@ -2168,6 +2714,7 @@ class PlatformBindingsHandler:
                 binding_id=str(body.get("binding_id", "")),
                 name=str(body.get("name", "")),
                 channel_type=str(body.get("channel_type", "")),
+                channel_config_id=str(body.get("channel_config_id", "") or ""),
                 agent_id=str(body.get("agent_id", "")),
                 enabled=bool(body.get("enabled", True)),
                 metadata=body.get("metadata", {}),
@@ -2196,7 +2743,7 @@ class PlatformBindingDetailHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def PUT(self, binding_id):
-        _require_auth()
+        _require_tenant_manage()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             body = json.loads(web.data() or "{}")
@@ -2207,6 +2754,7 @@ class PlatformBindingDetailHandler:
                 tenant_id=tenant_id,
                 name=body.get("name"),
                 channel_type=body.get("channel_type"),
+                channel_config_id=body.get("channel_config_id"),
                 agent_id=body.get("agent_id"),
                 enabled=body.get("enabled"),
                 metadata=body.get("metadata"),
@@ -2217,7 +2765,7 @@ class PlatformBindingDetailHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def DELETE(self, binding_id):
-        _require_auth()
+        _require_tenant_manage()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             params = web.input(tenant_id='')
@@ -2228,6 +2776,179 @@ class PlatformBindingDetailHandler:
         except Exception as e:
             logger.error(f"[WebChannel] PlatformBindingDetail DELETE error: {e}")
             return json.dumps({"status": "error", "message": str(e)})
+
+
+class WechatMpTenantCallbackHandler:
+    def _resolve_channel(self, channel_config_id: str):
+        from channel.wechatmp.wechatmp_channel import WechatMPChannel
+        from cow_platform.runtime.scope import activate_config_overrides
+
+        service = _get_channel_config_service()
+        definition = service.resolve_channel_config(channel_config_id=str(channel_config_id).strip())
+        if definition.channel_type not in {"wechatmp", "wechatmp_service"}:
+            raise ValueError("channel config is not a wechatmp config")
+        overrides = service.build_runtime_overrides(definition)
+        with activate_config_overrides(overrides):
+            channel = WechatMPChannel(
+                passive_reply=definition.channel_type != "wechatmp_service",
+                _singleton_key=definition.channel_config_id,
+            )
+        channel.channel_type = definition.channel_type
+        channel.channel_config_id = definition.channel_config_id
+        channel.tenant_id = definition.tenant_id
+        channel.config_overrides = overrides
+        return definition, overrides, channel
+
+    def GET(self, channel_config_id):
+        try:
+            from wechatpy.exceptions import InvalidSignatureException
+            from wechatpy.utils import check_signature
+
+            _definition, overrides, _channel = self._resolve_channel(channel_config_id)
+            data = web.input()
+            try:
+                check_signature(
+                    str(overrides.get("wechatmp_token", "") or ""),
+                    data.signature,
+                    data.timestamp,
+                    data.nonce,
+                )
+                return data.get("echostr", "")
+            except InvalidSignatureException:
+                raise web.Forbidden("Invalid signature")
+        except web.HTTPError:
+            raise
+        except Exception as e:
+            logger.warning(f"[WebChannel] WechatMP callback verify failed: {e}")
+            raise web.Forbidden(str(e))
+
+    def POST(self, channel_config_id):
+        try:
+            from wechatpy import parse_message
+            from wechatpy.replies import create_reply
+            from wechatpy.utils import check_signature
+
+            from channel.wechatmp.wechatmp_message import WeChatMPMessage
+            from common.utils import split_string_by_utf8_length
+            from cow_platform.runtime.scope import activate_config_overrides
+
+            _definition, overrides, channel = self._resolve_channel(channel_config_id)
+            args = web.input()
+            check_signature(
+                str(overrides.get("wechatmp_token", "") or ""),
+                args.signature,
+                args.timestamp,
+                args.nonce,
+            )
+            message = web.data()
+            encrypt_func = lambda x: x
+            if args.get("encrypt_type") == "aes":
+                if not channel.crypto:
+                    raise Exception("Crypto not initialized, Please set wechatmp_aes_key")
+                message = channel.crypto.decrypt_message(message, args.msg_signature, args.timestamp, args.nonce)
+                encrypt_func = lambda x: channel.crypto.encrypt_message(x, args.nonce, args.timestamp)
+            msg = parse_message(message)
+            if msg.type == "event":
+                from config import subscribe_msg
+
+                if msg.event in ["subscribe", "subscribe_scan"]:
+                    reply_text = subscribe_msg()
+                    if reply_text:
+                        return encrypt_func(create_reply(reply_text, msg).render())
+                return "success"
+            if msg.type not in ["text", "voice", "image"]:
+                return "success"
+
+            with activate_config_overrides(overrides):
+                wechatmp_msg = WeChatMPMessage(msg, client=channel.client)
+                content = wechatmp_msg.content
+                if msg.type == "voice" and wechatmp_msg.ctype == ContextType.TEXT and conf().get("voice_reply_voice", False):
+                    context = channel._compose_context(
+                        wechatmp_msg.ctype,
+                        content,
+                        isgroup=False,
+                        desire_rtype=ReplyType.VOICE,
+                        msg=wechatmp_msg,
+                    )
+                else:
+                    context = channel._compose_context(wechatmp_msg.ctype, content, isgroup=False, msg=wechatmp_msg)
+                if context:
+                    if channel.passive_reply:
+                        channel.running.add(wechatmp_msg.from_user_id)
+                    channel.produce(context)
+
+            if not channel.passive_reply:
+                return "success"
+
+            request_time = time.time()
+            from_user = wechatmp_msg.from_user_id
+            message_id = wechatmp_msg.msg_id
+            channel.request_cnt[message_id] = channel.request_cnt.get(message_id, 0) + 1
+            while time.time() < request_time + 4:
+                if from_user in channel.running:
+                    time.sleep(0.1)
+                else:
+                    break
+            if from_user not in channel.cache_dict:
+                return "success"
+            try:
+                reply_type, reply_content = channel.cache_dict[from_user].pop(0)
+                if not channel.cache_dict[from_user]:
+                    del channel.cache_dict[from_user]
+            except IndexError:
+                return "success"
+            if reply_type == "text":
+                max_len = 2048
+                if len(reply_content.encode("utf8")) > max_len:
+                    suffix = "\n【未完待续，回复任意文字以继续】"
+                    reply_content = split_string_by_utf8_length(
+                        reply_content,
+                        max_len - len(suffix.encode("utf-8")),
+                        max_split=1,
+                    )[0] + suffix
+                return encrypt_func(create_reply(reply_content, msg).render())
+            return encrypt_func(create_reply("success", msg).render())
+        except Exception as e:
+            logger.exception(f"[WebChannel] WechatMP callback error: {e}")
+            return "success"
+
+
+class FeishuTenantCallbackHandler:
+    def POST(self, channel_config_id):
+        try:
+            from channel.feishu.feishu_channel import FeiShuChanel, URL_VERIFICATION
+            from cow_platform.runtime.scope import activate_config_overrides
+
+            service = _get_channel_config_service()
+            definition = service.resolve_channel_config(channel_config_id=str(channel_config_id).strip())
+            if definition.channel_type != "feishu":
+                raise ValueError("channel config is not a feishu config")
+            overrides = service.build_runtime_overrides(definition)
+            overrides["feishu_event_mode"] = "webhook"
+            with activate_config_overrides(overrides):
+                channel = FeiShuChanel(_singleton_key=definition.channel_config_id)
+            channel.channel_type = definition.channel_type
+            channel.channel_config_id = definition.channel_config_id
+            channel.tenant_id = definition.tenant_id
+            channel.config_overrides = overrides
+            channel.feishu_app_id = str(overrides.get("feishu_app_id", "") or "")
+            channel.feishu_app_secret = str(overrides.get("feishu_app_secret", "") or "")
+            channel.feishu_token = str(overrides.get("feishu_token", "") or "")
+            channel.feishu_event_mode = "webhook"
+
+            request = json.loads(web.data().decode("utf-8"))
+            if request.get("type") == URL_VERIFICATION:
+                return json.dumps({"challenge": request.get("challenge")})
+            header = request.get("header")
+            if not header or header.get("token") != channel.feishu_token:
+                return "failed"
+            event = request.get("event")
+            if event:
+                channel._handle_message_event(event)
+            return "success"
+        except Exception as e:
+            logger.exception(f"[WebChannel] Feishu callback error: {e}")
+            return "failed"
 
 
 class PlatformUsageHandler:
@@ -2327,7 +3048,7 @@ class SkillsHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def POST(self):
-        _require_auth()
+        _require_tenant_manage()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             from agent.skills.service import SkillService

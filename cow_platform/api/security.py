@@ -22,10 +22,22 @@ class PlatformAuthorizer:
         session = self.auth_service.verify_session_token(token)
         if session is None:
             raise HTTPException(status_code=401, detail="unauthorized")
+        if session.principal_type != "tenant":
+            raise HTTPException(status_code=403, detail="tenant session required")
 
         allowed_roles = roles or READ_ROLES
         if session.role not in allowed_roles:
             raise HTTPException(status_code=403, detail="forbidden")
+        return session
+
+    def require_platform_admin(self, request: Request) -> TenantAuthSession:
+        auth_header = request.headers.get("authorization", "")
+        token = auth_header.removeprefix("Bearer ").strip()
+        session = self.auth_service.verify_session_token(token)
+        if session is None:
+            raise HTTPException(status_code=401, detail="unauthorized")
+        if session.principal_type != "platform" or session.role != "platform_super_admin":
+            raise HTTPException(status_code=403, detail="platform admin required")
         return session
 
     @staticmethod

@@ -73,6 +73,7 @@ class AgentService:
         agent_id: str | None = None,
         name: str,
         model: str = "",
+        model_config_id: str = "",
         system_prompt: str = "",
         metadata: dict[str, Any] | None = None,
         tools: tuple[str, ...] | list[str] | None = None,
@@ -82,11 +83,17 @@ class AgentService:
     ) -> dict[str, Any]:
         self.tenant_service.resolve_tenant(tenant_id)
         resolved_agent_id = self._resolve_create_agent_id(tenant_id=tenant_id, agent_id=agent_id)
+        model, model_config_id = self._normalize_model_selection(
+            tenant_id=tenant_id,
+            model=model,
+            model_config_id=model_config_id,
+        )
         definition = self.repository.create_agent(
             tenant_id=tenant_id,
             agent_id=resolved_agent_id,
             name=name,
             model=model,
+            model_config_id=model_config_id,
             system_prompt=system_prompt,
             metadata=metadata or {},
             tools=tools,
@@ -103,6 +110,7 @@ class AgentService:
         tenant_id: str = DEFAULT_TENANT_ID,
         name: str | None = None,
         model: str | None = None,
+        model_config_id: str | None = None,
         system_prompt: str | None = None,
         metadata: dict[str, Any] | None = None,
         tools: tuple[str, ...] | list[str] | None = None,
@@ -111,11 +119,18 @@ class AgentService:
         mcp_servers: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         self.tenant_service.resolve_tenant(tenant_id)
+        model, model_config_id = self._normalize_model_selection(
+            tenant_id=tenant_id,
+            model=model,
+            model_config_id=model_config_id,
+            keep_none=True,
+        )
         definition = self.repository.update_agent(
             tenant_id=tenant_id,
             agent_id=agent_id,
             name=name,
             model=model,
+            model_config_id=model_config_id,
             system_prompt=system_prompt,
             metadata=metadata,
             tools=tools,
@@ -156,6 +171,32 @@ class AgentService:
             if self.repository.get_agent(tenant_id, candidate) is None:
                 return candidate
         raise RuntimeError("unable to generate unique agent_id")
+
+    @staticmethod
+    def _normalize_model_selection(
+        *,
+        tenant_id: str,
+        model: str | None,
+        model_config_id: str | None,
+        keep_none: bool = False,
+    ) -> tuple[str | None, str | None]:
+        if not model_config_id:
+            return (model if model is not None else None, model_config_id if keep_none else "")
+
+        from cow_platform.services.model_config_service import ModelConfigService
+
+        service = ModelConfigService()
+        definition = service.resolve_model_for_scope(model_config_id)
+        visible = (
+            definition.scope == "platform" and definition.is_public
+        ) or (
+            definition.scope == "tenant" and definition.tenant_id == tenant_id
+        )
+        if not visible:
+            raise PermissionError("model config is not visible to tenant")
+        if not definition.enabled:
+            raise PermissionError("model config is disabled")
+        return (model or definition.model_name, definition.model_config_id)
 
     def _normalize_default_agent_name(self, definition: AgentDefinition) -> AgentDefinition:
         if definition.agent_id != DEFAULT_AGENT_ID or definition.name != LEGACY_DEFAULT_AGENT_NAME:

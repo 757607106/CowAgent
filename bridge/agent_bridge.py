@@ -18,7 +18,7 @@ from common import const
 from common.log import logger
 from common.utils import expand_path
 from cow_platform.adapters.cowagent_runtime_adapter import CowAgentRuntimeAdapter
-from cow_platform.runtime.scope import get_current_model_name
+from cow_platform.runtime.scope import get_current_model_config_id, get_current_model_name
 from cow_platform.services.pricing_service import PricingService
 from cow_platform.services.quota_service import QuotaService
 from cow_platform.services.usage_service import UsageService
@@ -111,6 +111,7 @@ class AgentLLMModel(LLMModel):
         self.bot_type = bot_type
         self._bot = None
         self._bot_model = None
+        self._bot_model_config_id = None
 
     @property
     def model(self):
@@ -159,11 +160,18 @@ class AgentLLMModel(LLMModel):
         from models.bot_factory import create_bot
         cur_model = self.model
         cur_bot_type = self._resolve_bot_type(cur_model)
-        if self._bot is None or self._bot_model != cur_model or getattr(self, '_bot_type', None) != cur_bot_type:
+        cur_model_config_id = get_current_model_config_id()
+        if (
+            self._bot is None
+            or self._bot_model != cur_model
+            or getattr(self, '_bot_type', None) != cur_bot_type
+            or self._bot_model_config_id != cur_model_config_id
+        ):
             self._bot = create_bot(cur_bot_type)
             self._bot = add_openai_compatible_support(self._bot)
             self._bot_model = cur_model
             self._bot_type = cur_bot_type
+            self._bot_model_config_id = cur_model_config_id
         return self._bot
 
     def call(self, request: LLMRequest):

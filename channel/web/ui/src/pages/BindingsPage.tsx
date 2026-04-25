@@ -1,16 +1,17 @@
-import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag, message } from 'antd';
+import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { JsonBlock } from '../components/JsonBlock';
 import { PageTitle } from '../components/PageTitle';
 import { useRuntimeScope } from '../context/runtime';
 import { api, formatBindingPayload } from '../services/api';
-import type { AgentItem, BindingItem, TenantItem } from '../types';
+import type { AgentItem, BindingItem, ChannelConfigItem, TenantItem } from '../types';
 
 interface BindingFormValues {
   tenant_id: string;
   binding_id?: string;
   name: string;
   channel_type: string;
+  channel_config_id: string;
   agent_id: string;
   enabled: boolean;
   metadata: string;
@@ -26,6 +27,7 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
   const [tenants, setTenants] = useState<TenantItem[]>([]);
   const [tenantId, setTenantId] = useState(currentTenantId);
   const [bindings, setBindings] = useState<BindingItem[]>([]);
+  const [channelConfigs, setChannelConfigs] = useState<ChannelConfigItem[]>([]);
   const [agents, setAgents] = useState<AgentItem[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<BindingItem | null>(null);
@@ -44,14 +46,20 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
     () => new Map(agents.map((agent) => [agent.agent_id, agent.name])),
     [agents],
   );
+  const channelConfigById = useMemo(
+    () => new Map(channelConfigs.map((config) => [config.channel_config_id, config])),
+    [channelConfigs],
+  );
 
   const loadBase = async (tenant = tenantId) => {
-    const [tenantData, agentData] = await Promise.all([
+    const [tenantData, agentData, channelConfigData] = await Promise.all([
       api.listTenants(),
       api.listAgents(tenant || currentTenantId),
+      api.listChannelConfigs(tenant || currentTenantId),
     ]);
     setTenants(tenantData.tenants || []);
     setAgents(agentData.agents || []);
+    setChannelConfigs(channelConfigData.channel_configs || []);
   };
 
   const loadBindings = async () => {
@@ -76,6 +84,7 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
       binding_id: '',
       name: '',
       channel_type: 'web',
+      channel_config_id: '',
       agent_id: '',
       enabled: true,
       metadata: '{}',
@@ -90,6 +99,7 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
       binding_id: row.binding_id,
       name: row.name,
       channel_type: row.channel_type,
+      channel_config_id: row.channel_config_id || '',
       agent_id: row.agent_id,
       enabled: Boolean(row.enabled),
       metadata: JSON.stringify(row.metadata || {}, null, 2),
@@ -113,6 +123,7 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
       binding_id: editing ? values.binding_id : undefined,
       name: values.name,
       channel_type: values.channel_type,
+      channel_config_id: values.channel_config_id,
       agent_id: values.agent_id,
       enabled: values.enabled,
       metadata,
@@ -184,6 +195,14 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
           { title: '名称', dataIndex: 'name' },
           { title: '租户', dataIndex: 'tenant_id', render: (value: string) => tenantNameById.get(value) || value },
           { title: '渠道', dataIndex: 'channel_type', render: (value: string) => <Tag color="blue">{value}</Tag> },
+          {
+            title: '渠道配置',
+            dataIndex: 'channel_config_id',
+            render: (value: string) => {
+              if (!value) return <Typography.Text type="secondary">未关联</Typography.Text>;
+              return channelConfigById.get(value)?.name || value;
+            },
+          },
           { title: '智能体', dataIndex: 'agent_id', render: (value: string) => agentNameById.get(value) || value },
           { title: '启用', render: (_, row) => (row.enabled ? <Tag color="green">是</Tag> : <Tag>否</Tag>) },
           {
@@ -225,8 +244,26 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
                 { label: 'QQ 机器人', value: 'qq' },
                 { label: '企微自建应用', value: 'wechatcom_app' },
                 { label: '公众号', value: 'wechatmp' },
+                { label: '服务号', value: 'wechatmp_service' },
               ]}
               placeholder="选择渠道类型"
+            />
+          </Form.Item>
+          <Form.Item name="channel_config_id" label="渠道配置">
+            <Select
+              allowClear
+              showSearch
+              options={channelConfigs.map((config) => ({
+                label: `${config.name} (${config.channel_type})`,
+                value: config.channel_config_id,
+              }))}
+              onChange={(value) => {
+                const selected = channelConfigs.find((config) => config.channel_config_id === value);
+                if (selected) {
+                  form.setFieldValue('channel_type', selected.channel_type);
+                }
+              }}
+              placeholder="选择租户自有渠道配置"
             />
           </Form.Item>
           <Form.Item name="agent_id" label="智能体" rules={[{ required: true }]}>

@@ -65,6 +65,7 @@ class ChatChannel(Channel):
 
             binding = ChannelBindingService().resolve_binding_for_channel(
                 channel_type=context.get("channel_type", "") or self.channel_type,
+                channel_config_id=str(context.get("channel_config_id", "") or ""),
                 external_app_id=external_app_id,
                 external_chat_id=external_chat_id,
                 external_user_id=external_user_id,
@@ -80,6 +81,7 @@ class ChatChannel(Channel):
         context["tenant_id"] = binding.tenant_id
         context["agent_id"] = binding.agent_id
         context["binding_metadata"] = {
+            "channel_config_id": context.get("channel_config_id", ""),
             "external_app_id": external_app_id,
             "external_chat_id": external_chat_id,
             "external_user_id": external_user_id,
@@ -109,6 +111,10 @@ class ChatChannel(Channel):
         context.kwargs = kwargs
         if "channel_type" not in context:
             context["channel_type"] = self.channel_type
+        if self.channel_config_id and "channel_config_id" not in context:
+            context["channel_config_id"] = self.channel_config_id
+        if self.tenant_id and "source_tenant_id" not in context:
+            context["source_tenant_id"] = self.tenant_id
         if "origin_ctype" not in context:
             context["origin_ctype"] = ctype
         # context首次传入时，receiver是None，根据类型设置receiver
@@ -243,18 +249,21 @@ class ChatChannel(Channel):
     def _handle(self, context: Context):
         if context is None or not context.content:
             return
-        logger.debug("[chat_channel] handling context: {}".format(context))
-        # reply的构建步骤
-        reply = self._generate_reply(context)
+        from cow_platform.runtime.scope import activate_config_overrides
 
-        logger.debug("[chat_channel] decorating reply: {}".format(reply))
+        with activate_config_overrides(getattr(self, "config_overrides", {}) or {}):
+            logger.debug("[chat_channel] handling context: {}".format(context))
+            # reply的构建步骤
+            reply = self._generate_reply(context)
 
-        # reply的包装步骤
-        if reply and reply.content:
-            reply = self._decorate_reply(context, reply)
+            logger.debug("[chat_channel] decorating reply: {}".format(reply))
 
-            # reply的发送步骤
-            self._send_reply(context, reply)
+            # reply的包装步骤
+            if reply and reply.content:
+                reply = self._decorate_reply(context, reply)
+
+                # reply的发送步骤
+                self._send_reply(context, reply)
 
     def _generate_reply(self, context: Context, reply: Reply = Reply()) -> Reply:
         e_context = PluginManager().emit_event(

@@ -12,6 +12,7 @@ from cow_platform.runtime.namespaces import build_namespace
 from cow_platform.runtime.scope import activate_runtime_scope
 from cow_platform.services.agent_service import AgentService, DEFAULT_TENANT_ID
 from cow_platform.services.binding_service import ChannelBindingService
+from cow_platform.services.model_config_service import ModelConfigService
 
 
 @dataclass(frozen=True, slots=True)
@@ -36,9 +37,11 @@ class CowAgentRuntimeAdapter:
         self,
         agent_service: AgentService | None = None,
         binding_service: ChannelBindingService | None = None,
+        model_config_service: ModelConfigService | None = None,
     ):
         self.agent_service = agent_service or AgentService()
         self.binding_service = binding_service or ChannelBindingService(agent_service=self.agent_service)
+        self.model_config_service = model_config_service or ModelConfigService()
 
     def resolve_from_context(self, context: Context | None) -> ResolvedAgentRuntime | None:
         if context is None:
@@ -65,6 +68,9 @@ class CowAgentRuntimeAdapter:
             return None
 
         agent_definition = self.agent_service.resolve_agent(tenant_id=tenant_id, agent_id=agent_id)
+        model_config = self.model_config_service.resolve_for_agent(tenant_id, agent_definition)
+        model_config_record = self.model_config_service.serialize_model(model_config)
+        config_overrides = self.model_config_service.build_runtime_overrides(model_config)
         workspace_root = self.agent_service.repository.get_workspace_path(
             tenant_id,
             agent_definition.agent_id,
@@ -82,6 +88,8 @@ class CowAgentRuntimeAdapter:
             metadata={
                 "agent_name": agent_definition.name,
                 "binding_id": getattr(resolved_binding, "binding_id", ""),
+                "model_config": model_config_record,
+                "config_overrides": config_overrides,
                 **({"enable_thinking": bool(context.get("enable_thinking"))} if "enable_thinking" in context else {}),
             },
         )

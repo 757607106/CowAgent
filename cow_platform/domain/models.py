@@ -40,6 +40,7 @@ class AgentDefinition:
     name: str
     version: int = 1
     model: str = ""
+    model_config_id: str = ""
     system_prompt: str = ""
     metadata: Mapping[str, Any] = field(default_factory=dict)
     tools: tuple[str, ...] = ()
@@ -87,6 +88,48 @@ class TenantUserDefinition:
 
 
 @dataclass(frozen=True, slots=True)
+class PlatformUserDefinition:
+    """平台级用户定义。"""
+
+    user_id: str
+    name: str = ""
+    role: str = "platform_super_admin"
+    status: str = "active"
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        _ensure_non_empty("user_id", self.user_id)
+        _ensure_non_empty("role", self.role)
+        _ensure_non_empty("status", self.status)
+
+
+@dataclass(frozen=True, slots=True)
+class ModelConfigDefinition:
+    """平台或租户可用的模型接入配置。"""
+
+    model_config_id: str
+    scope: str
+    tenant_id: str
+    provider: str
+    model_name: str
+    display_name: str = ""
+    api_key: str = ""
+    api_base: str = ""
+    enabled: bool = True
+    is_public: bool = True
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    created_by: str = ""
+
+    def __post_init__(self) -> None:
+        _ensure_non_empty("model_config_id", self.model_config_id)
+        _ensure_non_empty("scope", self.scope)
+        _ensure_non_empty("provider", self.provider)
+        _ensure_non_empty("model_name", self.model_name)
+        if self.scope == "tenant":
+            _ensure_non_empty("tenant_id", self.tenant_id)
+
+
+@dataclass(frozen=True, slots=True)
 class TenantUserIdentityDefinition:
     """租户用户与外部渠道身份的映射定义。"""
 
@@ -112,6 +155,7 @@ class ChannelBindingDefinition:
     name: str
     channel_type: str
     agent_id: str
+    channel_config_id: str = ""
     version: int = 1
     enabled: bool = True
     metadata: Mapping[str, Any] = field(default_factory=dict)
@@ -122,6 +166,26 @@ class ChannelBindingDefinition:
         _ensure_non_empty("name", self.name)
         _ensure_non_empty("channel_type", self.channel_type)
         _ensure_non_empty("agent_id", self.agent_id)
+
+
+@dataclass(frozen=True, slots=True)
+class ChannelConfigDefinition:
+    """租户级渠道接入配置。"""
+
+    tenant_id: str
+    channel_config_id: str
+    name: str
+    channel_type: str
+    config: Mapping[str, Any] = field(default_factory=dict)
+    enabled: bool = True
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    created_by: str = ""
+
+    def __post_init__(self) -> None:
+        _ensure_non_empty("tenant_id", self.tenant_id)
+        _ensure_non_empty("channel_config_id", self.channel_config_id)
+        _ensure_non_empty("name", self.name)
+        _ensure_non_empty("channel_type", self.channel_type)
 
 
 @dataclass(frozen=True, slots=True)
