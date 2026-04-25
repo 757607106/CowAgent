@@ -660,7 +660,7 @@ export default function ChatPage() {
       placement: 'end' as const,
       variant: 'shadow' as const,
       shape: 'round' as const,
-      avatar: <Avatar icon={<UserOutlined />} style={{ background: '#5b8ff9' }} />,
+      avatar: <Avatar icon={<UserOutlined />} style={{ background: '#1a6ff5' }} />,
       footerPlacement: 'outer-end' as const,
       footer: (_content: unknown, info: { extraInfo?: Record<string, unknown> }) => (
         <span className="chat-bubble-time">{formatClock(Number(info.extraInfo?.createdAt || Date.now()))}</span>
@@ -681,7 +681,7 @@ export default function ChatPage() {
     assistant: {
       placement: 'start' as const,
       variant: 'borderless' as const,
-      avatar: <Avatar icon={<RobotOutlined />} style={{ background: '#52c41a' }} />,
+      avatar: <Avatar icon={<RobotOutlined />} style={{ background: '#10b981' }} />,
       footerPlacement: 'outer-start' as const,
       footer: (_content: unknown, info: { extraInfo?: Record<string, unknown> }) => (
         <div className="chat-bubble-meta">
@@ -816,7 +816,7 @@ export default function ChatPage() {
               <div className="chat-empty-wrap">
                 <Welcome
                   variant="borderless"
-                  icon={<Avatar size={56} icon={<RobotOutlined />} style={{ background: '#1677ff' }} />}
+                  icon={<Avatar size={56} icon={<RobotOutlined />} style={{ background: '#1a6ff5' }} />}
                   title="开始对话"
                   description="上传附件或直接提问"
                 />

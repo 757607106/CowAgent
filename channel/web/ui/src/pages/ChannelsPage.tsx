@@ -107,15 +107,15 @@ function getStatusMeta(channel: ChannelItem): { color: string; text: string; ton
 
 function getChannelAvatar(channel: ChannelItem) {
   const styleMap: Record<string, { bg: string; color: string; icon: ReactNode }> = {
-    weixin: { bg: '#e8fff0', color: '#11a75c', icon: <WechatOutlined /> },
-    wecom_bot: { bg: '#eef8ef', color: '#1d8f61', icon: <RobotOutlined /> },
-    feishu: { bg: '#edf5ff', color: '#1677ff', icon: <LinkOutlined /> },
-    dingtalk: { bg: '#edf6ff', color: '#2f6bff', icon: <SafetyCertificateOutlined /> },
-    qq: { bg: '#eef4ff', color: '#4258ff', icon: <ThunderboltOutlined /> },
-    wechatcom_app: { bg: '#eefbf5', color: '#2c8f60', icon: <SafetyCertificateOutlined /> },
-    wechatmp: { bg: '#eefbf3', color: '#17a35b', icon: <WechatOutlined /> },
+    weixin: { bg: '#ecfdf5', color: '#059669', icon: <WechatOutlined /> },
+    wecom_bot: { bg: '#ecfdf5', color: '#059669', icon: <RobotOutlined /> },
+    feishu: { bg: '#eff4ff', color: '#1a6ff5', icon: <LinkOutlined /> },
+    dingtalk: { bg: '#eff4ff', color: '#1a6ff5', icon: <SafetyCertificateOutlined /> },
+    qq: { bg: '#eff4ff', color: '#4f46e5', icon: <ThunderboltOutlined /> },
+    wechatcom_app: { bg: '#ecfdf5', color: '#059669', icon: <SafetyCertificateOutlined /> },
+    wechatmp: { bg: '#ecfdf5', color: '#059669', icon: <WechatOutlined /> },
   };
-  const current = styleMap[channel.name] || { bg: '#f2f4f8', color: '#45526a', icon: <LinkOutlined /> };
+  const current = styleMap[channel.name] || { bg: '#f5f7fa', color: '#4b5362', icon: <LinkOutlined /> };
   return (
     <Avatar style={{ background: current.bg, color: current.color }} icon={current.icon} />
   );

@@ -16,6 +16,7 @@ import {
 } from '@ant-design/icons';
 import {
   Avatar,
+  Badge,
   Button,
   Card,
   Checkbox,
@@ -24,9 +25,12 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Segmented,
   Select,
   Space,
+  Statistic,
   Switch,
+  Table,
   Tabs,
   Tag,
   Typography,
@@ -51,6 +55,9 @@ interface AgentFormValues {
   skills: string[];
   knowledge_enabled: boolean;
 }
+
+type AgentViewMode = 'table' | 'cards';
+type AgentBadgeStatus = 'success' | 'processing' | 'default' | 'warning' | 'error';
 
 function firstValue(input: string | string[] | undefined): string {
   if (Array.isArray(input)) return input[0] || '';
@@ -99,6 +106,29 @@ function agentInitial(name: string): string {
   return text.slice(0, 1).toUpperCase();
 }
 
+function mcpServerCount(agent: AgentItem): number {
+  return Object.keys(agent.mcp_servers || {}).length;
+}
+
+function enabledMcpServerCount(agent: AgentItem): number {
+  return Object.values(agent.mcp_servers || {}).filter((config) => config.enabled ?? true).length;
+}
+
+function agentOperationalState(agent: AgentItem, capabilityCount: number): { status: AgentBadgeStatus; label: string } {
+  if (!agent.model) return { status: 'warning', label: '待配置' };
+  if (capabilityCount === 0 && !agent.knowledge_enabled) return { status: 'default', label: '基础对话' };
+  return { status: 'success', label: '可服务' };
+}
+
+function agentWorkline(agent: AgentItem, toolCount: number, skillCount: number, mcpCount: number): string {
+  if (!agent.model) return '还缺少模型配置，补齐后才能稳定接入业务。';
+  if (mcpCount > 0) return '已接入外部服务，可把对话延展到真实工作流。';
+  if (skillCount > 0) return '带有可复用技能，适合持续处理一类业务任务。';
+  if (toolCount > 0) return '拥有工具权限，可在会话中执行具体动作。';
+  if (agent.knowledge_enabled) return '已接入知识库，适合回答团队内部资料问题。';
+  return '保持轻量待命，适合做基础问答和角色化沟通。';
+}
+
 function applyMcpEnabledState(
   mcpServers: NonNullable<AgentItem['mcp_servers']>,
   enabledMap: Record<string, boolean>,
@@ -132,6 +162,7 @@ export default function AgentsPage() {
   const [detailTab, setDetailTab] = useState('core');
   const [memoryTab, setMemoryTab] = useState('memory');
   const [search, setSearch] = useState('');
+  const [agentView, setAgentView] = useState<AgentViewMode>('cards');
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [mcpEnabledMap, setMcpEnabledMap] = useState<Record<string, boolean>>({});
@@ -157,6 +188,26 @@ export default function AgentsPage() {
       || agent.model.toLowerCase().includes(keyword)
     ));
   }, [agents, search]);
+
+  const agentOverview = useMemo(() => {
+    const capabilityTotal = agents.reduce((total, agent) => (
+      total
+      + effectiveToolNames(agent, tools).length
+      + effectiveSkillNames(agent, skills).length
+      + mcpServerCount(agent)
+    ), 0);
+    return {
+      total: agents.length,
+      serviceable: agents.filter((agent) => {
+        const capabilityCount = effectiveToolNames(agent, tools).length
+          + effectiveSkillNames(agent, skills).length
+          + mcpServerCount(agent);
+        return agentOperationalState(agent, capabilityCount).status === 'success';
+      }).length,
+      knowledgeEnabled: agents.filter((agent) => agent.knowledge_enabled).length,
+      capabilityTotal,
+    };
+  }, [agents, skills, tools]);
 
   const selectedScope = useMemo<RuntimeScope | null>(() => {
     if (!selectedAgent) return null;
@@ -327,6 +378,11 @@ export default function AgentsPage() {
   const startChat = () => {
     if (!selectedAgent) return;
     setAgentScope(selectedAgent.agent_id);
+    navigate('/chat');
+  };
+
+  const startChatWithAgent = (agent: AgentItem) => {
+    setAgentScope(agent.agent_id);
     navigate('/chat');
   };
 
@@ -581,13 +637,104 @@ export default function AgentsPage() {
     );
   }
 
+  const agentColumns = [
+    {
+      title: '员工',
+      key: 'agent',
+      width: 260,
+      render: (_: unknown, agent: AgentItem) => {
+        const agentName = displayAgentName(agent.agent_id, agent.name);
+        const toolCount = effectiveToolNames(agent, tools).length;
+        const skillCount = effectiveSkillNames(agent, skills).length;
+        const capabilityCount = toolCount + skillCount + mcpServerCount(agent);
+        const state = agentOperationalState(agent, capabilityCount);
+        return (
+          <div className="agent-table-name">
+            <Avatar size={40} className="agent-avatar">{agentInitial(agentName)}</Avatar>
+            <div className="agent-table-title">
+              <Space size={8} wrap>
+                <Typography.Text strong>{agentName}</Typography.Text>
+                <Badge status={state.status} text={state.label} />
+              </Space>
+              <Typography.Text type="secondary">{agent.agent_id}</Typography.Text>
+            </div>
+          </div>
+        );
+      },
+    },
+    {
+      title: '模型',
+      dataIndex: 'model',
+      width: 180,
+      render: (value: string) => value ? <Tag color="blue">{value}</Tag> : <Tag>未配置</Tag>,
+    },
+    {
+      title: '能力',
+      key: 'capabilities',
+      width: 260,
+      render: (_: unknown, agent: AgentItem) => {
+        const toolCount = effectiveToolNames(agent, tools).length;
+        const skillCount = effectiveSkillNames(agent, skills).length;
+        const enabledMcpCount = enabledMcpServerCount(agent);
+        return (
+          <div className="agent-table-ability">
+            <Tag icon={<ToolOutlined />}>工具 {toolCount}</Tag>
+            <Tag icon={<BuildOutlined />}>技能 {skillCount}</Tag>
+            <Tag icon={<ApiOutlined />}>MCP {enabledMcpCount}</Tag>
+          </div>
+        );
+      },
+    },
+    {
+      title: '知识库',
+      dataIndex: 'knowledge_enabled',
+      width: 120,
+      render: (enabled: boolean) => enabled ? <Tag color="green">已启用</Tag> : <Tag>未启用</Tag>,
+    },
+    {
+      title: '租户',
+      dataIndex: 'tenant_id',
+      width: 180,
+      ellipsis: true,
+      render: (value: string) => tenantNameById.get(value) || value,
+    },
+    {
+      title: '操作',
+      key: 'actions',
+      width: 170,
+      fixed: 'right' as const,
+      render: (_: unknown, agent: AgentItem) => (
+        <Space size={4}>
+          <Button type="link" icon={<AppstoreOutlined />} onClick={() => void openDetail(agent)}>
+            配置
+          </Button>
+          <Popconfirm
+            title={isDefaultAgent(agent) ? '通用 Agent 不能删除' : '确认删除该数字员工？'}
+            onConfirm={() => void onDelete(agent)}
+            disabled={isDefaultAgent(agent)}
+          >
+            <Button type="link" danger disabled={isDefaultAgent(agent)}>删除</Button>
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
   return (
     <div className="agents-page">
       <PageTitle
         title="AI 员工大厅"
-        description="创建、编辑数字员工的角色与能力，并让他们切入微信、飞书等渠道工作。"
+        description="像管理一支数字团队一样查看每位员工的状态、能力和工作入口。"
         extra={(
           <Space wrap>
+            <Segmented
+              value={agentView}
+              onChange={(value) => setAgentView(value as AgentViewMode)}
+              options={[
+                { label: '员工视图', value: 'cards' },
+                { label: '运营表格', value: 'table' },
+              ]}
+            />
             <Select
               value={tenantId}
               style={{ width: 200 }}
@@ -611,59 +758,105 @@ export default function AgentsPage() {
         )}
       />
 
-      {filteredAgents.length === 0 ? (
-        <Card>
-          <Empty description={loading ? '正在加载数字员工...' : '暂无数字员工。'}>
+      {agentView === 'table' ? (
+        <div className="agent-overview-grid">
+          <Card className="agent-overview-card">
+            <Statistic title="在岗员工" value={agentOverview.total} loading={loading} />
+          </Card>
+          <Card className="agent-overview-card">
+            <Statistic title="可独立服务" value={agentOverview.serviceable} loading={loading} />
+          </Card>
+          <Card className="agent-overview-card">
+            <Statistic title="带知识库" value={agentOverview.knowledgeEnabled} loading={loading} />
+          </Card>
+          <Card className="agent-overview-card">
+            <Statistic title="能力连接" value={agentOverview.capabilityTotal} loading={loading} />
+          </Card>
+        </div>
+      ) : null}
+
+      {filteredAgents.length === 0 && !loading ? (
+        <Card className="agent-empty-card">
+          <Empty description={search ? '没有匹配的数字员工。' : '暂无数字员工。'}>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新员工入职</Button>
           </Empty>
         </Card>
+      ) : agentView === 'table' ? (
+        <div className="agent-ops-table-shell">
+          <Table<AgentItem>
+            rowKey={(agent) => `${agent.tenant_id}/${agent.agent_id}`}
+            loading={loading}
+            columns={agentColumns}
+            dataSource={filteredAgents}
+            pagination={{ pageSize: 8, showSizeChanger: false }}
+            scroll={{ x: 1080 }}
+          />
+        </div>
       ) : (
         <div className="agent-card-grid">
           {filteredAgents.map((agent, index) => {
             const agentName = displayAgentName(agent.agent_id, agent.name);
+            const toolCount = effectiveToolNames(agent, tools).length;
+            const skillCount = effectiveSkillNames(agent, skills).length;
+            const mcpCount = mcpServerCount(agent);
+            const state = agentOperationalState(agent, toolCount + skillCount + mcpCount);
+            const capabilityCount = toolCount + skillCount + mcpCount + (agent.knowledge_enabled ? 1 : 0);
+            const tags = [
+              '官方认证',
+              agent.knowledge_enabled ? '知识库' : '通用行业',
+              skillCount > 0 ? 'AI助手' : '基础对话',
+              mcpCount > 0 ? '外部服务' : agent.model || '待配置',
+            ];
             return (
               <Card
                 key={`${agent.tenant_id}/${agent.agent_id}`}
                 hoverable
-                className="agent-card"
+                className="agent-card agent-market-card"
                 loading={loading}
-                cover={(
-                  <div className={`agent-card-cover agent-card-cover-${index % 3}`}>
-                    <Tag color="green" className="agent-card-status">工作中</Tag>
-                    <Avatar size={58} className="agent-avatar">
-                      {agentInitial(agentName)}
-                    </Avatar>
-                  </div>
-                )}
               >
-                <Space direction="vertical" size={10} style={{ width: '100%' }}>
-                  <div>
-                    <Typography.Title level={5} style={{ margin: 0 }}>
+                <div className={`agent-market-cover agent-market-cover-${index % 6}`}>
+                  <div className="agent-market-orb agent-market-orb-a" />
+                  <div className="agent-market-orb agent-market-orb-b" />
+                  <div className="agent-market-panel">
+                    <span />
+                    <span />
+                    <span />
+                  </div>
+                  <div className="agent-market-figure">
+                    <Avatar size={64} className="agent-market-avatar">{agentInitial(agentName)}</Avatar>
+                    <span className={`agent-status-pulse agent-status-${state.status}`} />
+                  </div>
+                </div>
+                <div className="agent-market-body">
+                  <Space size={8} wrap>
+                    <Typography.Title level={5} className="agent-card-heading">
                       {agentName}
                     </Typography.Title>
-                    <Typography.Text type="secondary">{agent.model || '未配置模型'}</Typography.Text>
-                  </div>
-                  <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 0 }}>
-                    {agent.system_prompt || '负责特定业务场景的数字员工，可独立完成连续任务。'}
-                  </Typography.Paragraph>
-                  <Space size={6} wrap>
-                    <Tag icon={<ToolOutlined />}>{effectiveToolNames(agent, tools).length}</Tag>
-                    <Tag icon={<BuildOutlined />}>{effectiveSkillNames(agent, skills).length}</Tag>
-                    {agent.knowledge_enabled ? <Tag color="green">知识库</Tag> : <Tag>知识库关闭</Tag>}
+                    <Badge status={state.status} text={state.label} />
                   </Space>
-                  <div className="agent-card-actions">
-                    <Button type="link" icon={<AppstoreOutlined />} onClick={() => void openDetail(agent)}>
+                  <div className="agent-market-tags">
+                    {tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}
+                  </div>
+                </div>
+                <Typography.Paragraph className="agent-market-desc" type="secondary" ellipsis={{ rows: 2 }}>
+                  {agent.system_prompt || '负责特定业务场景的数字员工，可独立完成连续任务。'}
+                </Typography.Paragraph>
+                <div className="agent-market-footer">
+                  <Typography.Text type="secondary">
+                    <BranchesOutlined /> 能力 {capabilityCount}
+                  </Typography.Text>
+                  <Space size={8}>
+                    <Button type="text" icon={<SettingOutlined />} onClick={() => void openDetail(agent)}>
                       配置
                     </Button>
-                    <Popconfirm
-                      title={isDefaultAgent(agent) ? '通用 Agent 不能删除' : '确认删除该数字员工？'}
-                      onConfirm={() => void onDelete(agent)}
-                      disabled={isDefaultAgent(agent)}
-                    >
-                      <Button type="link" danger disabled={isDefaultAgent(agent)}>删除</Button>
-                    </Popconfirm>
-                  </div>
-                </Space>
+                    <Button type="primary" icon={<AppstoreOutlined />} onClick={() => startChatWithAgent(agent)}>
+                      应用
+                    </Button>
+                  </Space>
+                </div>
+                <Typography.Text className="agent-market-workline" type="secondary">
+                  {agentWorkline(agent, toolCount, skillCount, mcpCount)}
+                </Typography.Text>
               </Card>
             );
           })}

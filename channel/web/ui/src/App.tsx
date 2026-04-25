@@ -7,12 +7,13 @@ import {
   ClusterOutlined,
   FileTextOutlined,
   LogoutOutlined,
+  MenuOutlined,
   MessageOutlined,
   ScheduleOutlined,
   SettingOutlined,
   TeamOutlined,
 } from '@ant-design/icons';
-import { App as AntdApp, Button, ConfigProvider, Form, Input, Layout, Menu, Space, Spin, Tabs, Tag, Typography, message } from 'antd';
+import { App as AntdApp, Button, ConfigProvider, Drawer, Form, Input, Layout, Menu, Spin, Tabs, Tag, Typography, message } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
@@ -40,6 +41,115 @@ const BINDING_KEY = 'cowagent_runtime_binding_id';
 
 const DEFAULT_AGENT_OPTION: RuntimeAgentOption = { label: DEFAULT_AGENT_NAME, value: DEFAULT_AGENT_ID };
 
+const appTheme = {
+  token: {
+    colorPrimary: '#1a6ff5',
+    colorSuccess: '#10b981',
+    colorWarning: '#f59e0b',
+    colorError: '#ef4444',
+    colorInfo: '#1a6ff5',
+    borderRadius: 8,
+    borderRadiusLG: 12,
+    borderRadiusSM: 6,
+    fontFamily: '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    fontSize: 14,
+    fontSizeLG: 16,
+    fontSizeSM: 12,
+    lineHeight: 1.5,
+    controlHeight: 34,
+    controlHeightLG: 40,
+    controlHeightSM: 28,
+    paddingContentHorizontal: 16,
+    paddingContentVertical: 12,
+    colorBgContainer: '#ffffff',
+    colorBgElevated: '#ffffff',
+    colorBgLayout: '#f5f7fa',
+    colorBorder: '#e4e8ee',
+    colorBorderSecondary: '#eef1f6',
+    colorText: '#1f2430',
+    colorTextSecondary: '#4b5362',
+    colorTextTertiary: '#8891a0',
+    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 3px 0 rgba(0, 0, 0, 0.04)',
+    boxShadowSecondary: '0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -2px rgba(0, 0, 0, 0.04)',
+    wireframe: false,
+  },
+  components: {
+    Menu: {
+      itemBorderRadius: 8,
+      itemHeight: 36,
+      itemMarginInline: 8,
+      itemHoverBg: '#f5f7fa',
+      itemSelectedBg: '#eff4ff',
+      itemSelectedColor: '#1a6ff5',
+      itemActiveBg: '#eff4ff',
+      iconSize: 18,
+      collapsedIconSize: 18,
+    },
+    Card: {
+      paddingLG: 20,
+      borderRadiusLG: 12,
+    },
+    Button: {
+      borderRadius: 8,
+      borderRadiusLG: 10,
+      borderRadiusSM: 6,
+      controlHeight: 34,
+      controlHeightLG: 40,
+      controlHeightSM: 28,
+      fontWeight: 500,
+    },
+    Tag: {
+      borderRadiusSM: 6,
+      fontSizeSM: 11,
+      lineHeightSM: 1.4,
+    },
+    Table: {
+      borderRadius: 8,
+      borderColor: '#e4e8ee',
+      headerBg: '#f8fafc',
+      headerColor: '#4b5362',
+      rowHoverBg: '#f5f7fa',
+    },
+    Input: {
+      borderRadius: 8,
+      borderRadiusLG: 10,
+      borderRadiusSM: 6,
+    },
+    Select: {
+      borderRadius: 8,
+      borderRadiusLG: 10,
+      borderRadiusSM: 6,
+    },
+    Modal: {
+      borderRadiusLG: 16,
+      titleFontSize: 18,
+    },
+    Drawer: {
+      borderRadiusLG: 0,
+    },
+    Collapse: {
+      borderRadiusLG: 12,
+      contentPadding: '16px 20px',
+      headerPadding: '14px 20px',
+    },
+    Form: {
+      itemMarginBottom: 16,
+      labelFontSize: 13,
+    },
+    Switch: {
+      trackHeight: 22,
+      trackMinWidth: 40,
+      handleSize: 18,
+    },
+    Tooltip: {
+      borderRadius: 8,
+    },
+    Popover: {
+      borderRadius: 12,
+    },
+  },
+};
+
 const menuItems = [
   { key: '/chat', icon: <MessageOutlined />, label: '对话' },
   { key: '/config', icon: <SettingOutlined />, label: '配置' },
@@ -65,6 +175,47 @@ interface AuthCheckState {
 function normalizeRuntimeAgentId(value?: string | null): string {
   if (!value || value === WORKSPACE_AGENT_VALUE) return DEFAULT_AGENT_ID;
   return value;
+}
+
+function SidebarContent({
+  authUser,
+  selectedMenu,
+  onMenuClick,
+  onLogout,
+}: {
+  authUser: AuthUser | null;
+  selectedMenu: string[];
+  onMenuClick: (key: string) => void;
+  onLogout: () => Promise<void>;
+}) {
+  return (
+    <>
+      <div className="app-logo">CowAgent 2.0.6</div>
+      {authUser && (
+        <div className="app-tenant-session">
+          <div className="app-tenant-session-meta">
+            <Tag color="blue">{authUser.tenant_name || '当前团队'}</Tag>
+            <Typography.Text className="app-tenant-user">
+              {authUser.user_name || authUser.account || '已登录'}
+            </Typography.Text>
+          </div>
+          <Button
+            size="small"
+            icon={<LogoutOutlined />}
+            onClick={() => void onLogout()}
+            title="退出登录"
+          />
+        </div>
+      )}
+      <Menu
+        mode="inline"
+        selectedKeys={selectedMenu}
+        items={menuItems}
+        onClick={({ key }) => onMenuClick(String(key))}
+        className="app-nav-menu"
+      />
+    </>
+  );
 }
 
 function LoginScreen({
@@ -188,6 +339,7 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
   const navigate = useNavigate();
   const location = useLocation();
   const tenantId = authUser?.tenant_id || 'default';
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [scope, setScope] = useState<RuntimeScope>({
     tenantId,
@@ -230,6 +382,16 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
     return target ? [target.key] : ['/chat'];
   }, [location.pathname]);
 
+  const currentMenuLabel = useMemo(() => {
+    const selectedKey = selectedMenu[0] || '/chat';
+    return menuItems.find((item) => item.key === selectedKey)?.label || '控制台';
+  }, [selectedMenu]);
+
+  const handleMenuClick = useCallback((key: string) => {
+    navigate(key);
+    setMobileMenuOpen(false);
+  }, [navigate]);
+
   return (
     <RuntimeContext.Provider
       value={{
@@ -243,34 +405,30 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
         logout: onLogout,
       }}
     >
-      <Layout className="app-layout">
-        <Sider width={220} theme="light">
-          <div className="app-logo">CowAgent 2.0.6</div>
-          {authUser && (
-            <div className="app-tenant-session">
-              <Space size={6} direction="vertical">
-                <Tag color="blue">{authUser.tenant_name || '当前团队'}</Tag>
-                <Typography.Text className="app-tenant-user">
-                  {authUser.user_name || authUser.account || '已登录'}
-                </Typography.Text>
-              </Space>
-              <Button
-                size="small"
-                icon={<LogoutOutlined />}
-                onClick={() => void onLogout()}
-                title="退出登录"
-              />
-            </div>
-          )}
-          <Menu
-            mode="inline"
-            selectedKeys={selectedMenu}
-            items={menuItems}
-            onClick={({ key }) => navigate(String(key))}
-            style={{ borderInlineEnd: 0 }}
+      <Layout className="app-layout" hasSider>
+        <Sider width={220} theme="light" className="app-sider">
+          <SidebarContent
+            authUser={authUser}
+            selectedMenu={selectedMenu}
+            onMenuClick={handleMenuClick}
+            onLogout={onLogout}
           />
         </Sider>
-        <Layout>
+        <Layout className="app-main-layout">
+          <div className="app-mobile-header">
+            <Button
+              type="text"
+              shape="circle"
+              icon={<MenuOutlined />}
+              aria-label="打开导航"
+              onClick={() => setMobileMenuOpen(true)}
+            />
+            <div className="app-mobile-title">
+              <Typography.Text strong>CowAgent</Typography.Text>
+              <Typography.Text type="secondary">{currentMenuLabel}</Typography.Text>
+            </div>
+            {authUser ? <Tag color="blue">{authUser.tenant_name || '当前团队'}</Tag> : null}
+          </div>
           <Content className="app-content">
             <Routes>
               <Route path="/" element={<Navigate to="/chat" replace />} />
@@ -293,6 +451,21 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
             </Routes>
           </Content>
         </Layout>
+        <Drawer
+          className="app-mobile-drawer"
+          title="CowAgent 2.0.6"
+          placement="left"
+          width={280}
+          open={mobileMenuOpen}
+          onClose={() => setMobileMenuOpen(false)}
+        >
+          <SidebarContent
+            authUser={authUser}
+            selectedMenu={selectedMenu}
+            onMenuClick={handleMenuClick}
+            onLogout={onLogout}
+          />
+        </Drawer>
       </Layout>
     </RuntimeContext.Provider>
   );
@@ -352,7 +525,7 @@ export default function App() {
 
   if (authState.authRequired && !authState.authenticated) {
     return (
-      <ConfigProvider locale={zhCN}>
+      <ConfigProvider locale={zhCN} theme={appTheme}>
         <AntdApp>
           <LoginScreen
             onLogin={checkAuth}
@@ -367,13 +540,7 @@ export default function App() {
   return (
     <ConfigProvider
       locale={zhCN}
-      theme={{
-        token: {
-          colorPrimary: '#1668dc',
-          borderRadius: 8,
-          fontFamily: '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif',
-        },
-      }}
+      theme={appTheme}
     >
       <AntdApp>
         <XProvider locale={xZhCN}>

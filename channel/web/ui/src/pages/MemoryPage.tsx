@@ -155,7 +155,7 @@ export function MemoryPanel({
               },
               style: {
                 cursor: 'pointer',
-                background: selected === row.filename ? '#f0f5ff' : undefined,
+                background: selected === row.filename ? '#eff4ff' : undefined,
               },
             })}
           />

@@ -9,6 +9,7 @@ import {
   Modal,
   Popconfirm,
   Select,
+  Skeleton,
   Space,
   Spin,
   Tag,
@@ -105,6 +106,8 @@ export function McpServersPanel({
   onAgentChanged,
 }: McpServersPanelProps) {
   const [agents, setAgents] = useState<AgentItem[]>([]);
+  const [agentsLoading, setAgentsLoading] = useState(showAgentPicker);
+  const [agentsError, setAgentsError] = useState('');
   const [internalAgentId, setInternalAgentId] = useState('');
   const [internalAgent, setInternalAgent] = useState<AgentItem | null>(null);
   const [servers, setServers] = useState<McpServerItem[]>([]);
@@ -125,11 +128,21 @@ export function McpServersPanel({
   const selectedAgent = controlledAgent === undefined ? internalAgent : controlledAgent;
 
   const loadAgents = async () => {
-    const data = await api.listAgents(tenantId);
-    const list = data.agents || [];
-    setAgents(list);
-    if (!selectedAgentId && list.length > 0 && controlledAgentId === undefined) {
-      setInternalAgentId((list.find((agent) => agent.agent_id === 'default') || list[0]).agent_id);
+    setAgentsLoading(true);
+    setAgentsError('');
+    try {
+      const data = await api.listAgents(tenantId);
+      const list = data.agents || [];
+      setAgents(list);
+      if (!selectedAgentId && list.length > 0 && controlledAgentId === undefined) {
+        setInternalAgentId((list.find((agent) => agent.agent_id === 'default') || list[0]).agent_id);
+      }
+    } catch (error) {
+      const messageText = error instanceof Error ? error.message : '加载智能体失败';
+      setAgentsError(messageText);
+      message.error(messageText);
+    } finally {
+      setAgentsLoading(false);
     }
   };
 
@@ -372,6 +385,9 @@ export function McpServersPanel({
     };
   }, [selectedAgent, servers.length]);
 
+  const resolvingAgent = showAgentPicker && agentsLoading && !selectedAgentId;
+  const agentLoadFailed = Boolean(agentsError) && !selectedAgent;
+
   return (
     <div className={compact ? 'mcp-page mcp-page-embedded' : 'mcp-page'}>
       {!compact ? (
@@ -384,16 +400,18 @@ export function McpServersPanel({
               style={{ width: 320 }}
               value={selectedAgentId || undefined}
               placeholder="选择智能体"
+              loading={agentsLoading}
+              disabled={agentsLoading}
               onChange={setInternalAgentId}
               options={agents.map((agent) => ({
                 label: `${agent.name} (${agent.agent_id})`,
                 value: agent.agent_id,
               }))}
             />
-            <Button icon={<ReloadOutlined />} onClick={() => void loadServers(selectedAgentId)} disabled={!selectedAgentId}>
+            <Button icon={<ReloadOutlined />} onClick={() => void loadServers(selectedAgentId)} disabled={!selectedAgentId || agentsLoading}>
               刷新
             </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={!selectedAgentId}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={!selectedAgentId || agentsLoading}>
               新增服务器
             </Button>
           </Space>
@@ -421,11 +439,29 @@ export function McpServersPanel({
         </div>
       )}
 
-      {selectedAgent ? (
+      {resolvingAgent ? (
+        <Card className="mcp-agent-summary">
+          <Skeleton active avatar paragraph={{ rows: 2 }} />
+        </Card>
+      ) : agentLoadFailed ? (
+        <Card>
+          <Alert
+            type="error"
+            showIcon
+            message="智能体列表加载失败"
+            description={agentsError}
+            action={(
+              <Button size="small" icon={<ReloadOutlined />} onClick={() => void loadAgents()}>
+                重试
+              </Button>
+            )}
+          />
+        </Card>
+      ) : selectedAgent ? (
         <Card className="mcp-agent-summary">
           <div className="mcp-agent-summary-header">
             <Space align="start" size={12}>
-              <Avatar size={52} style={{ background: '#eef4ff', color: '#2f64ff' }} icon={<AppstoreOutlined />} />
+              <Avatar size={52} style={{ background: '#eff4ff', color: '#1a6ff5' }} icon={<AppstoreOutlined />} />
               <div>
                 <Typography.Title level={4} style={{ margin: 0 }}>
                   {selectedAgent.name}
@@ -446,12 +482,22 @@ export function McpServersPanel({
         </Card>
       ) : (
         <Card>
-          <Empty description="暂无可管理的智能体。" />
+          <Empty description="暂无可管理的智能体。">
+            {showAgentPicker ? (
+              <Button icon={<ReloadOutlined />} onClick={() => void loadAgents()}>
+                刷新智能体
+              </Button>
+            ) : null}
+          </Empty>
         </Card>
       )}
 
-      <Card loading={loading} style={{ marginTop: 16 }}>
-        {servers.length === 0 ? (
+      <Card loading={!resolvingAgent && loading} style={{ marginTop: 16 }}>
+        {resolvingAgent ? (
+          <Skeleton active paragraph={{ rows: 4 }} />
+        ) : agentLoadFailed ? (
+          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="智能体加载后才能管理 MCP Server。" />
+        ) : servers.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
             description="当前智能体还没有 MCP Server。"
@@ -470,7 +516,7 @@ export function McpServersPanel({
                 <Card key={server.name} className="mcp-server-card">
                   <div className="mcp-server-header">
                     <Space align="start" size={12}>
-                      <Avatar style={{ background: '#f3ecff', color: '#8f53ff' }} icon={<ApiOutlined />} />
+                      <Avatar style={{ background: '#f3f0ff', color: '#7c3aed' }} icon={<ApiOutlined />} />
                       <div>
                         <Typography.Title level={5} style={{ margin: 0 }}>
                           {server.name}
