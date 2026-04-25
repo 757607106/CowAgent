@@ -1,7 +1,6 @@
 import type {
   AgentItem,
   BindingItem,
-  ChannelItem,
   ChannelConfigItem,
   ChannelTypeItem,
   ChatAttachment,
@@ -20,6 +19,7 @@ import type {
   WeixinQrInfo,
   AuthUser,
   ModelConfigItem,
+  ModelProviderOption,
 } from '../types';
 import { buildQuery, requestJson, scopeBody, scopeQuery } from './http';
 
@@ -104,7 +104,7 @@ export const api = {
   }),
   deletePlatformTenant: (tenantId: string) => requestJson(`/api/platform/admin/tenants/${encodeURIComponent(tenantId)}`, { method: 'DELETE' }),
 
-  listPlatformModels: () => requestJson<{ status: string; models: ModelConfigItem[]; providers?: Array<{ provider: string; bot_type: string }> }>('/api/platform/admin/models'),
+  listPlatformModels: () => requestJson<{ status: string; models: ModelConfigItem[]; providers?: ModelProviderOption[] }>('/api/platform/admin/models'),
   createPlatformModel: (payload: Record<string, any>) => requestJson('/api/platform/admin/models', { method: 'POST', body: JSON.stringify(payload) }),
   updatePlatformModel: (modelConfigId: string, payload: Record<string, any>) => requestJson(`/api/platform/admin/models/${encodeURIComponent(modelConfigId)}`, {
     method: 'PUT',
@@ -112,7 +112,7 @@ export const api = {
   }),
   deletePlatformModel: (modelConfigId: string) => requestJson(`/api/platform/admin/models/${encodeURIComponent(modelConfigId)}`, { method: 'DELETE' }),
   listAvailableModels: (tenantId = '') => requestJson<{ status: string; models: ModelConfigItem[] }>(`/api/platform/models/available${buildQuery({ tenant_id: tenantId })}`),
-  listTenantModels: (tenantId = '') => requestJson<{ status: string; models: ModelConfigItem[] }>(`/api/platform/tenant-models${buildQuery({ tenant_id: tenantId })}`),
+  listTenantModels: (tenantId = '') => requestJson<{ status: string; models: ModelConfigItem[]; providers?: ModelProviderOption[] }>(`/api/platform/tenant-models${buildQuery({ tenant_id: tenantId })}`),
   createTenantModel: (payload: Record<string, any>) => requestJson('/api/platform/tenant-models', { method: 'POST', body: JSON.stringify(payload) }),
   updateTenantModel: (modelConfigId: string, payload: Record<string, any>) => requestJson(`/api/platform/tenant-models/${encodeURIComponent(modelConfigId)}`, {
     method: 'PUT',
@@ -159,8 +159,6 @@ export const api = {
   }),
   listMcpServerTools: (serverName: string, agentId?: string, tenantId = '') => requestJson<{ status: string; tools: McpToolItem[] }>(`/api/mcp/servers/${encodeURIComponent(serverName)}/tools${buildQuery({ agent_id: agentId || '', tenant_id: tenantId })}`),
 
-  listChannels: () => requestJson<{ status: string; channels: ChannelItem[] }>('/api/channels'),
-  channelAction: (payload: Record<string, any>) => requestJson('/api/channels', { method: 'POST', body: JSON.stringify(payload) }),
   weixinQrGet: (channelConfigId = '') => requestJson<WeixinQrInfo>(`/api/weixin/qrlogin${buildQuery({ channel_config_id: channelConfigId })}`),
   weixinQrPost: (action: 'poll' | 'refresh', channelConfigId = '') => requestJson<WeixinQrInfo>('/api/weixin/qrlogin', {
     method: 'POST',

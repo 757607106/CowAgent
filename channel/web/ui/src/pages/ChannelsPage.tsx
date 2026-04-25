@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { PageTitle } from '../components/PageTitle';
 import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
-import type { ChannelConfigItem, ChannelField, ChannelItem, ChannelTypeItem, WeixinQrInfo } from '../types';
+import type { ChannelConfigItem, ChannelField, ChannelTypeItem, WeixinQrInfo } from '../types';
 
 const WECOM_BOT_SDK_URL = 'https://wwcdn.weixin.qq.com/node/wework/js/wecom-aibot-sdk@0.1.0.min.js';
 const WECOM_BOT_SOURCE = 'cowagent';
@@ -106,7 +106,6 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
   const [open, setOpen] = useState(false);
   const [channelTypes, setChannelTypes] = useState<ChannelTypeItem[]>([]);
   const [configs, setConfigs] = useState<ChannelConfigItem[]>([]);
-  const [legacyChannels, setLegacyChannels] = useState<ChannelItem[]>([]);
   const [editing, setEditing] = useState<ChannelConfigItem | null>(null);
   const [qrOpen, setQrOpen] = useState(false);
   const [qrConfig, setQrConfig] = useState<ChannelConfigItem | null>(null);
@@ -127,13 +126,9 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
   const load = async () => {
     setLoading(true);
     try {
-      const [data, legacyData] = await Promise.all([
-        api.listChannelConfigs(tenantId),
-        api.listChannels().catch(() => ({ channels: [] as ChannelItem[] })),
-      ]);
+      const data = await api.listChannelConfigs(tenantId);
       setChannelTypes(data.channel_types || []);
       setConfigs(data.channel_configs || []);
-      setLegacyChannels(legacyData.channels || []);
     } finally {
       setLoading(false);
     }
@@ -302,9 +297,6 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
     return () => clearQrTimer();
   }, [tenantId]);
 
-  const legacyWeixinActive = legacyChannels.some((channel) => channel.name === 'weixin' && channel.active);
-  const tenantWeixinConfigs = configs.filter((config) => config.channel_type === 'weixin');
-
   const content = (
     <>
       {!embedded ? (
@@ -326,18 +318,6 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
           </Space>
         </div>
       )}
-
-      {legacyWeixinActive ? (
-        <Alert
-          type={tenantWeixinConfigs.length ? 'info' : 'warning'}
-          showIcon
-          style={{ marginBottom: 16 }}
-          message="检测到旧全局微信通道正在运行"
-          description={tenantWeixinConfigs.length
-            ? '当前服务仍有 config.json / 本机凭证启动的全局微信通道；租户级微信请以本页的微信渠道配置和绑定为准。'
-            : '这个微信登录态不属于任何租户，所以无法显示绑定在哪个租户上。请新建“微信”渠道配置并扫码迁移，确认后再从 config.json 的 channel_type 中移除 weixin。'}
-        />
-      ) : null}
 
       <Table<ChannelConfigItem>
         rowKey="channel_config_id"

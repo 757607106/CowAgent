@@ -91,7 +91,7 @@ def register_platform_admin_routes(
         authorizer.require_platform_admin(request)
         return {
             "status": "success",
-            "providers": model_config_service.list_provider_options(),
+            "providers": model_config_service.list_provider_options(scope="platform"),
             "models": [model_config_service.serialize_model(item) for item in model_config_service.list_platform_models()],
         }
 
@@ -187,6 +187,7 @@ def register_model_config_routes(
         scoped_tenant_id = authorizer.scope_tenant_id(session, tenant_id)
         return {
             "status": "success",
+            "providers": model_config_service.list_provider_options(scope="tenant"),
             "models": [
                 model_config_service.serialize_model(item)
                 for item in model_config_service.list_tenant_models(scoped_tenant_id)

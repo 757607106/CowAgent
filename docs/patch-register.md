@@ -5,6 +5,15 @@
 
 ## Patch 清单
 
+### `app.py`
+
+- 多租户鉴权开启时，启动阶段只保留 `web` 控制台，不再根据 `config.json/channel_type` 启动微信、飞书、QQ 等全局渠道
+- 启动后仍会从租户数据库加载已启用的渠道配置，并按 `channel_config_id` 维度启动托管运行时
+
+升级关注点：
+
+- 如果上游调整应用启动或 ChannelManager，需要重新确认租户渠道仍只来自数据库配置
+
 ### `agent/memory/conversation_store.py`
 
 - 增加按 `workspace_root / db_path` 维度缓存 `ConversationStore`

@@ -1,28 +1,12 @@
-import { Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tabs, Tag, message } from 'antd';
+import { Button, Form, Input, Modal, Popconfirm, Space, Switch, Table, Tabs, Tag, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { PageTitle } from '../components/PageTitle';
 import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type { ModelConfigItem } from '../types';
 
-const PROVIDERS = [
-  'openai',
-  'deepseek',
-  'dashscope',
-  'zhipu',
-  'moonshot',
-  'doubao',
-  'claudeAPI',
-  'gemini',
-  'minimax',
-  'modelscope',
-  'linkai',
-].map((provider) => ({ label: provider, value: provider }));
-
 interface ModelFormValues {
-  provider: string;
   model_name: string;
-  display_name: string;
   api_base: string;
   api_key: string;
   enabled: boolean;
@@ -30,9 +14,9 @@ interface ModelFormValues {
 
 function modelPayload(values: ModelFormValues, editing: ModelConfigItem | null) {
   const payload: Record<string, unknown> = {
-    provider: values.provider,
+    provider: 'custom',
     model_name: values.model_name,
-    display_name: values.display_name || values.model_name,
+    display_name: values.model_name,
     api_base: values.api_base || '',
     enabled: values.enabled ?? true,
   };
@@ -75,9 +59,7 @@ export default function TenantModelsPage() {
   const openCreate = () => {
     setEditing(null);
     form.setFieldsValue({
-      provider: 'openai',
       model_name: '',
-      display_name: '',
       api_base: '',
       api_key: '',
       enabled: true,
@@ -88,9 +70,7 @@ export default function TenantModelsPage() {
   const openEdit = (row: ModelConfigItem) => {
     setEditing(row);
     form.setFieldsValue({
-      provider: row.provider,
       model_name: row.model_name,
-      display_name: row.display_name || row.model_name,
       api_base: row.api_base || '',
       api_key: '',
       enabled: row.enabled,
@@ -139,7 +119,7 @@ export default function TenantModelsPage() {
     <div>
       <PageTitle
         title="租户模型"
-        description="查看平台模型，并维护本租户自己的模型接入。"
+        description="查看平台模型，并维护本租户自己的自定义模型接入。"
         extra={(
           <Space>
             <Button onClick={() => void load()}>刷新</Button>
@@ -186,6 +166,7 @@ export default function TenantModelsPage() {
                 pagination={{ pageSize: 12 }}
                 columns={[
                   ...columns,
+                  { title: 'API Base', dataIndex: 'api_base', render: (value: string) => value || <Tag>未设置</Tag> },
                   {
                     title: '操作',
                     render: (_: unknown, row: ModelConfigItem) => canManage ? (
@@ -213,16 +194,10 @@ export default function TenantModelsPage() {
         destroyOnClose
       >
         <Form form={form} layout="vertical">
-          <Form.Item name="provider" label="厂商" rules={[{ required: true }]}>
-            <Select options={PROVIDERS} showSearch />
-          </Form.Item>
           <Form.Item name="model_name" label="模型名称" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="display_name" label="展示名称">
-            <Input />
-          </Form.Item>
-          <Form.Item name="api_base" label="API Base">
+          <Form.Item name="api_base" label="API Base" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
           <Form.Item

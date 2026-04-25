@@ -985,18 +985,20 @@ class WebChannel(ChatChannel):
     def startup(self):
         port = conf().get("web_port", 9899)
 
-        # 打印可用渠道类型提示
-        logger.info(
-            "[WebChannel] 全部可用通道如下，可修改 config.json 配置文件中的 channel_type 字段进行切换，多个通道用逗号分隔：")
-        logger.info("[WebChannel]   1. weixin           - 微信")
-        logger.info("[WebChannel]   2. web              - 网页")
-        logger.info("[WebChannel]   3. terminal         - 终端")
-        logger.info("[WebChannel]   4. feishu           - 飞书")
-        logger.info("[WebChannel]   5. dingtalk         - 钉钉")
-        logger.info("[WebChannel]   6. wecom_bot        - 企微智能机器人")
-        logger.info("[WebChannel]   7. wechatcom_app    - 企微自建应用")
-        logger.info("[WebChannel]   8. wechatmp         - 个人公众号")
-        logger.info("[WebChannel]   9. wechatmp_service - 企业公众号")
+        if _is_tenant_auth_enabled():
+            logger.info("[WebChannel] 多租户模式已启用：渠道接入只通过租户级渠道配置管理。")
+        else:
+            logger.info(
+                "[WebChannel] 全部可用通道如下，可修改 config.json 配置文件中的 channel_type 字段进行切换，多个通道用逗号分隔：")
+            logger.info("[WebChannel]   1. weixin           - 微信")
+            logger.info("[WebChannel]   2. web              - 网页")
+            logger.info("[WebChannel]   3. terminal         - 终端")
+            logger.info("[WebChannel]   4. feishu           - 飞书")
+            logger.info("[WebChannel]   5. dingtalk         - 钉钉")
+            logger.info("[WebChannel]   6. wecom_bot        - 企微智能机器人")
+            logger.info("[WebChannel]   7. wechatcom_app    - 企微自建应用")
+            logger.info("[WebChannel]   8. wechatmp         - 个人公众号")
+            logger.info("[WebChannel]   9. wechatmp_service - 企业公众号")
         logger.info("[WebChannel] ✅ Web控制台已运行")
         logger.info(f"[WebChannel] 🌐 本地访问: http://localhost:{port}")
         logger.info(f"[WebChannel] 🌍 服务器访问: http://YOUR_IP:{port} (请将YOUR_IP替换为服务器IP)")
@@ -1400,12 +1402,25 @@ class ChannelsHandler:
 
     @classmethod
     def _active_channel_set(cls) -> set:
-        return set(cls._parse_channel_list(conf().get("channel_type", "")))
+        channels = set(cls._parse_channel_list(conf().get("channel_type", "")))
+        if _is_tenant_auth_enabled():
+            return {"web"} if "web" in channels else set()
+        return channels
 
     def GET(self):
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
+            if _is_tenant_auth_enabled():
+                return json.dumps(
+                    {
+                        "status": "success",
+                        "channels": [],
+                        "tenant_only": True,
+                        "message": "多租户模式下渠道只通过租户级渠道配置管理",
+                    },
+                    ensure_ascii=False,
+                )
             local_config = conf()
             active_channels = self._active_channel_set()
             channels = []
@@ -1444,6 +1459,14 @@ class ChannelsHandler:
         _require_tenant_manage()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
+            if _is_tenant_auth_enabled():
+                return json.dumps(
+                    {
+                        "status": "error",
+                        "message": "多租户模式不支持全局渠道操作，请使用租户级渠道配置",
+                    },
+                    ensure_ascii=False,
+                )
             body = json.loads(web.data())
             action = body.get("action")
             channel_name = body.get("channel")
@@ -1722,6 +1745,11 @@ class WeixinQrHandler:
 
     def _fetch_qr(self, channel_config_id: str = ""):
         channel_config_id = str(channel_config_id or "").strip()
+        if _is_tenant_auth_enabled() and not channel_config_id:
+            return json.dumps(
+                {"status": "error", "message": "多租户模式请通过租户微信渠道配置扫码"},
+                ensure_ascii=False,
+            )
         if channel_config_id:
             _require_tenant_manage()
             _service, definition, overrides = self._resolve_weixin_channel_config(channel_config_id)
@@ -1797,6 +1825,11 @@ class WeixinQrHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def _poll_status(self, *, channel_config_id: str = ""):
+        if _is_tenant_auth_enabled() and not str(channel_config_id or "").strip():
+            return json.dumps(
+                {"status": "error", "message": "多租户模式请通过租户微信渠道配置扫码"},
+                ensure_ascii=False,
+            )
         state_key = self._state_key(channel_config_id)
         state = WeixinQrHandler._qr_state.get(state_key, {})
         qrcode = state.get("qrcode", "")
@@ -2017,7 +2050,7 @@ class PlatformAdminModelsHandler:
             return json.dumps(
                 {
                     "status": "success",
-                    "providers": service.list_provider_options(),
+                    "providers": service.list_provider_options(scope="platform"),
                     "models": [service.serialize_model(item) for item in service.list_platform_models()],
                 },
                 ensure_ascii=False,
@@ -2114,6 +2147,7 @@ class PlatformTenantModelsHandler:
             return json.dumps(
                 {
                     "status": "success",
+                    "providers": service.list_provider_options(scope="tenant"),
                     "models": [service.serialize_model(item) for item in service.list_tenant_models(tenant_id)],
                 },
                 ensure_ascii=False,
@@ -2684,7 +2718,7 @@ class PlatformBindingsHandler:
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(tenant_id='', channel_type='')
+            params = web.input(tenant_id='', channel_type='', channel_config_id='')
             service = _get_binding_service()
             tenant_id = _scope_optional_tenant_id(params.tenant_id)
             return json.dumps(

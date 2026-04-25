@@ -77,10 +77,8 @@ def test_platform_admin_manages_tenants_and_shared_models(tmp_path, monkeypatch)
         headers=platform_headers,
         json={
             "provider": "openai",
-            "model_name": "gpt-platform",
-            "display_name": "Platform GPT",
+            "model_name": "gpt-5.4",
             "api_key": "sk-platform-secret",
-            "api_base": "https://api.example.test/v1",
             "enabled": True,
             "is_public": True,
         },
@@ -88,7 +86,24 @@ def test_platform_admin_manages_tenants_and_shared_models(tmp_path, monkeypatch)
     assert platform_model.status_code == 200, platform_model.text
     platform_model_id = platform_model.json()["model"]["model_config_id"]
     assert "api_key" not in platform_model.json()["model"]
+    assert platform_model.json()["model"]["api_base"] == ""
     assert platform_model.json()["model"]["api_key_set"] is True
+
+    platform_custom = client.post(
+        "/api/platform/admin/models",
+        headers=platform_headers,
+        json={
+            "provider": "custom",
+            "model_name": "tenant-only-model",
+            "api_base": "https://proxy.example.test/v1",
+            "api_key": "sk-custom-secret",
+        },
+    )
+    assert platform_custom.status_code == 400
+
+    platform_provider_list = client.get("/api/platform/admin/models", headers=platform_headers)
+    assert platform_provider_list.status_code == 200
+    assert all(item["provider"] != "custom" for item in platform_provider_list.json()["providers"])
 
     available = client.get("/api/platform/models/available", headers=tenant_headers)
     assert available.status_code == 200
@@ -98,15 +113,28 @@ def test_platform_admin_manages_tenants_and_shared_models(tmp_path, monkeypatch)
         "/api/platform/tenant-models",
         headers=tenant_headers,
         json={
-            "provider": "deepseek",
-            "model_name": "deepseek-tenant",
-            "display_name": "Tenant DeepSeek",
+            "provider": "custom",
+            "model_name": "tenant-custom-model",
+            "api_base": "https://tenant-model.example.test/v1",
             "api_key": "sk-tenant-secret",
             "enabled": True,
         },
     )
     assert tenant_model.status_code == 200, tenant_model.text
     tenant_model_id = tenant_model.json()["model"]["model_config_id"]
+    assert tenant_model.json()["model"]["provider"] == "custom"
+    assert tenant_model.json()["model"]["api_base"] == "https://tenant-model.example.test/v1"
+
+    tenant_provider_list = client.get("/api/platform/tenant-models", headers=tenant_headers)
+    assert tenant_provider_list.status_code == 200
+    assert [item["provider"] for item in tenant_provider_list.json()["providers"]] == ["custom"]
+
+    tenant_builtin = client.post(
+        "/api/platform/tenant-models",
+        headers=tenant_headers,
+        json={"provider": "deepseek", "model_name": "deepseek-v4-pro", "api_key": "sk-tenant-secret"},
+    )
+    assert tenant_builtin.status_code == 400
 
     other_headers, _ = _register_tenant_owner(
         client,
@@ -128,7 +156,7 @@ def test_platform_admin_manages_tenants_and_shared_models(tmp_path, monkeypatch)
         },
     )
     assert create_agent.status_code == 200, create_agent.text
-    assert create_agent.json()["agent"]["model"] == "gpt-platform"
+    assert create_agent.json()["agent"]["model"] == "gpt-5.4"
     assert create_agent.json()["agent"]["model_config_id"] == platform_model_id
 
     member = client.post(
@@ -179,7 +207,7 @@ def test_runtime_uses_resolved_model_config_overrides(tmp_path, monkeypatch) -> 
         headers=platform_headers,
         json={
             "provider": "dashscope",
-            "model_name": "qwen-runtime",
+            "model_name": "qwen3.6-plus",
             "api_key": "dashscope-runtime-key",
         },
     )
@@ -210,6 +238,52 @@ def test_runtime_uses_resolved_model_config_overrides(tmp_path, monkeypatch) -> 
     assert resolved.runtime_context.metadata["config_overrides"]["dashscope_api_key"] == "dashscope-runtime-key"
 
     with resolved.activate():
-        assert get_current_model_name() == "qwen-runtime"
-        assert conf().get("model") == "qwen-runtime"
+        assert get_current_model_name() == "qwen3.6-plus"
+        assert conf().get("model") == "qwen3.6-plus"
         assert conf().get("dashscope_api_key") == "dashscope-runtime-key"
+
+    custom_model = client.post(
+        "/api/platform/tenant-models",
+        headers=tenant_headers,
+        json={
+            "provider": "custom",
+            "model_name": "local-custom-model",
+            "api_base": "https://custom-runtime.example.test/v1",
+            "api_key": "custom-runtime-key",
+        },
+    )
+    assert custom_model.status_code == 200, custom_model.text
+    custom_model_config_id = custom_model.json()["model"]["model_config_id"]
+    custom_agent = client.post(
+        "/api/platform/agents",
+        headers=tenant_headers,
+        json={
+            "tenant_id": tenant_id,
+            "agent_id": "custom-runtime-agent",
+            "name": "Custom Runtime Agent",
+            "model_config_id": custom_model_config_id,
+        },
+    )
+    assert custom_agent.status_code == 200, custom_agent.text
+
+    custom_context = Context(ContextType.TEXT, "hello", kwargs={})
+    custom_context["tenant_id"] = tenant_id
+    custom_context["agent_id"] = "custom-runtime-agent"
+    custom_context["session_id"] = "sid-2"
+    custom_context["request_id"] = "req-2"
+    custom_context["receiver"] = "user-1"
+    custom_context["channel_type"] = "web"
+
+    custom_resolved = CowAgentRuntimeAdapter().resolve_from_context(custom_context)
+    assert custom_resolved is not None
+    custom_overrides = custom_resolved.runtime_context.metadata["config_overrides"]
+    assert custom_overrides["bot_type"] == "openai"
+    assert custom_overrides["open_ai_api_base"] == "https://custom-runtime.example.test/v1"
+    assert custom_overrides["open_ai_api_key"] == "custom-runtime-key"
+
+    with custom_resolved.activate():
+        assert get_current_model_name() == "local-custom-model"
+        assert conf().get("model") == "local-custom-model"
+        assert conf().get("bot_type") == "openai"
+        assert conf().get("open_ai_api_base") == "https://custom-runtime.example.test/v1"
+        assert conf().get("open_ai_api_key") == "custom-runtime-key"

@@ -2,27 +2,11 @@ import { Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, T
 import { useEffect, useState } from 'react';
 import { PageTitle } from '../components/PageTitle';
 import { api } from '../services/api';
-import type { ModelConfigItem } from '../types';
-
-const PROVIDERS = [
-  'openai',
-  'deepseek',
-  'dashscope',
-  'zhipu',
-  'moonshot',
-  'doubao',
-  'claudeAPI',
-  'gemini',
-  'minimax',
-  'modelscope',
-  'linkai',
-].map((provider) => ({ label: provider, value: provider }));
+import type { ModelConfigItem, ModelProviderOption } from '../types';
 
 interface ModelFormValues {
   provider: string;
   model_name: string;
-  display_name: string;
-  api_base: string;
   api_key: string;
   enabled: boolean;
   is_public: boolean;
@@ -32,8 +16,7 @@ function modelPayload(values: ModelFormValues, editing: ModelConfigItem | null) 
   const payload: Record<string, unknown> = {
     provider: values.provider,
     model_name: values.model_name,
-    display_name: values.display_name || values.model_name,
-    api_base: values.api_base || '',
+    display_name: values.model_name,
     enabled: values.enabled ?? true,
     is_public: values.is_public ?? true,
   };
@@ -46,16 +29,25 @@ function modelPayload(values: ModelFormValues, editing: ModelConfigItem | null) 
 export default function PlatformModelsPage() {
   const [loading, setLoading] = useState(false);
   const [models, setModels] = useState<ModelConfigItem[]>([]);
+  const [providers, setProviders] = useState<ModelProviderOption[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ModelConfigItem | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<ModelFormValues>();
+  const selectedProvider = Form.useWatch('provider', form);
+  const selectedProviderDef = providers.find((item) => item.provider === selectedProvider);
+  const providerOptions = providers.map((item) => ({
+    label: `${item.label || item.provider} (${item.provider})`,
+    value: item.provider,
+  }));
+  const modelOptions = (selectedProviderDef?.models || []).map((model) => ({ label: model, value: model }));
 
   const load = async () => {
     setLoading(true);
     try {
       const data = await api.listPlatformModels();
       setModels(data.models || []);
+      setProviders(data.providers || []);
     } finally {
       setLoading(false);
     }
@@ -63,11 +55,11 @@ export default function PlatformModelsPage() {
 
   const openCreate = () => {
     setEditing(null);
+    const provider = providers[0]?.provider || 'openai';
+    const modelName = providers.find((item) => item.provider === provider)?.models?.[0] || '';
     form.setFieldsValue({
-      provider: 'openai',
-      model_name: '',
-      display_name: '',
-      api_base: '',
+      provider,
+      model_name: modelName,
       api_key: '',
       enabled: true,
       is_public: true,
@@ -80,8 +72,6 @@ export default function PlatformModelsPage() {
     form.setFieldsValue({
       provider: row.provider,
       model_name: row.model_name,
-      display_name: row.display_name || row.model_name,
-      api_base: row.api_base || '',
       api_key: '',
       enabled: row.enabled,
       is_public: row.is_public,
@@ -165,20 +155,23 @@ export default function PlatformModelsPage() {
       >
         <Form form={form} layout="vertical">
           <Form.Item name="provider" label="厂商" rules={[{ required: true }]}>
-            <Select options={PROVIDERS} showSearch />
+            <Select
+              options={providerOptions}
+              showSearch
+              disabled={Boolean(editing)}
+              onChange={(value) => {
+                const nextProvider = providers.find((item) => item.provider === value);
+                form.setFieldValue('model_name', nextProvider?.models?.[0] || '');
+              }}
+            />
           </Form.Item>
-          <Form.Item name="model_name" label="模型名称" rules={[{ required: true }]}>
-            <Input />
-          </Form.Item>
-          <Form.Item name="display_name" label="展示名称">
-            <Input />
-          </Form.Item>
-          <Form.Item name="api_base" label="API Base">
-            <Input />
+          <Form.Item name="model_name" label="模型" rules={[{ required: true }]}>
+            <Select options={modelOptions} showSearch />
           </Form.Item>
           <Form.Item
             name="api_key"
             label={editing?.api_key_set ? `API Key（留空保持 ${editing.api_key_masked || '当前值'}）` : 'API Key'}
+            rules={editing?.api_key_set ? [] : [{ required: true, message: '请输入 API Key' }]}
           >
             <Input.Password autoComplete="new-password" />
           </Form.Item>

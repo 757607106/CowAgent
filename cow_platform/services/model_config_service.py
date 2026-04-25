@@ -21,20 +21,111 @@ class ProviderRuntimeMapping:
     api_base_field: str = ""
     default_api_base: str = ""
     use_linkai: bool = False
+    label: str = ""
+    models: tuple[str, ...] = ()
+    platform_configurable: bool = True
+    tenant_configurable: bool = False
+    custom: bool = False
 
 
 PROVIDER_RUNTIME_MAP: dict[str, ProviderRuntimeMapping] = {
-    "openai": ProviderRuntimeMapping("openai", "open_ai_api_key", "open_ai_api_base", "https://api.openai.com/v1"),
-    "deepseek": ProviderRuntimeMapping("deepseek", "deepseek_api_key", "deepseek_api_base", "https://api.deepseek.com/v1"),
-    "dashscope": ProviderRuntimeMapping("dashscope", "dashscope_api_key"),
-    "zhipu": ProviderRuntimeMapping("zhipu", "zhipu_ai_api_key", "zhipu_ai_api_base", "https://open.bigmodel.cn/api/paas/v4"),
-    "moonshot": ProviderRuntimeMapping("moonshot", "moonshot_api_key", "moonshot_base_url", "https://api.moonshot.cn/v1"),
-    "doubao": ProviderRuntimeMapping("doubao", "ark_api_key", "ark_base_url", "https://ark.cn-beijing.volces.com/api/v3"),
-    "claudeAPI": ProviderRuntimeMapping("claudeAPI", "claude_api_key", "claude_api_base", "https://api.anthropic.com/v1"),
-    "gemini": ProviderRuntimeMapping("gemini", "gemini_api_key", "gemini_api_base", "https://generativelanguage.googleapis.com"),
-    "minimax": ProviderRuntimeMapping("minimax", "minimax_api_key", "minimax_api_base", "https://api.minimaxi.com/v1"),
-    "modelscope": ProviderRuntimeMapping("modelscope", "modelscope_api_key", "modelscope_base_url", "https://api-inference.modelscope.cn/v1"),
-    "linkai": ProviderRuntimeMapping("linkai", "linkai_api_key", "linkai_api_base", "https://api.link-ai.tech", True),
+    "openai": ProviderRuntimeMapping(
+        "openai",
+        "open_ai_api_key",
+        "open_ai_api_base",
+        "https://api.openai.com/v1",
+        label="OpenAI",
+        models=("gpt-5.4", "gpt-4.1", "gpt-4o", "gpt-4o-mini", "o1-preview", "o1-mini"),
+    ),
+    "deepseek": ProviderRuntimeMapping(
+        "deepseek",
+        "deepseek_api_key",
+        "deepseek_api_base",
+        "https://api.deepseek.com/v1",
+        label="DeepSeek",
+        models=("deepseek-v4-pro", "deepseek-v4-flash", "deepseek-chat", "deepseek-reasoner"),
+    ),
+    "dashscope": ProviderRuntimeMapping(
+        "dashscope",
+        "dashscope_api_key",
+        label="通义千问 Qwen",
+        models=("qwen3.6-plus", "qwen3.5-plus", "qwen3-max", "qwen-max", "qwen-plus", "qwen-turbo", "qwq-plus"),
+    ),
+    "zhipu": ProviderRuntimeMapping(
+        "zhipu",
+        "zhipu_ai_api_key",
+        "zhipu_ai_api_base",
+        "https://open.bigmodel.cn/api/paas/v4",
+        label="智谱 GLM",
+        models=("glm-5.1", "glm-5-turbo", "glm-5", "glm-4.7", "glm-4-plus", "glm-4"),
+    ),
+    "moonshot": ProviderRuntimeMapping(
+        "moonshot",
+        "moonshot_api_key",
+        "moonshot_base_url",
+        "https://api.moonshot.cn/v1",
+        label="Kimi",
+        models=("kimi-k2.6", "kimi-k2.5", "kimi-k2", "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"),
+    ),
+    "doubao": ProviderRuntimeMapping(
+        "doubao",
+        "ark_api_key",
+        "ark_base_url",
+        "https://ark.cn-beijing.volces.com/api/v3",
+        label="豆包 Doubao",
+        models=("doubao-seed-2-0-pro-260215", "doubao-seed-2-0-lite-260215", "doubao-seed-2-0-mini-260215", "doubao-seed-2-0-code-preview-260215"),
+    ),
+    "claudeAPI": ProviderRuntimeMapping(
+        "claudeAPI",
+        "claude_api_key",
+        "claude_api_base",
+        "https://api.anthropic.com/v1",
+        label="Claude",
+        models=("claude-sonnet-4-6", "claude-opus-4-6", "claude-sonnet-4-5", "claude-sonnet-4-0", "claude-3-5-sonnet-latest"),
+    ),
+    "gemini": ProviderRuntimeMapping(
+        "gemini",
+        "gemini_api_key",
+        "gemini_api_base",
+        "https://generativelanguage.googleapis.com",
+        label="Gemini",
+        models=("gemini-3.1-pro-preview", "gemini-3.1-flash-lite-preview", "gemini-3-pro-preview", "gemini-3-flash-preview", "gemini-2.5-pro-preview-05-06"),
+    ),
+    "minimax": ProviderRuntimeMapping(
+        "minimax",
+        "minimax_api_key",
+        "minimax_api_base",
+        "https://api.minimaxi.com/v1",
+        label="MiniMax",
+        models=("MiniMax-M2.7", "MiniMax-M2.7-highspeed", "MiniMax-M2.5", "MiniMax-M2.1", "abab6.5-chat"),
+    ),
+    "modelscope": ProviderRuntimeMapping(
+        "modelscope",
+        "modelscope_api_key",
+        "modelscope_base_url",
+        "https://api-inference.modelscope.cn/v1",
+        label="魔搭 ModelScope",
+        models=("deepseek-ai/DeepSeek-V3.2", "Qwen/Qwen3-235B-A22B-Instruct-2507", "Qwen/Qwen3.5-27B", "ZhipuAI/GLM-5"),
+    ),
+    "linkai": ProviderRuntimeMapping(
+        "linkai",
+        "linkai_api_key",
+        "linkai_api_base",
+        "https://api.link-ai.tech",
+        True,
+        label="LinkAI",
+        models=("linkai-4o", "linkai-4-turbo", "linkai-3.5"),
+    ),
+    "custom": ProviderRuntimeMapping(
+        "openai",
+        "open_ai_api_key",
+        "open_ai_api_base",
+        "",
+        label="自定义",
+        platform_configurable=False,
+        tenant_configurable=True,
+        custom=True,
+    ),
 }
 
 
@@ -49,10 +140,25 @@ class ModelConfigService:
         self.repository = repository or ModelConfigRepository()
         self.tenant_service = tenant_service or TenantService()
 
-    def list_provider_options(self) -> list[dict[str, str]]:
+    def list_provider_options(self, *, scope: str = "") -> list[dict[str, object]]:
+        resolved_scope = (scope or "").strip()
+        if resolved_scope and resolved_scope not in MODEL_CONFIG_SCOPES:
+            raise ValueError(f"unsupported model config scope: {resolved_scope}")
         return [
-            {"provider": provider, "bot_type": mapping.bot_type}
-            for provider, mapping in sorted(PROVIDER_RUNTIME_MAP.items())
+            {
+                "provider": provider,
+                "label": mapping.label or provider,
+                "bot_type": mapping.bot_type,
+                "models": list(mapping.models),
+                "custom": mapping.custom,
+                "requires_api_base": mapping.custom,
+                "platform_configurable": mapping.platform_configurable,
+                "tenant_configurable": mapping.tenant_configurable,
+            }
+            for provider, mapping in PROVIDER_RUNTIME_MAP.items()
+            if not resolved_scope
+            or (resolved_scope == "platform" and mapping.platform_configurable)
+            or (resolved_scope == "tenant" and mapping.tenant_configurable)
         ]
 
     def list_platform_models(self) -> list[ModelConfigDefinition]:
@@ -163,14 +269,32 @@ class ModelConfigService:
             tenant_id=tenant_id,
         )
         next_provider = self._normalize_provider(provider) if provider is not None else existing.provider
+        next_mapping = PROVIDER_RUNTIME_MAP[next_provider]
+        if existing.scope == "platform" and not next_mapping.platform_configurable:
+            raise ValueError(f"provider is not configurable by platform admin: {next_provider}")
+        if existing.scope == "tenant" and not next_mapping.tenant_configurable:
+            raise ValueError(f"tenant model provider must be custom: {next_provider}")
         next_model_name = self._normalize_required("model_name", model_name) if model_name is not None else existing.model_name
+        next_api_key = existing.api_key if api_key is None else (api_key.strip() if isinstance(api_key, str) else api_key)
+        if existing.scope == "platform" and not next_api_key:
+            raise ValueError("api_key must not be empty for platform model")
+        if api_base is None:
+            next_api_base = existing.api_base
+        elif isinstance(api_base, str):
+            next_api_base = api_base.strip()
+        else:
+            next_api_base = ""
+        if not next_mapping.custom:
+            next_api_base = ""
+        elif not next_api_base:
+            raise ValueError("api_base must not be empty for custom model")
         definition = self.repository.update_model_config(
             existing.model_config_id,
             provider=next_provider,
             model_name=next_model_name,
             display_name=(display_name or "").strip() if display_name is not None else None,
-            api_key=api_key.strip() if isinstance(api_key, str) else api_key,
-            api_base=api_base.strip() if isinstance(api_base, str) else api_base,
+            api_key=next_api_key,
+            api_base=next_api_base,
             enabled=enabled,
             is_public=is_public if existing.scope == "platform" else False,
             metadata=metadata,
@@ -238,7 +362,7 @@ class ModelConfigService:
             if provider == "linkai":
                 overrides["open_ai_api_key"] = definition.api_key
         if mapping.api_base_field:
-            api_base = definition.api_base or mapping.default_api_base
+            api_base = definition.api_base if mapping.custom else mapping.default_api_base
             if api_base:
                 overrides[mapping.api_base_field] = api_base
                 if provider == "linkai":
@@ -281,6 +405,9 @@ class ModelConfigService:
             "updated_at": None,
         }
         api_key = str(record.get("api_key", "") or "")
+        mapping = PROVIDER_RUNTIME_MAP.get(str(record.get("provider", "") or ""))
+        if mapping is not None and not mapping.custom:
+            record["api_base"] = ""
         record["api_key_set"] = bool(api_key)
         record["api_key_masked"] = api_key if include_secret else self._mask_secret(api_key)
         if not include_secret:
@@ -305,7 +432,18 @@ class ModelConfigService:
     ) -> ModelConfigDefinition:
         resolved_scope = self._normalize_scope(scope)
         resolved_provider = self._normalize_provider(provider)
+        mapping = PROVIDER_RUNTIME_MAP[resolved_provider]
+        if resolved_scope == "platform" and not mapping.platform_configurable:
+            raise ValueError(f"provider is not configurable by platform admin: {resolved_provider}")
+        if resolved_scope == "tenant" and not mapping.tenant_configurable:
+            raise ValueError(f"tenant model provider must be custom: {resolved_provider}")
         resolved_model_name = self._normalize_required("model_name", model_name)
+        resolved_api_key = (api_key or "").strip()
+        resolved_api_base = (api_base or "").strip() if mapping.custom else ""
+        if resolved_scope == "platform" and not resolved_api_key:
+            raise ValueError("api_key must not be empty for platform model")
+        if mapping.custom and not resolved_api_base:
+            raise ValueError("api_base must not be empty for custom model")
         resolved_id = (model_config_id or "").strip() or self._generate_model_config_id(
             scope=resolved_scope,
             tenant_id=tenant_id,
@@ -319,8 +457,8 @@ class ModelConfigService:
             provider=resolved_provider,
             model_name=resolved_model_name,
             display_name=(display_name or "").strip() or resolved_model_name,
-            api_key=(api_key or "").strip(),
-            api_base=(api_base or "").strip(),
+            api_key=resolved_api_key,
+            api_base=resolved_api_base,
             enabled=bool(enabled),
             is_public=bool(is_public) if resolved_scope == "platform" else False,
             metadata=metadata or {},

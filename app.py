@@ -35,6 +35,40 @@ def _parse_channel_type(raw) -> list:
     return []
 
 
+def _is_tenant_channel_mode() -> bool:
+    return bool(conf().get("web_tenant_auth", True))
+
+
+def _resolve_startup_channels(
+    raw_channel,
+    *,
+    web_console_enabled: bool,
+    tenant_channel_mode: bool,
+    command_mode: bool = False,
+) -> list:
+    if command_mode:
+        return ["terminal"]
+
+    channel_names = _parse_channel_type(raw_channel)
+    if not channel_names:
+        channel_names = ["web"] if web_console_enabled else []
+
+    if web_console_enabled and "web" not in channel_names:
+        channel_names.append("web")
+
+    if tenant_channel_mode:
+        skipped = [name for name in channel_names if name != "web"]
+        channel_names = [name for name in channel_names if name == "web"]
+        if skipped:
+            logger.warning(
+                "[App] 多租户模式已忽略 config.json/channel_type 中的全局渠道: %s。"
+                "请在控制台的租户渠道配置中接入这些渠道。",
+                ",".join(skipped),
+            )
+
+    return channel_names
+
+
 class ChannelManager:
     """
     Manage the lifecycle of multiple channels running concurrently.
@@ -354,20 +388,14 @@ def run():
         # kill signal
         sigterm_handler_wrap(signal.SIGTERM)
 
-        # Parse channel_type into a list
         raw_channel = conf().get("channel_type", "web")
-
-        if "--cmd" in sys.argv:
-            channel_names = ["terminal"]
-        else:
-            channel_names = _parse_channel_type(raw_channel)
-            if not channel_names:
-                channel_names = ["web"]
-
-        # Auto-start web console unless explicitly disabled
         web_console_enabled = conf().get("web_console", True)
-        if web_console_enabled and "web" not in channel_names:
-            channel_names.append("web")
+        channel_names = _resolve_startup_channels(
+            raw_channel,
+            web_console_enabled=web_console_enabled,
+            tenant_channel_mode=_is_tenant_channel_mode(),
+            command_mode="--cmd" in sys.argv,
+        )
 
         logger.info(f"[App] Starting channels: {channel_names}")
 

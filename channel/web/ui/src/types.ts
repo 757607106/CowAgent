@@ -139,6 +139,17 @@ export interface ModelConfigItem {
   metadata?: Record<string, unknown>;
 }
 
+export interface ModelProviderOption {
+  provider: string;
+  label: string;
+  bot_type: string;
+  models: string[];
+  custom?: boolean;
+  requires_api_base?: boolean;
+  platform_configurable?: boolean;
+  tenant_configurable?: boolean;
+}
+
 export interface SkillItem {
   name: string;
   description?: string;
@@ -163,19 +174,6 @@ export interface ChannelField {
   type: 'text' | 'secret' | 'number' | 'bool' | 'list';
   value?: string | number | boolean | string[];
   default?: string | number | boolean | string[];
-}
-
-export interface ChannelItem {
-  name: string;
-  label?: {
-    zh?: string;
-    en?: string;
-  };
-  icon?: string;
-  color?: string;
-  active: boolean;
-  login_status?: string;
-  fields: ChannelField[];
 }
 
 export interface ChannelTypeItem {
