@@ -1,6 +1,6 @@
-import { Button, Form, Input, Modal, Popconfirm, Space, Switch, Table, Tabs, Tag, message } from 'antd';
+import { Button, Form, Input, Modal, Popconfirm, Space, Switch, Tabs, Tag, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
-import { PageTitle } from '../components/PageTitle';
+import { ConsolePage, DataTableShell, PageToolbar, StatusTag } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type { ModelConfigItem } from '../types';
@@ -111,29 +111,27 @@ export default function TenantModelsPage() {
     { title: '模型', dataIndex: 'model_name', render: (value: string) => <Tag color="blue">{value}</Tag> },
     { title: '厂商', dataIndex: 'provider' },
     { title: '来源', dataIndex: 'scope', render: (value: string) => (value === 'platform' ? <Tag color="purple">平台</Tag> : <Tag color="cyan">本租户</Tag>) },
-    { title: '启用', dataIndex: 'enabled', render: (value: boolean) => (value ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>) },
+    { title: '启用', dataIndex: 'enabled', render: (value: boolean) => <StatusTag status={value}>{value ? '启用' : '停用'}</StatusTag> },
     { title: 'API Key', dataIndex: 'api_key_masked', render: (value: string, row: ModelConfigItem) => (row.api_key_set ? value || '已设置' : <Tag>未设置</Tag>) },
   ];
 
   return (
-    <div>
-      <PageTitle
+    <ConsolePage
         title="租户模型"
-        description="查看平台模型，并维护本租户自己的自定义模型接入。"
-        extra={(
-          <Space>
+        actions={(
+          <PageToolbar>
             <Button onClick={() => void load()}>刷新</Button>
             {canManage && <Button type="primary" onClick={openCreate}>新增租户模型</Button>}
-          </Space>
+          </PageToolbar>
         )}
-      />
+      >
       <Tabs
         items={[
           {
             key: 'available',
             label: `可用模型 (${availableModels.length})`,
             children: (
-              <Table<ModelConfigItem>
+              <DataTableShell<ModelConfigItem>
                 rowKey="model_config_id"
                 loading={loading}
                 dataSource={availableModels}
@@ -146,7 +144,7 @@ export default function TenantModelsPage() {
             key: 'platform',
             label: `平台模型 (${platformModels.length})`,
             children: (
-              <Table<ModelConfigItem>
+              <DataTableShell<ModelConfigItem>
                 rowKey="model_config_id"
                 loading={loading}
                 dataSource={platformModels}
@@ -159,7 +157,7 @@ export default function TenantModelsPage() {
             key: 'tenant',
             label: `自有模型 (${tenantModels.length})`,
             children: (
-              <Table<ModelConfigItem>
+              <DataTableShell<ModelConfigItem>
                 rowKey="model_config_id"
                 loading={loading}
                 dataSource={tenantModels}
@@ -195,22 +193,22 @@ export default function TenantModelsPage() {
       >
         <Form form={form} layout="vertical">
           <Form.Item name="model_name" label="模型名称" rules={[{ required: true }]}>
-            <Input />
+            <Input aria-label="模型名称" />
           </Form.Item>
           <Form.Item name="api_base" label="API Base" rules={[{ required: true }]}>
-            <Input />
+            <Input aria-label="API Base" />
           </Form.Item>
           <Form.Item
             name="api_key"
             label={editing?.api_key_set ? `API Key（留空保持 ${editing.api_key_masked || '当前值'}）` : 'API Key'}
           >
-            <Input.Password autoComplete="new-password" />
+            <Input.Password autoComplete="new-password" aria-label="API Key" />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
-            <Switch />
+          <Form.Item name="enabled" label="启用" htmlFor="tenant-model-enabled" valuePropName="checked">
+            <Switch id="tenant-model-enabled" aria-label="启用租户模型" />
           </Form.Item>
         </Form>
       </Modal>
-    </div>
+    </ConsolePage>
   );
 }

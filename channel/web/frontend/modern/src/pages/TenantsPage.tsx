@@ -1,7 +1,6 @@
-import { Button, Card, Form, Input, Modal, Space, Table, Tag, message } from 'antd';
+import { Button, Form, Input, Modal, Space, message } from 'antd';
 import { useEffect, useState } from 'react';
-import { JsonBlock } from '../components/JsonBlock';
-import { PageTitle } from '../components/PageTitle';
+import { AdvancedJsonPanel, ConsolePage, DataTableShell, PageToolbar, StatusTag } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type { TenantItem } from '../types';
@@ -87,25 +86,33 @@ export default function TenantsPage() {
   }, []);
 
   return (
-    <Card>
-      <PageTitle
+    <ConsolePage
         title="租户管理"
-        description="维护多租户基础信息。"
-        extra={(
-          <Space>
+        actions={(
+          <PageToolbar>
             <Button onClick={() => void load()}>刷新</Button>
             {canCreateTenant && <Button type="primary" onClick={openCreate}>新建租户</Button>}
-          </Space>
+          </PageToolbar>
         )}
-      />
-      <Table<TenantItem>
+      >
+      <DataTableShell<TenantItem>
+        title="租户列表"
         rowKey={(row) => row.tenant_id}
         loading={loading}
         dataSource={tenants}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: '名称', dataIndex: 'name' },
-          { title: '状态', dataIndex: 'status', render: (v: string) => (v === 'active' ? <Tag color="green">active</Tag> : <Tag>{v}</Tag>) },
+          {
+            title: '租户',
+            dataIndex: 'name',
+            render: (value: string, row) => (
+              <span className="entity-title-cell">
+                <span className="entity-title-cell-main">{value}</span>
+                <span className="entity-title-cell-meta">{row.tenant_id}</span>
+              </span>
+            ),
+          },
+          { title: '状态', dataIndex: 'status', render: (value: string) => <StatusTag status={value}>{value}</StatusTag> },
           {
             title: '操作',
             render: (_, row) => (
@@ -116,7 +123,7 @@ export default function TenantsPage() {
           },
         ]}
         expandable={{
-          expandedRowRender: (row) => <JsonBlock value={row.metadata || {}} />,
+          expandedRowRender: (row) => <AdvancedJsonPanel title="租户 metadata" value={row.metadata || {}} defaultOpen />,
         }}
       />
 
@@ -130,16 +137,16 @@ export default function TenantsPage() {
       >
         <Form form={form} layout="vertical">
           <Form.Item name="name" label="名称" rules={[{ required: true }]}>
-            <Input />
+            <Input aria-label="名称" />
           </Form.Item>
           <Form.Item name="status" label="状态" rules={[{ required: true }]}>
-            <Input />
+            <Input aria-label="状态" />
           </Form.Item>
-          <Form.Item name="metadata" label="Metadata(JSON)">
-            <Input.TextArea rows={6} />
+          <Form.Item name="metadata" label="高级配置(JSON)" htmlFor="tenant-metadata">
+            <Input.TextArea id="tenant-metadata" rows={6} aria-label="高级配置 JSON" />
           </Form.Item>
         </Form>
       </Modal>
-    </Card>
+    </ConsolePage>
   );
 }

@@ -152,12 +152,21 @@ export const api = {
     { method: 'DELETE' },
   ),
 
-  listMcpServers: (agentId: string, tenantId = '') => requestJson<{ status: string; servers: McpServerItem[] }>(`/api/mcp/servers${buildQuery({ agent_id: agentId, tenant_id: tenantId })}`),
+  listMcpServers: (tenantId = '') => requestJson<{ status: string; servers: McpServerItem[] }>(`/api/mcp/servers${buildQuery({ tenant_id: tenantId })}`),
+  createMcpServer: (tenantId: string, payload: Record<string, any>) => requestJson<{ status: string; server: McpServerItem }>('/api/mcp/servers', {
+    method: 'POST',
+    body: JSON.stringify({ tenant_id: tenantId, ...payload }),
+  }),
+  updateMcpServer: (tenantId: string, serverName: string, payload: Record<string, any>) => requestJson<{ status: string; server: McpServerItem }>(`/api/mcp/servers/${encodeURIComponent(serverName)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ tenant_id: tenantId, ...payload }),
+  }),
+  deleteMcpServer: (tenantId: string, serverName: string) => requestJson(`/api/mcp/servers/${encodeURIComponent(serverName)}${buildQuery({ tenant_id: tenantId })}`, { method: 'DELETE' }),
   testMcpServer: (payload: Record<string, any>) => requestJson<McpTestResult>('/api/mcp/servers/test', {
     method: 'POST',
     body: JSON.stringify(payload),
   }),
-  listMcpServerTools: (serverName: string, agentId?: string, tenantId = '') => requestJson<{ status: string; tools: McpToolItem[] }>(`/api/mcp/servers/${encodeURIComponent(serverName)}/tools${buildQuery({ agent_id: agentId || '', tenant_id: tenantId })}`),
+  listMcpServerTools: (serverName: string, tenantId = '') => requestJson<{ status: string; tools: McpToolItem[] }>(`/api/mcp/servers/${encodeURIComponent(serverName)}/tools${buildQuery({ tenant_id: tenantId })}`),
 
   weixinQrGet: (channelConfigId = '') => requestJson<WeixinQrInfo>(`/api/weixin/qrlogin${buildQuery({ channel_config_id: channelConfigId })}`),
   weixinQrPost: (action: 'poll' | 'refresh', channelConfigId = '') => requestJson<WeixinQrInfo>('/api/weixin/qrlogin', {

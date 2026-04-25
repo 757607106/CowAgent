@@ -358,6 +358,12 @@ def _get_agent_service():
     return AgentService()
 
 
+def _get_mcp_server_service():
+    from cow_platform.services.mcp_server_service import TenantMcpServerService
+
+    return TenantMcpServerService()
+
+
 def _get_tenant_service():
     from cow_platform.services.tenant_service import TenantService
 
@@ -1934,6 +1940,7 @@ def _resolve_agent_definition(agent_id: str = "", tenant_id: str = "", binding_i
     return _get_agent_service().resolve_agent(
         tenant_id=target["tenant_id"],
         agent_id=target["agent_id"],
+        resolve_mcp=True,
     )
 
 
@@ -3536,33 +3543,74 @@ class KnowledgeGraphHandler:
 
 
 class MCPServersHandler:
-    """GET /api/mcp/servers — list MCP servers from the current agent definition."""
+    """Tenant-level MCP server configuration collection."""
 
     def GET(self):
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(agent_id='', tenant_id='')
+            params = web.input(tenant_id='')
             tenant_id = _scope_tenant_id(params.tenant_id)
-            agent_id = _normalize_agent_id(params.agent_id)
-
-            from cow_platform.services.agent_service import AgentService
-            from cow_platform.repositories.agent_repository import AgentRepository
-            service = AgentService(AgentRepository())
-            definition = service.resolve_agent(tenant_id=tenant_id, agent_id=agent_id)
-
-            servers = []
-            for name, config in definition.mcp_servers.items():
-                servers.append({
-                    "name": name,
-                    "command": config.get("command", ""),
-                    "args": config.get("args", []),
-                    "env": config.get("env", {}),
-                    "enabled": config.get("enabled", True),
-                })
+            servers = _get_mcp_server_service().list_servers(tenant_id)
             return json.dumps({"status": "success", "servers": servers}, ensure_ascii=False)
         except Exception as e:
             logger.error(f"[WebChannel] MCP servers list error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+    def POST(self):
+        _require_tenant_manage()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            body = json.loads(web.data() or "{}")
+            tenant_id = _scope_tenant_id(str(body.get("tenant_id", "")).strip())
+            server = _get_mcp_server_service().save_server(
+                tenant_id=tenant_id,
+                name=str(body.get("name", "")).strip(),
+                command=str(body.get("command", "")).strip(),
+                args=body.get("args", []),
+                env=body.get("env", {}),
+                enabled=_parse_bool(body.get("enabled", True), True),
+                metadata=body.get("metadata", {}),
+            )
+            return json.dumps({"status": "success", "server": server}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] MCP server create error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+
+class MCPServerDetailHandler:
+    """Tenant-level MCP server configuration detail."""
+
+    def PUT(self, server_name):
+        _require_tenant_manage()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            body = json.loads(web.data() or "{}")
+            tenant_id = _scope_tenant_id(str(body.get("tenant_id", "")).strip())
+            server = _get_mcp_server_service().save_server(
+                tenant_id=tenant_id,
+                name=server_name,
+                command=str(body.get("command", "")).strip(),
+                args=body.get("args", []),
+                env=body.get("env", {}),
+                enabled=_parse_bool(body.get("enabled", True), True),
+                metadata=body.get("metadata", {}),
+            )
+            return json.dumps({"status": "success", "server": server}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] MCP server update error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
+    def DELETE(self, server_name):
+        _require_tenant_manage()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            params = web.input(tenant_id='')
+            tenant_id = _scope_tenant_id(params.tenant_id)
+            server = _get_mcp_server_service().delete_server(tenant_id=tenant_id, name=server_name)
+            return json.dumps({"status": "success", "server": server, "name": server_name}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] MCP server delete error: {e}")
             return json.dumps({"status": "error", "message": str(e)})
 
 
@@ -3598,16 +3646,14 @@ class MCPServerToolsHandler:
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(agent_id='', tenant_id='')
+            params = web.input(tenant_id='')
             tenant_id = _scope_tenant_id(params.tenant_id)
-            agent_id = _normalize_agent_id(params.agent_id)
 
-            definition = _get_agent_service().resolve_agent(tenant_id=tenant_id, agent_id=agent_id)
-            server_config = dict(definition.mcp_servers or {}).get(server_name)
-            if not isinstance(server_config, dict):
+            server = _get_mcp_server_service().get_server(tenant_id, server_name)
+            if not server.enabled:
                 return json.dumps({
                     "status": "error",
-                    "message": f"MCP server '{server_name}' not found for agent {tenant_id}/{agent_id}",
+                    "message": f"MCP server '{server_name}' is disabled",
                 })
 
             import asyncio
@@ -3615,9 +3661,9 @@ class MCPServerToolsHandler:
 
             manager = MCPManager()
             result = asyncio.run(manager.test_connection(
-                command=str(server_config.get("command", "") or ""),
-                args=list(server_config.get("args", []) or []),
-                env=server_config.get("env", None),
+                command=server.command,
+                args=list(server.args),
+                env=dict(server.env),
             ))
             if not result.get("success"):
                 return json.dumps({

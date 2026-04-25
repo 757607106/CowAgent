@@ -1,7 +1,6 @@
-import { Button, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
+import { Button, Form, Input, Modal, Popconfirm, Select, Space, message } from 'antd';
 import { useEffect, useState } from 'react';
-import { JsonBlock } from '../components/JsonBlock';
-import { PageTitle } from '../components/PageTitle';
+import { AdvancedJsonPanel, ConsolePage, DataTableShell, PageToolbar, StatusTag } from '../components/console';
 import { api } from '../services/api';
 import type { TenantItem } from '../types';
 
@@ -97,26 +96,33 @@ export default function PlatformTenantsPage() {
   }, []);
 
   return (
-    <div>
-      <PageTitle
+    <ConsolePage
         title="租户管理"
-        description="由平台超管维护租户生命周期。"
-        extra={(
-          <Space>
+        actions={(
+          <PageToolbar>
             <Button onClick={() => void load()}>刷新</Button>
             <Button type="primary" onClick={openCreate}>新建租户</Button>
-          </Space>
+          </PageToolbar>
         )}
-      />
-      <Table<TenantItem>
+      >
+      <DataTableShell<TenantItem>
+        title="平台租户"
         rowKey="tenant_id"
         loading={loading}
         dataSource={tenants}
         pagination={{ pageSize: 12 }}
         columns={[
-          { title: '租户 ID', dataIndex: 'tenant_id' },
-          { title: '名称', dataIndex: 'name' },
-          { title: '状态', dataIndex: 'status', render: (value: string) => (value === 'active' ? <Tag color="green">active</Tag> : <Tag>{value}</Tag>) },
+          {
+            title: '租户',
+            dataIndex: 'name',
+            render: (value: string, row) => (
+              <span className="entity-title-cell">
+                <span className="entity-title-cell-main">{value}</span>
+                <span className="entity-title-cell-meta">{row.tenant_id}</span>
+              </span>
+            ),
+          },
+          { title: '状态', dataIndex: 'status', render: (value: string) => <StatusTag status={value}>{value}</StatusTag> },
           {
             title: '操作',
             render: (_, row) => (
@@ -129,7 +135,7 @@ export default function PlatformTenantsPage() {
             ),
           },
         ]}
-        expandable={{ expandedRowRender: (row) => <JsonBlock value={row.metadata || {}} /> }}
+        expandable={{ expandedRowRender: (row) => <AdvancedJsonPanel title="租户 metadata" value={row.metadata || {}} defaultOpen /> }}
       />
 
       <Modal
@@ -142,23 +148,23 @@ export default function PlatformTenantsPage() {
       >
         <Form form={form} layout="vertical">
           <Form.Item name="tenant_id" label="租户 ID">
-            <Input disabled={Boolean(editing)} placeholder="留空则自动生成" />
+            <Input disabled={Boolean(editing)} placeholder="留空则自动生成" aria-label="租户 ID" />
           </Form.Item>
           <Form.Item name="name" label="名称" rules={[{ required: true }]}>
-            <Input />
+            <Input aria-label="名称" />
           </Form.Item>
           <Form.Item name="status" label="状态" rules={[{ required: true }]}>
-            <Select options={[
+            <Select aria-label="状态" options={[
               { label: 'active', value: 'active' },
               { label: 'disabled', value: 'disabled' },
               { label: 'deleted', value: 'deleted' },
             ]} />
           </Form.Item>
-          <Form.Item name="metadata" label="Metadata(JSON)">
-            <Input.TextArea rows={6} />
+          <Form.Item name="metadata" label="高级配置(JSON)" htmlFor="platform-tenant-metadata">
+            <Input.TextArea id="platform-tenant-metadata" rows={6} aria-label="高级配置 JSON" />
           </Form.Item>
         </Form>
       </Modal>
-    </div>
+    </ConsolePage>
   );
 }

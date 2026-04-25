@@ -477,7 +477,7 @@ export default function ConfigPage() {
           </div>
         </div>
 
-        <Space direction="vertical" style={{ width: '100%' }} size={16}>
+        <Space vertical className="full-width-stack" size={16}>
           <Card
             title="模型接入"
             extra={<Tag color={modelStatus.color}>{modelStatus.text}</Tag>}
@@ -499,7 +499,8 @@ export default function ConfigPage() {
                 <Col xs={24} lg={10}>
                   <Typography.Text className="config-field-label">模型厂商</Typography.Text>
                   <Select
-                    style={{ width: '100%', marginTop: 8 }}
+                    className="config-field-control"
+                    aria-label="模型厂商"
                     value={providerId || undefined}
                     options={Object.entries(providers).map(([id, provider]) => ({
                       value: id,
@@ -515,7 +516,8 @@ export default function ConfigPage() {
                 <Col xs={24} lg={14}>
                   <Typography.Text className="config-field-label">标准模型</Typography.Text>
                   <Select
-                    style={{ width: '100%', marginTop: 8 }}
+                    className="config-field-control"
+                    aria-label="标准模型"
                     value={modelValue || undefined}
                     options={modelOptions}
                     onChange={(value) => setModelValue(value)}
@@ -541,7 +543,8 @@ export default function ConfigPage() {
                 <Col xs={24} lg={12}>
                   <Typography.Text className="config-field-label">API Base</Typography.Text>
                   <Input
-                    style={{ marginTop: 8 }}
+                    className="config-field-control"
+                    aria-label="API Base"
                     placeholder={currentProvider?.api_base_default || '当前厂商无需配置'}
                     value={apiBase}
                     disabled={!currentProvider?.api_base_key}
@@ -557,7 +560,8 @@ export default function ConfigPage() {
                 <Col xs={24} lg={12}>
                   <Typography.Text className="config-field-label">API Key</Typography.Text>
                   <Input.Password
-                    style={{ marginTop: 8 }}
+                    className="config-field-control"
+                    aria-label="API Key"
                     value={apiKey}
                     disabled={!currentProvider?.api_key_field}
                     placeholder={currentProvider?.api_key_field ? '已保存时保持为空表示不覆盖' : '当前厂商无需配置'}
@@ -605,6 +609,7 @@ export default function ConfigPage() {
                   </Typography.Paragraph>
                 </div>
                 <Switch
+                  aria-label="使用自定义模型名称"
                   checked={isCustomModelActive}
                   disabled={!currentProvider}
                   onChange={(checked) => {
@@ -626,7 +631,8 @@ export default function ConfigPage() {
                 <div className="config-custom-panel">
                   <Typography.Text className="config-field-label">自定义模型名称</Typography.Text>
                   <Input
-                    style={{ marginTop: 8 }}
+                    className="config-field-control"
+                    aria-label="自定义模型名称"
                     placeholder="例如：gpt-4.1-mini / qwen-max-latest"
                     value={customModel}
                     onChange={(event) => setCustomModel(event.target.value)}
@@ -640,7 +646,7 @@ export default function ConfigPage() {
               <Alert
                 type={modelStatus.color === 'warning' ? 'warning' : modelStatus.color === 'success' ? 'success' : 'info'}
                 showIcon
-                message={modelStatus.text}
+                title={modelStatus.text}
                 description={(
                   currentProvider?.api_key_field
                     ? '请确认厂商、模型与凭证一起保存，避免只改模型但忘记同步 API Key。'
@@ -684,8 +690,8 @@ export default function ConfigPage() {
               <Row gutter={[16, 8]}>
                 <Col xs={24} lg={6}>
                   <div className="config-setting-tile">
-                    <Form.Item name="enable_thinking" label="启用思考过程" valuePropName="checked" style={{ marginBottom: 0 }}>
-                      <Switch />
+                    <Form.Item name="enable_thinking" label="启用思考过程" htmlFor="config-enable-thinking" valuePropName="checked" className="config-setting-form-item">
+                      <Switch id="config-enable-thinking" aria-label="启用思考过程" />
                     </Form.Item>
                     <Typography.Paragraph type="secondary" className="config-field-help">
                       开启后适合调试复杂任务；正式场景可按需关闭，减少过程展示。
@@ -694,8 +700,8 @@ export default function ConfigPage() {
                 </Col>
                 <Col xs={24} lg={6}>
                   <div className="config-setting-tile">
-                    <Form.Item name="agent_max_context_tokens" label="最大上下文 Tokens" rules={[{ required: true }]}>
-                      <InputNumber min={1024} step={1024} style={{ width: '100%' }} />
+                    <Form.Item name="agent_max_context_tokens" label="最大上下文 Tokens" htmlFor="config-max-context-tokens" rules={[{ required: true }]}>
+                      <InputNumber id="config-max-context-tokens" min={1024} step={1024} className="full-width-control" aria-label="最大上下文 Tokens" />
                     </Form.Item>
                     <Typography.Paragraph type="secondary" className="config-field-help">
                       值越大，历史上下文保留越多，但推理成本也更高。
@@ -704,8 +710,8 @@ export default function ConfigPage() {
                 </Col>
                 <Col xs={24} lg={6}>
                   <div className="config-setting-tile">
-                    <Form.Item name="agent_max_context_turns" label="最大上下文轮次" rules={[{ required: true }]}>
-                      <InputNumber min={1} max={200} style={{ width: '100%' }} />
+                    <Form.Item name="agent_max_context_turns" label="最大上下文轮次" htmlFor="config-max-context-turns" rules={[{ required: true }]}>
+                      <InputNumber id="config-max-context-turns" min={1} max={200} className="full-width-control" aria-label="最大上下文轮次" />
                     </Form.Item>
                     <Typography.Paragraph type="secondary" className="config-field-help">
                       控制历史对话回看范围，适合平衡记忆与响应速度。
@@ -714,8 +720,8 @@ export default function ConfigPage() {
                 </Col>
                 <Col xs={24} lg={6}>
                   <div className="config-setting-tile">
-                    <Form.Item name="agent_max_steps" label="最大执行步数" rules={[{ required: true }]}>
-                      <InputNumber min={1} max={200} style={{ width: '100%' }} />
+                    <Form.Item name="agent_max_steps" label="最大执行步数" htmlFor="config-max-steps" rules={[{ required: true }]}>
+                      <InputNumber id="config-max-steps" min={1} max={200} className="full-width-control" aria-label="最大执行步数" />
                     </Form.Item>
                     <Typography.Paragraph type="secondary" className="config-field-help">
                       限制工具调用和链路深度，过大可能导致任务执行过长。
@@ -744,8 +750,9 @@ export default function ConfigPage() {
             </Typography.Paragraph>
 
             <div className="config-security-panel">
-              <Space.Compact style={{ width: '100%', maxWidth: 460 }}>
+              <Space.Compact className="config-password-control">
                 <Input.Password
+                  aria-label="控制台访问密码"
                   value={passwordValue}
                   placeholder={passwordMasked ? '输入新密码以覆盖当前值，留空并保存可清除' : '输入新密码'}
                   onFocus={() => {
@@ -775,7 +782,7 @@ export default function ConfigPage() {
             <div className="config-sticky-bar">
               <div>
                 <Typography.Text strong>检测到未保存变更</Typography.Text>
-                <Typography.Paragraph type="secondary" style={{ margin: 0 }}>
+                <Typography.Paragraph type="secondary" className="compact-paragraph">
                   建议一次性保存，避免模型接入、运行策略和密码状态不一致。
                 </Typography.Paragraph>
               </div>

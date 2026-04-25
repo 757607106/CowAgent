@@ -1,7 +1,6 @@
-import { Button, Card, Drawer, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
+import { Button, Drawer, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
-import { JsonBlock } from '../components/JsonBlock';
-import { PageTitle } from '../components/PageTitle';
+import { AdvancedJsonPanel, ConsolePage, DataTableShell, PageToolbar, StatusTag } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type { TenantItem, TenantUserItem } from '../types';
@@ -192,36 +191,43 @@ export default function TenantUsersPage() {
   }, [currentTenantId]);
 
   return (
-    <Card>
-      <PageTitle
+    <ConsolePage
         title="租户成员管理"
-        description="维护租户下用户角色、状态与渠道身份映射。"
-        extra={(
-          <Space>
+        actions={(
+          <PageToolbar>
             <Select
               allowClear
               placeholder="按租户过滤"
-              style={{ width: 220 }}
+              className="tenant-filter"
               value={tenantId || undefined}
               onChange={(value) => setTenantId(value || '')}
               options={tenantOptions}
             />
             <Button onClick={() => void loadUsers()}>刷新</Button>
             <Button type="primary" onClick={openCreate}>新建成员</Button>
-          </Space>
+          </PageToolbar>
         )}
-      />
-      <Table<TenantUserItem>
+      >
+      <DataTableShell<TenantUserItem>
+        title="成员列表"
         rowKey={(row) => `${row.tenant_id}/${row.user_id}`}
         loading={loading}
         dataSource={users}
         pagination={{ pageSize: 20 }}
         columns={[
           { title: '租户', dataIndex: 'tenant_id', render: (value: string) => tenantNameById.get(value) || value },
-          { title: '用户ID', dataIndex: 'user_id' },
-          { title: '姓名', dataIndex: 'name' },
+          {
+            title: '成员',
+            dataIndex: 'name',
+            render: (value: string, row) => (
+              <span className="entity-title-cell">
+                <span className="entity-title-cell-main">{value}</span>
+                <span className="entity-title-cell-meta">{row.user_id}</span>
+              </span>
+            ),
+          },
           { title: '角色', dataIndex: 'role', render: (v: string) => <Tag color="blue">{v}</Tag> },
-          { title: '状态', dataIndex: 'status', render: (v: string) => (v === 'active' ? <Tag color="green">active</Tag> : <Tag>{v}</Tag>) },
+          { title: '状态', dataIndex: 'status', render: (value: string) => <StatusTag status={value}>{value}</StatusTag> },
           {
             title: '操作',
             render: (_, row) => (
@@ -235,7 +241,7 @@ export default function TenantUsersPage() {
             ),
           },
         ]}
-        expandable={{ expandedRowRender: (row) => <JsonBlock value={row.metadata || {}} /> }}
+        expandable={{ expandedRowRender: (row) => <AdvancedJsonPanel title="成员 metadata" value={row.metadata || {}} defaultOpen /> }}
       />
 
       <Modal
@@ -248,25 +254,26 @@ export default function TenantUsersPage() {
         <Form form={form} layout="vertical">
           {!editing && (
             <Form.Item name="account" label="登录账号" extra="可留空，系统将自动生成。">
-              <Input autoComplete="off" placeholder="用于登录的唯一标识" />
+              <Input autoComplete="off" placeholder="用于登录的唯一标识" aria-label="登录账号" />
             </Form.Item>
           )}
           <Form.Item name="name" label="姓名" rules={[{ required: true }]}>
-            <Input />
+            <Input aria-label="姓名" />
           </Form.Item>
           <Form.Item name="role" label="角色" rules={[{ required: true }]}>
-            <Select options={roles.map((role) => ({ label: role, value: role }))} />
+            <Select aria-label="角色" options={roles.map((role) => ({ label: role, value: role }))} />
           </Form.Item>
           <Form.Item name="status" label="状态" rules={[{ required: true }]}>
-            <Select options={statuses.map((status) => ({ label: status, value: status }))} />
+            <Select aria-label="状态" options={statuses.map((status) => ({ label: status, value: status }))} />
           </Form.Item>
-          <Form.Item name="metadata" label="Metadata(JSON)">
-            <Input.TextArea rows={6} />
+          <Form.Item name="metadata" label="高级配置(JSON)" htmlFor="tenant-user-metadata">
+            <Input.TextArea id="tenant-user-metadata" rows={6} aria-label="高级配置 JSON" />
           </Form.Item>
           {!editing && (
             <Form.Item
               name="password"
               label="初始密码"
+              htmlFor="tenant-user-password"
               dependencies={['account']}
               rules={[
                 { min: 8, message: '密码至少 8 位' },
@@ -281,7 +288,7 @@ export default function TenantUsersPage() {
               ]}
               extra="租户鉴权模式下使用；留空则只创建成员，不启用账号登录。"
             >
-              <Input.Password autoComplete="new-password" placeholder="可留空" />
+              <Input.Password id="tenant-user-password" autoComplete="new-password" placeholder="可留空" aria-label="初始密码" />
             </Form.Item>
           )}
         </Form>
@@ -295,16 +302,16 @@ export default function TenantUsersPage() {
       >
         <Form form={identityForm} layout="vertical">
           <Form.Item name="channel_type" label="渠道类型" rules={[{ required: true }]}>
-            <Input placeholder="例如：web / weixin / feishu" />
+            <Input placeholder="例如：web / weixin / feishu" aria-label="渠道类型" />
           </Form.Item>
-          <Form.Item name="external_user_id" label="外部账号标识" rules={[{ required: true }]}>
-            <Input />
+          <Form.Item name="external_user_id" label="外部账号标识" htmlFor="tenant-user-external-id" rules={[{ required: true }]}>
+            <Input id="tenant-user-external-id" aria-label="外部账号标识" />
           </Form.Item>
           <Button type="primary" loading={identitySubmitting} onClick={() => void bindIdentity()}>绑定映射</Button>
         </Form>
 
         <Table
-          style={{ marginTop: 16 }}
+          className="identity-table"
           rowKey={(row) => `${row.tenant_id}/${row.channel_type}/${row.external_user_id}`}
           pagination={false}
           dataSource={identities}
@@ -322,6 +329,6 @@ export default function TenantUsersPage() {
           ]}
         />
       </Drawer>
-    </Card>
+    </ConsolePage>
   );
 }

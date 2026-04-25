@@ -35,22 +35,24 @@ function channelTypeLabel(item: ChannelConfigItem, defs: ChannelTypeItem[]) {
   return item.label || defs.find((def) => def.channel_type === item.channel_type)?.label || item.channel_type;
 }
 
-function fieldInput(field: ChannelField) {
+function fieldInput(field: ChannelField, id: string) {
   if (field.type === 'secret') {
-    return <Input.Password autoComplete="new-password" />;
+    return <Input.Password id={id} autoComplete="new-password" aria-label={field.label} />;
   }
   if (field.type === 'number') {
-    return <InputNumber style={{ width: '100%' }} />;
+    return <InputNumber id={id} className="full-width-control" aria-label={field.label} />;
   }
   if (field.type === 'bool') {
-    return <Switch />;
+    return <Switch id={id} aria-label={field.label} />;
   }
   if (field.type === 'list') {
-    return <Input />;
+    return <Input id={id} aria-label={field.label} />;
   }
   if (field.key === 'feishu_event_mode') {
     return (
       <Select
+        id={id}
+        aria-label={field.label}
         options={[
           { label: 'websocket', value: 'websocket' },
           { label: 'webhook', value: 'webhook' },
@@ -58,7 +60,7 @@ function fieldInput(field: ChannelField) {
       />
     );
   }
-  return <Input />;
+  return <Input id={id} aria-label={field.label} />;
 }
 
 function configValuesFromRow(row: ChannelConfigItem | null, typeDef?: ChannelTypeItem) {
@@ -398,11 +400,12 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
       >
         <Form form={form} layout="vertical">
           <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
-            <Input />
+            <Input aria-label="名称" />
           </Form.Item>
           <Form.Item name="channel_type" label="渠道类型" rules={[{ required: true, message: '请选择渠道类型' }]}>
             <Select
               showSearch
+              aria-label="渠道类型"
               options={typeOptions}
               disabled={Boolean(editing)}
               onChange={(value) => {
@@ -416,13 +419,14 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
               key={field.key}
               name={['config', field.key]}
               label={field.type === 'secret' && editing ? `${field.label}（留空或保留掩码则不覆盖）` : field.label}
+              htmlFor={`channel-field-${field.key}`}
               valuePropName={field.type === 'bool' ? 'checked' : 'value'}
             >
-              {fieldInput(field)}
+              {fieldInput(field, `channel-field-${field.key}`)}
             </Form.Item>
           ))}
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
-            <Switch />
+          <Form.Item name="enabled" label="启用" htmlFor="channel-enabled" valuePropName="checked">
+            <Switch id="channel-enabled" aria-label="启用渠道配置" />
           </Form.Item>
         </Form>
       </Modal>
@@ -445,23 +449,23 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
         )}
         width={520}
       >
-        <Space direction="vertical" size={16} style={{ width: '100%' }}>
+        <Space vertical size={16} className="full-width-stack">
           <Alert
             type="info"
             showIcon
-            message="使用微信扫码确认"
+            title="使用微信扫码确认"
             description="扫码成功后，Bot Token 会写入当前租户的渠道配置，并自动启动该微信渠道。"
           />
           <div className="channel-qr-box channel-qr-box-large">
             {qrLoading ? (
               <Spin />
             ) : qrValue ? (
-              <QRCode value={qrValue} size={240} bordered={false} />
+              <QRCode value={qrValue} size={240} />
             ) : qrInfo?.qr_image ? (
               <img src={qrInfo.qr_image} alt="weixin-qr" />
             ) : null}
           </div>
-          <Space direction="vertical" size={4}>
+          <Space vertical size={4}>
             <Typography.Text strong>{renderQrStatus(qrInfo)}</Typography.Text>
             <Typography.Text type="secondary">
               {qrInfo?.message || '保持弹窗打开，确认后系统会自动更新渠道配置。'}

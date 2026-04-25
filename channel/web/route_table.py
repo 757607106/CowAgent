@@ -62,6 +62,7 @@ def build_web_routes() -> tuple[str, ...]:
         "/api/mcp/servers", "MCPServersHandler",
         "/api/mcp/servers/test", "MCPServersTestHandler",
         "/api/mcp/servers/(.*)/tools", "MCPServerToolsHandler",
+        "/api/mcp/servers/(.*)", "MCPServerDetailHandler",
         "/api/version", "VersionHandler",
         "/assets/(.*)", "AssetsHandler",
     )

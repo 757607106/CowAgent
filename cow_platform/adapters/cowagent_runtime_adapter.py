@@ -67,7 +67,11 @@ class CowAgentRuntimeAdapter:
         if not session_id:
             return None
 
-        agent_definition = self.agent_service.resolve_agent(tenant_id=tenant_id, agent_id=agent_id)
+        agent_definition = self.agent_service.resolve_agent(
+            tenant_id=tenant_id,
+            agent_id=agent_id,
+            resolve_mcp=True,
+        )
         model_config = self.model_config_service.resolve_for_agent(tenant_id, agent_definition)
         model_config_record = self.model_config_service.serialize_model(model_config)
         config_overrides = self.model_config_service.build_runtime_overrides(model_config)

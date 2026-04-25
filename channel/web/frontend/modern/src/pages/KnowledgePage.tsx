@@ -132,7 +132,7 @@ export function KnowledgePanel({
             title: (
               <Space size={6}>
                 <span>{file.title || file.name}</span>
-                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                <Typography.Text type="secondary" className="knowledge-file-size">
                   {formatBytes(file.size)}
                 </Typography.Text>
               </Space>
@@ -168,9 +168,9 @@ export function KnowledgePanel({
             key: 'docs',
             label: '文档',
             children: (
-              <Space className="knowledge-doc-layout" align="start" style={{ width: '100%' }} size={12}>
+              <Space className="knowledge-doc-layout" align="start" size={12}>
                 <Card className="knowledge-tree-card">
-                  <Space direction="vertical" style={{ width: '100%' }} size={10}>
+                  <Space vertical className="full-width-stack" size={10}>
                     <Typography.Text type="secondary">
                       {listData.enabled
                         ? `${listData.stats.pages} 篇文档 · ${formatBytes(listData.stats.size)}`
@@ -192,7 +192,8 @@ export function KnowledgePanel({
                         onSelect={(keys) => {
                           const key = String(keys[0] || '');
                           if (!key || !key.includes('/')) return;
-                          void readPath(key, key.split('/').pop() || key);
+                          const slashIndex = key.lastIndexOf('/');
+                          void readPath(key, slashIndex >= 0 ? key.slice(slashIndex + 1) : key);
                         }}
                       />
                     )}
@@ -202,7 +203,7 @@ export function KnowledgePanel({
                 <Card
                   title={selectedPath ? `文档：${selectedTitle}` : '文档内容'}
                   extra={selectedPath ? <Typography.Text type="secondary">{selectedPath}</Typography.Text> : null}
-                  style={{ flex: 1, minHeight: 620 }}
+                  className="knowledge-content-card"
                 >
                   {contentLoading ? (
                     <Spin />
@@ -226,12 +227,12 @@ export function KnowledgePanel({
                   <Spin />
                 ) : (
                   <>
-                    <Space size={16} style={{ marginBottom: 12 }}>
+                    <Space size={16} className="knowledge-graph-meta">
                       <Typography.Text>节点：{(graph?.nodes || []).length}</Typography.Text>
                       <Typography.Text>关系：{(graph?.links || []).length}</Typography.Text>
                       <Typography.Text type="secondary">状态：{String(graph?.enabled ?? true)}</Typography.Text>
                     </Space>
-                    <JsonBlock value={graph || { nodes: [], links: [] }} style={{ maxHeight: 560 }} />
+                    <JsonBlock value={graph || { nodes: [], links: [] }} className="json-block-large" />
                   </>
                 )}
               </Card>

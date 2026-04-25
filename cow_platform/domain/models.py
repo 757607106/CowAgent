@@ -55,6 +55,24 @@ class AgentDefinition:
 
 
 @dataclass(frozen=True, slots=True)
+class TenantMcpServerDefinition:
+    """Tenant-scoped MCP server configuration."""
+
+    tenant_id: str
+    name: str
+    command: str
+    args: tuple[str, ...] = ()
+    env: Mapping[str, str] = field(default_factory=dict)
+    enabled: bool = True
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        _ensure_non_empty("tenant_id", self.tenant_id)
+        _ensure_non_empty("name", self.name)
+        _ensure_non_empty("command", self.command)
+
+
+@dataclass(frozen=True, slots=True)
 class TenantDefinition:
     """租户资源定义。"""
 

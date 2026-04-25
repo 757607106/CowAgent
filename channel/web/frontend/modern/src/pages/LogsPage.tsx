@@ -1,6 +1,6 @@
-import { Button, Card, Space, Tag, Typography } from 'antd';
+import { Button, Card, Tag, Typography } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { PageTitle } from '../components/PageTitle';
+import { ConsolePage, PageToolbar } from '../components/console';
 
 const MAX_LOG_LINES = 2000;
 
@@ -66,12 +66,10 @@ export default function LogsPage() {
   );
 
   return (
-    <Card className="logs-simple-card">
-      <PageTitle
+    <ConsolePage
         title="运行日志"
-        description="实时查看 run.log 流式输出。"
-        extra={(
-          <Space wrap>
+        actions={(
+          <PageToolbar>
             <Tag color={running ? 'blue' : 'default'}>
               {running ? '实时监听' : '已停止'}
             </Tag>
@@ -81,15 +79,17 @@ export default function LogsPage() {
               <Button type="primary" onClick={start}>开始</Button>
             )}
             <Button onClick={() => setLines([])}>清空</Button>
-          </Space>
+          </PageToolbar>
         )}
-      />
-      <Typography.Text type="secondary" className="logs-simple-meta">
-        最近 {lines.length} 行，最多保留 {MAX_LOG_LINES} 行
-      </Typography.Text>
-      <pre ref={consoleRef} className="logs-console">
-        {logText}
-      </pre>
-    </Card>
+      >
+      <Card className="logs-simple-card">
+        <Typography.Text type="secondary" className="logs-simple-meta">
+          最近 {lines.length} 行，最多保留 {MAX_LOG_LINES} 行
+        </Typography.Text>
+        <pre ref={consoleRef} className="logs-console">
+          {logText}
+        </pre>
+      </Card>
+    </ConsolePage>
   );
 }

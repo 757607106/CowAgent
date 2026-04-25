@@ -1,17 +1,6 @@
 import {
-  ApiOutlined,
-  ApartmentOutlined,
-  AppstoreOutlined,
-  BarChartOutlined,
-  BuildOutlined,
-  ClusterOutlined,
-  FileTextOutlined,
   LogoutOutlined,
   MenuOutlined,
-  MessageOutlined,
-  ScheduleOutlined,
-  SettingOutlined,
-  TeamOutlined,
 } from '@ant-design/icons';
 import { App as AntdApp, Button, ConfigProvider, Drawer, Form, Input, Layout, Menu, Spin, Tabs, Tag, Typography, message } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
@@ -33,6 +22,8 @@ import TasksPage from './pages/TasksPage';
 import LogsPage from './pages/LogsPage';
 import UsagePage from './pages/UsagePage';
 import { DEFAULT_AGENT_ID, DEFAULT_AGENT_NAME, WORKSPACE_AGENT_VALUE, displayAgentName, type RuntimeAgentOption, RuntimeContext } from './context/runtime';
+import { getFlatMenuItemsForRole, getMenuItemsForRole } from './app/navigation';
+import { appTheme } from './app/theme';
 import { api } from './services/api';
 import type { AuthUser, RuntimeScope } from './types';
 
@@ -42,133 +33,6 @@ const AGENT_KEY = 'cowagent_runtime_agent_id';
 const BINDING_KEY = 'cowagent_runtime_binding_id';
 
 const DEFAULT_AGENT_OPTION: RuntimeAgentOption = { label: DEFAULT_AGENT_NAME, value: DEFAULT_AGENT_ID };
-
-const appTheme = {
-  token: {
-    colorPrimary: '#1a6ff5',
-    colorSuccess: '#10b981',
-    colorWarning: '#f59e0b',
-    colorError: '#ef4444',
-    colorInfo: '#1a6ff5',
-    borderRadius: 8,
-    borderRadiusLG: 12,
-    borderRadiusSM: 6,
-    fontFamily: '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-    fontSize: 14,
-    fontSizeLG: 16,
-    fontSizeSM: 12,
-    lineHeight: 1.5,
-    controlHeight: 34,
-    controlHeightLG: 40,
-    controlHeightSM: 28,
-    paddingContentHorizontal: 16,
-    paddingContentVertical: 12,
-    colorBgContainer: '#ffffff',
-    colorBgElevated: '#ffffff',
-    colorBgLayout: '#f5f7fa',
-    colorBorder: '#e4e8ee',
-    colorBorderSecondary: '#eef1f6',
-    colorText: '#1f2430',
-    colorTextSecondary: '#4b5362',
-    colorTextTertiary: '#8891a0',
-    boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 3px 0 rgba(0, 0, 0, 0.04)',
-    boxShadowSecondary: '0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -2px rgba(0, 0, 0, 0.04)',
-    wireframe: false,
-  },
-  components: {
-    Menu: {
-      itemBorderRadius: 8,
-      itemHeight: 36,
-      itemMarginInline: 8,
-      itemHoverBg: '#f5f7fa',
-      itemSelectedBg: '#eff4ff',
-      itemSelectedColor: '#1a6ff5',
-      itemActiveBg: '#eff4ff',
-      iconSize: 18,
-      collapsedIconSize: 18,
-    },
-    Card: {
-      paddingLG: 20,
-      borderRadiusLG: 12,
-    },
-    Button: {
-      borderRadius: 8,
-      borderRadiusLG: 10,
-      borderRadiusSM: 6,
-      controlHeight: 34,
-      controlHeightLG: 40,
-      controlHeightSM: 28,
-      fontWeight: 500,
-    },
-    Tag: {
-      borderRadiusSM: 6,
-      fontSizeSM: 11,
-      lineHeightSM: 1.4,
-    },
-    Table: {
-      borderRadius: 8,
-      borderColor: '#e4e8ee',
-      headerBg: '#f8fafc',
-      headerColor: '#4b5362',
-      rowHoverBg: '#f5f7fa',
-    },
-    Input: {
-      borderRadius: 8,
-      borderRadiusLG: 10,
-      borderRadiusSM: 6,
-    },
-    Select: {
-      borderRadius: 8,
-      borderRadiusLG: 10,
-      borderRadiusSM: 6,
-    },
-    Modal: {
-      borderRadiusLG: 16,
-      titleFontSize: 18,
-    },
-    Drawer: {
-      borderRadiusLG: 0,
-    },
-    Collapse: {
-      borderRadiusLG: 12,
-      contentPadding: '16px 20px',
-      headerPadding: '14px 20px',
-    },
-    Form: {
-      itemMarginBottom: 16,
-      labelFontSize: 13,
-    },
-    Switch: {
-      trackHeight: 22,
-      trackMinWidth: 40,
-      handleSize: 18,
-    },
-    Tooltip: {
-      borderRadius: 8,
-    },
-    Popover: {
-      borderRadius: 12,
-    },
-  },
-};
-
-const tenantMenuItems = [
-  { key: '/chat', icon: <MessageOutlined />, label: '对话' },
-  { key: '/tenant-models', icon: <SettingOutlined />, label: '租户模型' },
-  { key: '/agents', icon: <AppstoreOutlined />, label: 'AI 员工' },
-  { key: '/skills', icon: <BuildOutlined />, label: '技能' },
-  { key: '/mcp', icon: <ApiOutlined />, label: 'MCP' },
-  { key: '/channels', icon: <ClusterOutlined />, label: '渠道接入' },
-  { key: '/usage', icon: <BarChartOutlined />, label: '用量' },
-  { key: '/tenant-users', icon: <TeamOutlined />, label: '租户成员' },
-  { key: '/tasks', icon: <ScheduleOutlined />, label: '任务' },
-  { key: '/logs', icon: <FileTextOutlined />, label: '日志' },
-];
-
-const platformMenuItems = [
-  { key: '/platform/models', icon: <SettingOutlined />, label: '平台模型' },
-  { key: '/platform/tenants', icon: <ApartmentOutlined />, label: '租户管理' },
-];
 
 interface AuthCheckState {
   authRequired: boolean;
@@ -219,7 +83,7 @@ function SidebarContent({
       <Menu
         mode="inline"
         selectedKeys={selectedMenu}
-        items={authUser?.principal_type === 'platform' ? platformMenuItems : tenantMenuItems}
+        items={getMenuItemsForRole(authUser?.principal_type === 'platform')}
         onClick={({ key }) => onMenuClick(String(key))}
         className="app-nav-menu"
       />
@@ -321,7 +185,7 @@ function LoginScreen({
   return (
     <div className="app-login-wrap">
       <div className="app-login-panel">
-        <Typography.Title level={3} style={{ marginTop: 0 }}>CowAgent 控制台</Typography.Title>
+        <Typography.Title level={3} className="app-login-title">CowAgent 控制台</Typography.Title>
         <Tabs
           activeKey={activeKey}
           onChange={setActiveKey}
@@ -332,16 +196,16 @@ function LoginScreen({
               children: (
                 <Form form={platformForm} layout="vertical">
                   <Form.Item name="account" label="平台账号" rules={[{ required: true, message: '请输入平台账号' }]}>
-                    <Input autoComplete="username" />
+                    <Input autoComplete="username" aria-label="平台账号" />
                   </Form.Item>
                   <Form.Item name="name" label="姓名">
-                    <Input autoComplete="name" />
+                    <Input autoComplete="name" aria-label="姓名" />
                   </Form.Item>
-                  <Form.Item name="password" label="密码" rules={[{ required: true, min: 8, message: '密码至少 8 位' }]}>
-                    <Input.Password autoComplete="new-password" />
+                  <Form.Item name="password" label="密码" htmlFor="platform-password" rules={[{ required: true, min: 8, message: '密码至少 8 位' }]}>
+                    <Input.Password id="platform-password" autoComplete="new-password" aria-label="密码" />
                   </Form.Item>
-                  <Form.Item name="confirm_password" label="确认密码" rules={[{ required: true, message: '请再次输入密码' }]}>
-                    <Input.Password autoComplete="new-password" onPressEnter={() => void submitPlatformRegister()} />
+                  <Form.Item name="confirm_password" label="确认密码" htmlFor="platform-confirm-password" rules={[{ required: true, message: '请再次输入密码' }]}>
+                    <Input.Password id="platform-confirm-password" autoComplete="new-password" aria-label="确认密码" onPressEnter={() => void submitPlatformRegister()} />
                   </Form.Item>
                   <Button type="primary" block loading={submitting} onClick={() => void submitPlatformRegister()}>创建平台超管</Button>
                 </Form>
@@ -354,11 +218,11 @@ function LoginScreen({
                 <Form form={loginForm} layout="vertical">
                   {authMode === 'tenant' && (
                     <Form.Item name="account" label="登录账号" rules={[{ required: true, message: '请输入登录账号' }]}>
-                      <Input autoComplete="username" onPressEnter={() => void submitLogin()} />
+                      <Input autoComplete="username" aria-label="登录账号" onPressEnter={() => void submitLogin()} />
                     </Form.Item>
                   )}
-                  <Form.Item name="password" label="密码" rules={[{ required: true, message: '请输入密码' }]}>
-                    <Input.Password autoComplete="current-password" onPressEnter={() => void submitLogin()} />
+                  <Form.Item name="password" label="密码" htmlFor="login-password" rules={[{ required: true, message: '请输入密码' }]}>
+                    <Input.Password id="login-password" autoComplete="current-password" aria-label="密码" onPressEnter={() => void submitLogin()} />
                   </Form.Item>
                   <Button type="primary" block loading={submitting} onClick={() => void submitLogin()}>登录</Button>
                 </Form>
@@ -370,19 +234,19 @@ function LoginScreen({
               children: (
                 <Form form={registerForm} layout="vertical">
                   <Form.Item name="tenant_name" label="团队名称" rules={[{ required: true, message: '请输入团队名称' }]}>
-                    <Input autoComplete="organization" />
+                    <Input autoComplete="organization" aria-label="团队名称" />
                   </Form.Item>
                   <Form.Item name="account" label="登录账号" rules={[{ required: true, message: '请输入登录账号' }]}>
-                    <Input autoComplete="username" />
+                    <Input autoComplete="username" aria-label="登录账号" />
                   </Form.Item>
                   <Form.Item name="user_name" label="你的姓名">
-                    <Input autoComplete="name" />
+                    <Input autoComplete="name" aria-label="你的姓名" />
                   </Form.Item>
-                  <Form.Item name="password" label="密码" rules={[{ required: true, min: 8, message: '密码至少 8 位' }]}>
-                    <Input.Password autoComplete="new-password" />
+                  <Form.Item name="password" label="密码" htmlFor="register-password" rules={[{ required: true, min: 8, message: '密码至少 8 位' }]}>
+                    <Input.Password id="register-password" autoComplete="new-password" aria-label="密码" />
                   </Form.Item>
-                  <Form.Item name="confirm_password" label="确认密码" rules={[{ required: true, message: '请再次输入密码' }]}>
-                    <Input.Password autoComplete="new-password" onPressEnter={() => void submitRegister()} />
+                  <Form.Item name="confirm_password" label="确认密码" htmlFor="register-confirm-password" rules={[{ required: true, message: '请再次输入密码' }]}>
+                    <Input.Password id="register-confirm-password" autoComplete="new-password" aria-label="确认密码" onPressEnter={() => void submitRegister()} />
                   </Form.Item>
                   <Button type="primary" block loading={submitting} onClick={() => void submitRegister()}>注册并登录</Button>
                 </Form>
@@ -400,7 +264,7 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
   const location = useLocation();
   const tenantId = authUser?.tenant_id || 'default';
   const isPlatformAdmin = authUser?.principal_type === 'platform';
-  const activeMenuItems = isPlatformAdmin ? platformMenuItems : tenantMenuItems;
+  const flatMenuItems = useMemo(() => getFlatMenuItemsForRole(isPlatformAdmin), [isPlatformAdmin]);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [scope, setScope] = useState<RuntimeScope>({
@@ -444,14 +308,14 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
 
   const selectedMenu = useMemo(() => {
     if (location.pathname.startsWith('/bindings')) return ['/channels'];
-    const target = activeMenuItems.find((item) => location.pathname.startsWith(item.key));
+    const target = flatMenuItems.find((item) => location.pathname.startsWith(item.key));
     return target ? [target.key] : [isPlatformAdmin ? '/platform/models' : '/chat'];
-  }, [activeMenuItems, isPlatformAdmin, location.pathname]);
+  }, [flatMenuItems, isPlatformAdmin, location.pathname]);
 
   const currentMenuLabel = useMemo(() => {
     const selectedKey = selectedMenu[0] || '/chat';
-    return activeMenuItems.find((item) => item.key === selectedKey)?.label || '控制台';
-  }, [activeMenuItems, selectedMenu]);
+    return flatMenuItems.find((item) => item.key === selectedKey)?.label || '控制台';
+  }, [flatMenuItems, selectedMenu]);
 
   const handleMenuClick = useCallback((key: string) => {
     navigate(key);

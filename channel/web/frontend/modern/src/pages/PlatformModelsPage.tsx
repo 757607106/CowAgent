@@ -1,6 +1,6 @@
-import { Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag, message } from 'antd';
+import { Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Tag, message } from 'antd';
 import { useEffect, useState } from 'react';
-import { PageTitle } from '../components/PageTitle';
+import { ConsolePage, DataTableShell, PageToolbar, StatusTag } from '../components/console';
 import { api } from '../services/api';
 import type { ModelConfigItem, ModelProviderOption } from '../types';
 
@@ -108,27 +108,35 @@ export default function PlatformModelsPage() {
   }, []);
 
   return (
-    <div>
-      <PageTitle
+    <ConsolePage
         title="平台模型"
-        description="配置平台统一提供给租户使用的模型。"
-        extra={(
-          <Space>
+        actions={(
+          <PageToolbar>
             <Button onClick={() => void load()}>刷新</Button>
             <Button type="primary" onClick={openCreate}>新增模型</Button>
-          </Space>
+          </PageToolbar>
         )}
-      />
-      <Table<ModelConfigItem>
+      >
+      <DataTableShell<ModelConfigItem>
+        title="平台统一模型"
         rowKey="model_config_id"
         loading={loading}
         dataSource={models}
         pagination={{ pageSize: 12 }}
         columns={[
-          { title: '名称', dataIndex: 'display_name', render: (value: string, row) => value || row.model_name },
+          {
+            title: '模型',
+            dataIndex: 'display_name',
+            render: (value: string, row) => (
+              <span className="entity-title-cell">
+                <span className="entity-title-cell-main">{value || row.model_name}</span>
+                <span className="entity-title-cell-meta">{row.model_name}</span>
+              </span>
+            ),
+          },
           { title: '模型', dataIndex: 'model_name', render: (value: string) => <Tag color="blue">{value}</Tag> },
           { title: '厂商', dataIndex: 'provider' },
-          { title: '启用', dataIndex: 'enabled', render: (value: boolean) => (value ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>) },
+          { title: '启用', dataIndex: 'enabled', render: (value: boolean) => <StatusTag status={value}>{value ? '启用' : '停用'}</StatusTag> },
           { title: '租户可见', dataIndex: 'is_public', render: (value: boolean) => (value ? <Tag color="cyan">可用</Tag> : <Tag>隐藏</Tag>) },
           { title: 'API Key', dataIndex: 'api_key_masked', render: (value: string, row) => (row.api_key_set ? value || '已设置' : <Tag>未设置</Tag>) },
           {
@@ -158,6 +166,7 @@ export default function PlatformModelsPage() {
             <Select
               options={providerOptions}
               showSearch
+              aria-label="厂商"
               disabled={Boolean(editing)}
               onChange={(value) => {
                 const nextProvider = providers.find((item) => item.provider === value);
@@ -166,25 +175,25 @@ export default function PlatformModelsPage() {
             />
           </Form.Item>
           <Form.Item name="model_name" label="模型" rules={[{ required: true }]}>
-            <Select options={modelOptions} showSearch />
+            <Select options={modelOptions} showSearch aria-label="模型" />
           </Form.Item>
           <Form.Item
             name="api_key"
             label={editing?.api_key_set ? `API Key（留空保持 ${editing.api_key_masked || '当前值'}）` : 'API Key'}
             rules={editing?.api_key_set ? [] : [{ required: true, message: '请输入 API Key' }]}
           >
-            <Input.Password autoComplete="new-password" />
+            <Input.Password autoComplete="new-password" aria-label="API Key" />
           </Form.Item>
           <Space size={32}>
-            <Form.Item name="enabled" label="启用" valuePropName="checked">
-              <Switch />
+            <Form.Item name="enabled" label="启用" htmlFor="platform-model-enabled" valuePropName="checked">
+              <Switch id="platform-model-enabled" aria-label="启用平台模型" />
             </Form.Item>
-            <Form.Item name="is_public" label="租户可见" valuePropName="checked">
-              <Switch />
+            <Form.Item name="is_public" label="租户可见" htmlFor="platform-model-public" valuePropName="checked">
+              <Switch id="platform-model-public" aria-label="租户可见" />
             </Form.Item>
           </Space>
         </Form>
       </Modal>
-    </div>
+    </ConsolePage>
   );
 }

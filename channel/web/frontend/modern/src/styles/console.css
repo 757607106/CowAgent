@@ -1,0 +1,247 @@
+.console-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.console-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.console-page-heading {
+  min-width: 0;
+}
+
+.console-page-title.ant-typography {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.25;
+  letter-spacing: 0;
+}
+
+.console-page-description {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-secondary);
+}
+
+.console-page-actions {
+  flex-shrink: 0;
+}
+
+.page-toolbar {
+  display: flex;
+  width: 100%;
+}
+
+.page-toolbar-start {
+  justify-content: flex-start;
+}
+
+.page-toolbar-end {
+  justify-content: flex-end;
+}
+
+.data-table-shell,
+.entity-detail-master,
+.entity-detail-main {
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-card);
+}
+
+.data-table-shell .ant-card-body {
+  padding: 0;
+}
+
+.data-table-shell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-bottom: 1px solid var(--border-light);
+}
+
+.data-table-shell-title {
+  min-width: 0;
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.data-table-shell .ant-table-wrapper {
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+.data-table-shell-compact .ant-table-wrapper {
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.entity-detail-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: var(--space-4);
+  min-width: 0;
+}
+
+.entity-detail-master,
+.entity-detail-main {
+  min-width: 0;
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+}
+
+.advanced-json-panel {
+  margin-top: var(--space-3);
+  border-top: 1px solid var(--border-light);
+}
+
+.advanced-json-panel .ant-collapse-header {
+  color: var(--text-secondary) !important;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+}
+
+.technical-id {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.entity-title-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.entity-title-cell-main {
+  font-weight: var(--font-weight-semibold);
+  color: var(--text-primary);
+}
+
+.entity-title-cell-meta {
+  color: var(--text-tertiary);
+  font-size: var(--font-size-xs);
+}
+
+.operations-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.usage-agent-filter {
+  width: 240px;
+}
+
+.usage-day-filter {
+  width: 160px;
+}
+
+.tenant-filter {
+  width: 220px;
+}
+
+.identity-table {
+  margin-top: var(--space-4);
+}
+
+.channel-access-shell {
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-4);
+}
+
+.channel-tab-panel {
+  min-width: 0;
+}
+
+.full-width-stack {
+  width: 100%;
+}
+
+.full-width-control {
+  width: 100%;
+}
+
+.json-block {
+  margin: 0;
+  white-space: pre-wrap;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  max-height: 360px;
+  overflow: auto;
+}
+
+.json-block-large {
+  max-height: 560px;
+}
+
+.mcp-env-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) minmax(240px, 1fr) auto;
+  gap: var(--space-2);
+  align-items: end;
+}
+
+.mcp-env-row .ant-form-item {
+  margin-bottom: 0;
+}
+
+.mcp-tool-grid-spaced {
+  margin-top: var(--space-3);
+}
+
+.operations-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.operations-summary-card {
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-card);
+}
+
+.operations-summary-card .ant-card-body {
+  padding: var(--space-4);
+}
+
+@media (max-width: 900px) {
+  .console-page-header,
+  .data-table-shell-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .console-page-actions {
+    width: 100%;
+  }
+
+  .page-toolbar {
+    justify-content: flex-start;
+  }
+
+  .entity-detail-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .operations-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mcp-env-row {
+    grid-template-columns: 1fr;
+  }
+}

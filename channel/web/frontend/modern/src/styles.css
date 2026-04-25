@@ -322,10 +322,14 @@ body,
   padding: var(--space-6);
 }
 
+.app-login-title {
+  margin-top: 0;
+}
+
 /* ── Chat Page ────────────────────────────────────────────────── */
 .chat-page {
   display: grid;
-  grid-template-columns: var(--chat-sidebar-width, 320px) minmax(0, 1fr);
+  grid-template-columns: var(--chat-sidebar-width, 300px) minmax(0, 1fr);
   gap: var(--space-4);
   height: calc(100vh - 92px);
   min-height: calc(100vh - 92px);
@@ -336,7 +340,7 @@ body,
 .chat-main-pane {
   min-height: 0;
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   background: var(--bg-surface);
   box-shadow: var(--shadow-card);
 }
@@ -448,6 +452,10 @@ body,
   min-width: 0;
 }
 
+.chat-pane-title.ant-typography {
+  margin: 0;
+}
+
 .chat-main-intro h4.ant-typography {
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -468,6 +476,10 @@ body,
   min-height: 0;
 }
 
+.chat-welcome-avatar {
+  background: var(--color-primary);
+}
+
 /* Transcript area */
 .chat-transcript {
   flex: 1;
@@ -479,6 +491,14 @@ body,
 
 .chat-bubble-list {
   min-height: 100%;
+}
+
+.chat-avatar-user {
+  background: var(--color-primary);
+}
+
+.chat-avatar-assistant {
+  background: var(--color-success);
 }
 
 .chat-bubble-time,
@@ -1352,6 +1372,14 @@ body,
   min-height: 196px;
 }
 
+.agent-tenant-filter {
+  width: 200px;
+}
+
+.agent-search {
+  width: 220px;
+}
+
 /* Agent market cards */
 .agent-market-card {
   border-radius: var(--radius-md);
@@ -1373,6 +1401,21 @@ body,
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+.agent-resource-card .ant-card-body {
+  min-height: 260px;
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.agent-resource-head {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .agent-market-cover {
@@ -1549,9 +1592,23 @@ body,
 
 .agent-detail-title { min-width: 0; }
 
+.agent-detail-heading.ant-typography {
+  margin: 0;
+}
+
 .agent-section-card {
   border-color: var(--border-default);
   box-shadow: var(--shadow-card);
+}
+
+.agent-capability-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.compact-paragraph.ant-typography {
+  margin-bottom: 0;
 }
 
 /* Agent layout grids */
@@ -1575,6 +1632,10 @@ body,
 
 .agent-knowledge-switch:hover {
   border-color: var(--border-default);
+}
+
+.agent-knowledge-switch-control {
+  margin-bottom: 0;
 }
 
 .agent-section-actions { margin-top: var(--space-4); }
@@ -1828,10 +1889,6 @@ body,
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.mcp-page-embedded .mcp-agent-summary {
-  display: none;
-}
-
 .channels-page .ant-card,
 .mcp-page .ant-card {
   border-color: var(--border-default);
@@ -1839,8 +1896,7 @@ body,
 }
 
 .channel-card-header,
-.mcp-server-header,
-.mcp-agent-summary-header {
+.mcp-server-header {
   display: flex;
   justify-content: space-between;
   gap: var(--space-4);
@@ -1936,10 +1992,37 @@ body,
   gap: var(--space-2);
 }
 
-/* MCP server */
-.mcp-agent-summary {
-  border-color: var(--border-default);
-  background: var(--bg-surface);
+.mcp-server-list-card {
+  margin-top: 0;
+}
+
+.mcp-server-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.mcp-server-avatar {
+  background: #f3f0ff;
+  color: #7c3aed;
+}
+
+.mcp-server-title.ant-typography {
+  margin: 0;
+}
+
+.mcp-server-tags {
+  margin-top: var(--space-2);
+}
+
+.mcp-tool-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.inline-link-button {
+  padding-inline: 0;
 }
 
 .mcp-tools-panel {
@@ -2009,6 +2092,7 @@ body,
 .memory-panel-layout,
 .knowledge-doc-layout {
   display: flex;
+  width: 100%;
 }
 
 .memory-file-list-card {
@@ -2016,9 +2100,39 @@ body,
   flex: 0 0 620px;
 }
 
+.memory-file-table-card .ant-card-body {
+  padding: 0;
+}
+
+.memory-row-selected > td {
+  background: var(--color-primary-light) !important;
+}
+
+.memory-file-list-card .ant-table-row {
+  cursor: pointer;
+}
+
+.memory-content-card {
+  flex: 1;
+  min-height: 540px;
+}
+
 .knowledge-tree-card {
   width: 420px;
   flex: 0 0 420px;
+}
+
+.knowledge-content-card {
+  flex: 1;
+  min-height: 620px;
+}
+
+.knowledge-file-size {
+  font-size: var(--font-size-sm);
+}
+
+.knowledge-graph-meta {
+  margin-bottom: var(--space-3);
 }
 
 /* ── Config Page ──────────────────────────────────────────────── */
@@ -2105,6 +2219,11 @@ body,
   font-weight: var(--font-weight-semibold);
 }
 
+.config-field-control {
+  width: 100%;
+  margin-top: var(--space-2);
+}
+
 .config-field-help {
   margin: var(--space-2) 0 0;
   font-size: var(--font-size-sm);
@@ -2187,11 +2306,20 @@ body,
   margin-bottom: var(--space-2);
 }
 
+.config-setting-form-item {
+  margin-bottom: 0;
+}
+
 .config-security-panel {
   border: 1px solid var(--border-light);
   border-radius: var(--radius-xl);
   background: var(--bg-subtle);
   padding: var(--space-4);
+}
+
+.config-password-control {
+  width: 100%;
+  max-width: 460px;
 }
 
 .config-sticky-bar {
@@ -2380,7 +2508,6 @@ body,
   /* Flex → stack */
   .channel-card-header,
   .mcp-server-header,
-  .mcp-agent-summary-header,
   .chat-main-head,
   .chat-sender-footer,
   .channel-card-actions,

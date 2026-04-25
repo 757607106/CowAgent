@@ -1,6 +1,6 @@
-import { Button, Card, Col, DatePicker, Row, Select, Space, Statistic, Table, Tag, message } from 'antd';
+import { Button, Card, DatePicker, Select, Statistic, Tag, message } from 'antd';
 import { useEffect, useState } from 'react';
-import { PageTitle } from '../components/PageTitle';
+import { AdvancedJsonPanel, ConsolePage, DataTableShell, PageToolbar } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type { AgentItem, UsageRecordItem, UsageSummary } from '../types';
@@ -61,15 +61,13 @@ export default function UsagePage() {
   }, [tenantId, agentId, day]);
 
   return (
-    <Card>
-      <PageTitle
+    <ConsolePage
         title="用量统计"
-        description="查看当前租户与不同 Agent 的 Token、工具、MCP 和费用消耗。"
-        extra={(
-          <Space wrap>
+        actions={(
+          <PageToolbar>
             <Select
               allowClear
-              style={{ width: 240 }}
+              className="usage-agent-filter"
               value={agentId || undefined}
               placeholder="全部 Agent"
               onChange={(value) => setAgentId(value || '')}
@@ -80,32 +78,33 @@ export default function UsagePage() {
             />
             <DatePicker
               allowClear
-              style={{ width: 160 }}
+              className="usage-day-filter"
               placeholder="选择日期"
               onChange={(_date, dateString) => setDay(typeof dateString === 'string' ? dateString : '')}
               format="YYYY-MM-DD"
             />
             <Button onClick={() => void loadUsage()}>刷新</Button>
-          </Space>
+          </PageToolbar>
         )}
-      />
+      >
 
-      <Row gutter={[16, 16]} style={{ marginBottom: 16 }}>
-        <Col xs={12} lg={6}>
+      <div className="operations-summary-grid">
+        <Card className="operations-summary-card">
           <Statistic title="租户总 Token" value={tenantSummary.total_tokens} loading={loading} />
-        </Col>
-        <Col xs={12} lg={6}>
+        </Card>
+        <Card className="operations-summary-card">
           <Statistic title="租户总费用" value={tenantSummary.estimated_cost} precision={6} loading={loading} />
-        </Col>
-        <Col xs={12} lg={6}>
+        </Card>
+        <Card className="operations-summary-card">
           <Statistic title={agentId ? 'Agent Token' : '筛选 Token'} value={scopeSummary.total_tokens} loading={loading} />
-        </Col>
-        <Col xs={12} lg={6}>
+        </Card>
+        <Card className="operations-summary-card">
           <Statistic title="MCP 调用" value={scopeSummary.mcp_call_count} loading={loading} />
-        </Col>
-      </Row>
+        </Card>
+      </div>
 
-      <Table<UsageRecordItem>
+      <DataTableShell<UsageRecordItem>
+        title="用量明细"
         rowKey="event_id"
         loading={loading}
         dataSource={records}
@@ -122,9 +121,11 @@ export default function UsagePage() {
           { title: 'MCP', dataIndex: 'mcp_call_count', width: 90 },
           { title: '错误', dataIndex: 'tool_error_count', width: 90 },
           { title: '费用', dataIndex: 'estimated_cost', width: 110, render: (value: number) => Number(value || 0).toFixed(6) },
-          { title: '请求', dataIndex: 'request_id', width: 190, ellipsis: true },
         ]}
+        expandable={{
+          expandedRowRender: (row) => <AdvancedJsonPanel title="诊断信息" value={row} defaultOpen />,
+        }}
       />
-    </Card>
+    </ConsolePage>
   );
 }

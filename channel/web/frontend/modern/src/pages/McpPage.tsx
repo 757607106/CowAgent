@@ -8,8 +8,6 @@ import {
   Input,
   Modal,
   Popconfirm,
-  Select,
-  Skeleton,
   Space,
   Spin,
   Tag,
@@ -18,7 +16,6 @@ import {
 } from 'antd';
 import {
   ApiOutlined,
-  AppstoreOutlined,
   CodeOutlined,
   DeleteOutlined,
   EditOutlined,
@@ -29,11 +26,11 @@ import {
   ReloadOutlined,
   ToolOutlined,
 } from '@ant-design/icons';
-import { useEffect, useMemo, useState } from 'react';
-import { PageTitle } from '../components/PageTitle';
+import { useEffect, useState } from 'react';
+import { ConsolePage, PageToolbar } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
-import type { AgentItem, McpServerItem, McpTestResult, McpToolItem } from '../types';
+import type { McpServerItem, McpTestResult, McpToolItem } from '../types';
 
 interface EnvRow {
   key?: string;
@@ -56,15 +53,8 @@ interface ToolState {
 
 interface McpServersPanelProps {
   tenantId: string;
-  selectedAgentId?: string;
-  selectedAgent?: AgentItem | null;
-  showAgentPicker?: boolean;
   compact?: boolean;
   onAgentChanged?: () => void | Promise<void>;
-}
-
-function formatArgs(args: string[]): string {
-  return args.length > 0 ? args.join(' ') : '无参数';
 }
 
 function envToRows(env: Record<string, string> | undefined): EnvRow[] {
@@ -84,32 +74,11 @@ function rowsToEnv(rows: EnvRow[] | undefined): Record<string, string> {
   return next;
 }
 
-function buildAgentPayload(agent: AgentItem, mcpServers: Record<string, unknown>) {
-  return {
-    tenant_id: agent.tenant_id,
-    name: agent.name,
-    model: agent.model,
-    system_prompt: agent.system_prompt,
-    tools: agent.tools || [],
-    skills: agent.skills || [],
-    knowledge_enabled: Boolean(agent.knowledge_enabled),
-    mcp_servers: mcpServers,
-  };
-}
-
 export function McpServersPanel({
   tenantId,
-  selectedAgentId: controlledAgentId,
-  selectedAgent: controlledAgent,
-  showAgentPicker = true,
   compact = false,
   onAgentChanged,
 }: McpServersPanelProps) {
-  const [agents, setAgents] = useState<AgentItem[]>([]);
-  const [agentsLoading, setAgentsLoading] = useState(showAgentPicker);
-  const [agentsError, setAgentsError] = useState('');
-  const [internalAgentId, setInternalAgentId] = useState('');
-  const [internalAgent, setInternalAgent] = useState<AgentItem | null>(null);
   const [servers, setServers] = useState<McpServerItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
@@ -124,45 +93,10 @@ export function McpServersPanel({
   const [schemaViewer, setSchemaViewer] = useState<{ serverName: string; tool: McpToolItem } | null>(null);
   const [form] = Form.useForm<ServerFormValues>();
 
-  const selectedAgentId = controlledAgentId === undefined ? internalAgentId : controlledAgentId;
-  const selectedAgent = controlledAgent === undefined ? internalAgent : controlledAgent;
-
-  const loadAgents = async () => {
-    setAgentsLoading(true);
-    setAgentsError('');
-    try {
-      const data = await api.listAgents(tenantId);
-      const list = data.agents || [];
-      setAgents(list);
-      if (!selectedAgentId && list.length > 0 && controlledAgentId === undefined) {
-        setInternalAgentId((list.find((agent) => agent.agent_id === 'default') || list[0]).agent_id);
-      }
-    } catch (error) {
-      const messageText = error instanceof Error ? error.message : '加载智能体失败';
-      setAgentsError(messageText);
-      message.error(messageText);
-    } finally {
-      setAgentsLoading(false);
-    }
-  };
-
-  const loadAgentDetail = async (agentId: string) => {
-    if (!agentId) {
-      setInternalAgent(null);
-      return;
-    }
-    const data = await api.getAgentDetail(tenantId, agentId);
-    setInternalAgent(data.agent || null);
-  };
-
-  const loadServers = async (agentId = selectedAgentId) => {
-    if (!agentId) {
-      setServers([]);
-      return;
-    }
+  const loadServers = async () => {
     setLoading(true);
     try {
-      const data = await api.listMcpServers(agentId, tenantId);
+      const data = await api.listMcpServers(tenantId);
       setServers(data.servers || []);
     } finally {
       setLoading(false);
@@ -196,7 +130,7 @@ export function McpServersPanel({
   const normalizeFormValues = (values: ServerFormValues) => ({
     name: values.name.trim(),
     command: values.command.trim(),
-    args: values.argsText.split(' ').map((item) => item.trim()).filter(Boolean),
+    args: values.argsText.match(/\S+/g) ?? [],
     env: rowsToEnv(values.envList),
   });
 
@@ -253,11 +187,6 @@ export function McpServersPanel({
   };
 
   const saveServer = async () => {
-    if (!selectedAgentId) {
-      message.error('请先选择智能体');
-      return;
-    }
-
     const values = await form.validateFields();
     const normalized = normalizeFormValues(values);
     if (!normalized.name) {
@@ -267,27 +196,24 @@ export function McpServersPanel({
 
     setSubmitting(true);
     try {
-      const detail = await api.getAgentDetail(tenantId, selectedAgentId);
-      const current = detail.agent;
-      const mcpServers = { ...(current.mcp_servers || {}) } as Record<string, unknown>;
-
-      if (editing && editing.name !== normalized.name) {
-        delete mcpServers[editing.name];
-      }
-
-      mcpServers[normalized.name] = {
+      const payload = {
+        name: normalized.name,
         command: normalized.command,
         args: normalized.args,
         env: normalized.env,
+        enabled: true,
       };
 
-      await api.updateAgent(selectedAgentId, buildAgentPayload(current, mcpServers));
+      if (editing) {
+        await api.updateMcpServer(tenantId, editing.name, payload);
+      } else {
+        await api.createMcpServer(tenantId, payload);
+      }
       message.success('MCP 服务器已保存');
       setOpen(false);
       setTestResult(null);
       await onAgentChanged?.();
-      await loadAgentDetail(selectedAgentId);
-      await loadServers(selectedAgentId);
+      await loadServers();
     } catch (error) {
       message.error(error instanceof Error ? error.message : '保存 MCP 服务器失败');
     } finally {
@@ -296,25 +222,18 @@ export function McpServersPanel({
   };
 
   const removeServer = async (server: McpServerItem) => {
-    if (!selectedAgentId) return;
     try {
-      const detail = await api.getAgentDetail(tenantId, selectedAgentId);
-      const current = detail.agent;
-      const mcpServers = { ...(current.mcp_servers || {}) } as Record<string, unknown>;
-      delete mcpServers[server.name];
-      await api.updateAgent(selectedAgentId, buildAgentPayload(current, mcpServers));
+      await api.deleteMcpServer(tenantId, server.name);
       message.success('MCP 服务器已删除');
       setExpandedTools((prev) => ({ ...prev, [server.name]: false }));
       await onAgentChanged?.();
-      await loadAgentDetail(selectedAgentId);
-      await loadServers(selectedAgentId);
+      await loadServers();
     } catch (error) {
       message.error(error instanceof Error ? error.message : '删除 MCP 服务器失败');
     }
   };
 
   const loadTools = async (serverName: string, force = false) => {
-    if (!selectedAgentId) return;
     const currentState = toolStates[serverName];
     if (!force && currentState?.loaded && !currentState.error) {
       return;
@@ -328,7 +247,7 @@ export function McpServersPanel({
       },
     }));
     try {
-      const result = await api.listMcpServerTools(serverName, selectedAgentId, tenantId);
+      const result = await api.listMcpServerTools(serverName, tenantId);
       setToolStates((prev) => ({
         ...prev,
         [serverName]: {
@@ -359,155 +278,38 @@ export function McpServersPanel({
   };
 
   useEffect(() => {
-    if (!showAgentPicker) return;
-    setInternalAgentId('');
-    void loadAgents();
-  }, [tenantId, showAgentPicker]);
+    void loadServers();
+  }, [tenantId]);
 
-  useEffect(() => {
-    if (!selectedAgentId) {
-      setInternalAgent(null);
-      setServers([]);
-      return;
-    }
-    if (controlledAgent === undefined) {
-      void loadAgentDetail(selectedAgentId);
-    }
-    void loadServers(selectedAgentId);
-  }, [selectedAgentId, tenantId, controlledAgent]);
-
-  const agentSummary = useMemo(() => {
-    if (!selectedAgent) return null;
-    return {
-      toolCount: selectedAgent.tools?.length || 0,
-      skillCount: selectedAgent.skills?.length || 0,
-      serverCount: servers.length,
-    };
-  }, [selectedAgent, servers.length]);
-
-  const resolvingAgent = showAgentPicker && agentsLoading && !selectedAgentId;
-  const agentLoadFailed = Boolean(agentsError) && !selectedAgent;
-
-  return (
-    <div className={compact ? 'mcp-page mcp-page-embedded' : 'mcp-page'}>
+  const pageBody = (
+    <>
       {!compact ? (
-        <PageTitle
-          title="MCP 服务管理"
-          description="按智能体查看、测试、编辑 MCP Server，并补齐工具查看链路。"
-          extra={showAgentPicker ? (
-          <Space wrap>
-            <Select
-              style={{ width: 320 }}
-              value={selectedAgentId || undefined}
-              placeholder="选择智能体"
-              loading={agentsLoading}
-              disabled={agentsLoading}
-              onChange={setInternalAgentId}
-              options={agents.map((agent) => ({
-                label: `${agent.name} (${agent.agent_id})`,
-                value: agent.agent_id,
-              }))}
-            />
-            <Button icon={<ReloadOutlined />} onClick={() => void loadServers(selectedAgentId)} disabled={!selectedAgentId || agentsLoading}>
-              刷新
-            </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={!selectedAgentId || agentsLoading}>
-              新增服务器
-            </Button>
-          </Space>
-          ) : (
-            <Space wrap>
-              <Button icon={<ReloadOutlined />} onClick={() => void loadServers(selectedAgentId)} disabled={!selectedAgentId}>
-                刷新
-              </Button>
-              <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={!selectedAgentId}>
-                新增服务器
-              </Button>
-            </Space>
-          )}
-        />
+        null
       ) : (
         <div className="mcp-embedded-toolbar">
           <Space wrap>
-            <Button icon={<ReloadOutlined />} onClick={() => void loadServers(selectedAgentId)} disabled={!selectedAgentId}>
+            <Button icon={<ReloadOutlined />} onClick={() => void loadServers()}>
               刷新连接
             </Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={!selectedAgentId}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
               新增连接
             </Button>
           </Space>
         </div>
       )}
 
-      {resolvingAgent ? (
-        <Card className="mcp-agent-summary">
-          <Skeleton active avatar paragraph={{ rows: 2 }} />
-        </Card>
-      ) : agentLoadFailed ? (
-        <Card>
-          <Alert
-            type="error"
-            showIcon
-            message="智能体列表加载失败"
-            description={agentsError}
-            action={(
-              <Button size="small" icon={<ReloadOutlined />} onClick={() => void loadAgents()}>
-                重试
-              </Button>
-            )}
-          />
-        </Card>
-      ) : selectedAgent ? (
-        <Card className="mcp-agent-summary">
-          <div className="mcp-agent-summary-header">
-            <Space align="start" size={12}>
-              <Avatar size={52} style={{ background: '#eff4ff', color: '#1a6ff5' }} icon={<AppstoreOutlined />} />
-              <div>
-                <Typography.Title level={4} style={{ margin: 0 }}>
-                  {selectedAgent.name}
-                </Typography.Title>
-                <Typography.Text type="secondary">{selectedAgent.agent_id}</Typography.Text>
-                <div style={{ marginTop: 8 }}>
-                  <Tag color="blue">模型：{selectedAgent.model || '未配置'}</Tag>
-                  <Tag color="purple">工具 {agentSummary?.toolCount || 0}</Tag>
-                  <Tag color="geekblue">技能 {agentSummary?.skillCount || 0}</Tag>
-                  <Tag color="cyan">MCP Server {agentSummary?.serverCount || 0}</Tag>
-                </div>
-              </div>
-            </Space>
-            <Typography.Paragraph type="secondary" style={{ maxWidth: 480, marginBottom: 0 }}>
-              当前页的所有新增、编辑、删除都会直接写回所选智能体的 `mcp_servers` 配置，并保留原有工具、技能、系统提示等设置不变。
-            </Typography.Paragraph>
-          </div>
-        </Card>
-      ) : (
-        <Card>
-          <Empty description="暂无可管理的智能体。">
-            {showAgentPicker ? (
-              <Button icon={<ReloadOutlined />} onClick={() => void loadAgents()}>
-                刷新智能体
-              </Button>
-            ) : null}
-          </Empty>
-        </Card>
-      )}
-
-      <Card loading={!resolvingAgent && loading} style={{ marginTop: 16 }}>
-        {resolvingAgent ? (
-          <Skeleton active paragraph={{ rows: 4 }} />
-        ) : agentLoadFailed ? (
-          <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="智能体加载后才能管理 MCP Server。" />
-        ) : servers.length === 0 ? (
+      <Card loading={loading} className="mcp-server-list-card">
+        {servers.length === 0 ? (
           <Empty
             image={Empty.PRESENTED_IMAGE_SIMPLE}
-            description="当前智能体还没有 MCP Server。"
+            description="当前租户还没有 MCP Server。"
           >
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate} disabled={!selectedAgentId}>
+            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
               添加第一个服务器
             </Button>
           </Empty>
         ) : (
-          <Space direction="vertical" size={16} style={{ width: '100%' }}>
+          <div className="mcp-server-list">
             {servers.map((server) => {
               const toolState = toolStates[server.name];
               const expanded = Boolean(expandedTools[server.name]);
@@ -516,16 +318,16 @@ export function McpServersPanel({
                 <Card key={server.name} className="mcp-server-card">
                   <div className="mcp-server-header">
                     <Space align="start" size={12}>
-                      <Avatar style={{ background: '#f3f0ff', color: '#7c3aed' }} icon={<ApiOutlined />} />
+                      <Avatar className="mcp-server-avatar" icon={<ApiOutlined />} />
                       <div>
-                        <Typography.Title level={5} style={{ margin: 0 }}>
+                        <Typography.Title level={5} className="mcp-server-title">
                           {server.name}
                         </Typography.Title>
-                        <Typography.Text type="secondary" style={{ fontFamily: 'monospace' }}>
-                          {server.command}
+                        <Typography.Text type="secondary">
+                          启动命令已配置
                         </Typography.Text>
-                        <div style={{ marginTop: 8 }}>
-                          <Tag color="blue">参数：{formatArgs(server.args)}</Tag>
+                        <div className="mcp-server-tags">
+                          <Tag color="blue">参数 {server.args.length}</Tag>
                           <Tag color="cyan">环境变量 {Object.keys(server.env || {}).length}</Tag>
                         </div>
                       </div>
@@ -574,7 +376,7 @@ export function McpServersPanel({
                         <Alert
                           type="warning"
                           showIcon
-                          message="当前无法读取工具列表"
+                          title="当前无法读取工具列表"
                           description={toolState.error}
                         />
                       ) : null}
@@ -592,20 +394,20 @@ export function McpServersPanel({
                               className="mcp-tool-card"
                               onClick={() => setSchemaViewer({ serverName: server.name, tool })}
                             >
-                              <Space direction="vertical" size={6} style={{ width: '100%' }}>
+                              <div className="mcp-tool-card-body">
                                 <Space>
                                   <ToolOutlined />
-                                  <Typography.Text strong style={{ fontFamily: 'monospace' }}>
+                                  <Typography.Text strong className="technical-id">
                                     {tool.name}
                                   </Typography.Text>
                                 </Space>
-                                <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 0 }}>
+                                <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} className="compact-paragraph">
                                   {tool.description || '该工具未提供描述。'}
                                 </Typography.Paragraph>
-                                <Button type="link" size="small" icon={<CodeOutlined />} style={{ paddingInline: 0 }}>
+                                <Button type="link" size="small" icon={<CodeOutlined />} className="inline-link-button">
                                   查看输入 Schema
                                 </Button>
-                              </Space>
+                              </div>
                             </Card>
                           ))}
                         </div>
@@ -615,7 +417,7 @@ export function McpServersPanel({
                 </Card>
               );
             })}
-          </Space>
+          </div>
         )}
       </Card>
 
@@ -638,14 +440,12 @@ export function McpServersPanel({
       >
         <Form form={form} layout="vertical">
           <Form.Item name="name" label="服务器名称" rules={[{ required: true, message: '请输入服务器名称' }]}>
-            <Input placeholder="filesystem" disabled={Boolean(editing)} />
+            <Input placeholder="filesystem" disabled={Boolean(editing)} aria-label="服务器名称" />
           </Form.Item>
           <Form.Item name="command" label="启动命令" rules={[{ required: true, message: '请输入启动命令' }]}>
-            <Input placeholder="npx" />
+            <Input placeholder="npx" aria-label="启动命令" />
           </Form.Item>
-          <Form.Item name="argsText" label="参数">
-            <Input placeholder="-y @modelcontextprotocol/server-filesystem /tmp" />
-          </Form.Item>
+          <Form.Item name="argsText" label="参数" htmlFor="mcp-args"><Input id="mcp-args" placeholder="-y @modelcontextprotocol/server-filesystem /tmp" aria-label="参数" /></Form.Item>
 
           <Form.List name="envList">
             {(fields, { add, remove }) => (
@@ -656,17 +456,17 @@ export function McpServersPanel({
                     添加变量
                   </Button>
                 </div>
-                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                <Space vertical size={8} className="full-width-stack">
                   {fields.map((field) => (
-                    <Space key={field.key} align="start" style={{ display: 'flex' }}>
-                      <Form.Item {...field} name={[field.name, 'key']} noStyle>
-                        <Input placeholder="变量名" style={{ width: 220 }} />
+                    <div key={field.key} className="mcp-env-row">
+                      <Form.Item {...field} name={[field.name, 'key']} label="变量名" colon={false} className="mcp-env-key">
+                        <Input placeholder="变量名" />
                       </Form.Item>
-                      <Form.Item {...field} name={[field.name, 'value']} noStyle>
-                        <Input placeholder="变量值" style={{ width: 340 }} />
+                      <Form.Item {...field} name={[field.name, 'value']} label="变量值" colon={false} className="mcp-env-value">
+                        <Input placeholder="变量值" />
                       </Form.Item>
-                      <Button icon={<MinusCircleOutlined />} onClick={() => remove(field.name)} />
-                    </Space>
+                      <Button icon={<MinusCircleOutlined />} onClick={() => remove(field.name)} aria-label="删除环境变量" />
+                    </div>
                   ))}
                 </Space>
               </div>
@@ -679,13 +479,13 @@ export function McpServersPanel({
             <Alert
               type={testResult.status === 'success' ? 'success' : 'error'}
               showIcon
-              message={testResult.status === 'success'
+              title={testResult.status === 'success'
                 ? `测试成功，发现 ${(testResult.tools || []).length} 个工具`
                 : testResult.message || '测试失败'}
-              description={testResult.status === 'success' ? '这只是连通性测试，保存后仍需由当前智能体实际加载。' : undefined}
+              description={testResult.status === 'success' ? '这只是连通性测试，保存后可在 AI 员工详情页绑定使用。' : undefined}
             />
             {testResult.status === 'success' && (testResult.tools || []).length > 0 ? (
-              <div className="mcp-tool-grid" style={{ marginTop: 12 }}>
+              <div className="mcp-tool-grid mcp-tool-grid-spaced">
                 {(testResult.tools || []).map((tool) => (
                   <Card
                     key={`test-${tool.name}`}
@@ -693,11 +493,11 @@ export function McpServersPanel({
                     className="mcp-tool-card"
                     onClick={() => setSchemaViewer({ serverName: editing?.name || 'test', tool })}
                   >
-                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                      <Typography.Text strong style={{ fontFamily: 'monospace' }}>
+                    <Space vertical size={4} className="full-width-stack">
+                      <Typography.Text strong className="technical-id">
                         {tool.name}
                       </Typography.Text>
-                      <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 0 }}>
+                      <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} className="compact-paragraph">
                         {tool.description || '该工具未提供描述。'}
                       </Typography.Paragraph>
                     </Space>
@@ -721,12 +521,12 @@ export function McpServersPanel({
             <Alert
               type={testViewer.result.status === 'success' ? 'success' : 'error'}
               showIcon
-              message={testViewer.result.status === 'success'
+              title={testViewer.result.status === 'success'
                 ? `连接成功，发现 ${(testViewer.result.tools || []).length} 个工具`
                 : testViewer.result.message || '连接失败'}
             />
             {testViewer.result.status === 'success' && (testViewer.result.tools || []).length > 0 ? (
-              <div className="mcp-tool-grid" style={{ marginTop: 12 }}>
+              <div className="mcp-tool-grid mcp-tool-grid-spaced">
                 {(testViewer.result.tools || []).map((tool) => (
                   <Card
                     key={`viewer-${tool.name}`}
@@ -734,11 +534,11 @@ export function McpServersPanel({
                     className="mcp-tool-card"
                     onClick={() => setSchemaViewer({ serverName: testViewer.serverName, tool })}
                   >
-                    <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                      <Typography.Text strong style={{ fontFamily: 'monospace' }}>
+                    <Space vertical size={4} className="full-width-stack">
+                      <Typography.Text strong className="technical-id">
                         {tool.name}
                       </Typography.Text>
-                      <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 0 }}>
+                      <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} className="compact-paragraph">
                         {tool.description || '该工具未提供描述。'}
                       </Typography.Paragraph>
                     </Space>
@@ -758,11 +558,11 @@ export function McpServersPanel({
         width={880}
       >
         {schemaViewer ? (
-          <Space direction="vertical" size={12} style={{ width: '100%' }}>
+          <Space vertical size={12} className="full-width-stack">
             <Alert
               type="info"
               showIcon
-              message={schemaViewer.tool.description || '该工具未提供描述。'}
+              title={schemaViewer.tool.description || '该工具未提供描述。'}
             />
             <pre className="mcp-schema-block">
               {JSON.stringify(schemaViewer.tool.inputSchema || {}, null, 2)}
@@ -770,7 +570,30 @@ export function McpServersPanel({
           </Space>
         ) : null}
       </Modal>
-    </div>
+    </>
+  );
+
+  if (compact) {
+    return <div className="mcp-page mcp-page-embedded">{pageBody}</div>;
+  }
+
+  return (
+    <ConsolePage
+      className="mcp-page"
+      title="MCP 服务管理"
+      actions={(
+        <PageToolbar>
+          <Button icon={<ReloadOutlined />} onClick={() => void loadServers()}>
+            刷新
+          </Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>
+            新增服务器
+          </Button>
+        </PageToolbar>
+      )}
+    >
+      {pageBody}
+    </ConsolePage>
   );
 }
 

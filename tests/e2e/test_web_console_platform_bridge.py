@@ -73,6 +73,93 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert create_tenant_2_resp.status_code == 200
         assert create_tenant_2_resp.json()["tenant"]["tenant_id"] == tenant_id_2
 
+        create_mcp_a_resp = requests.post(
+            f"{base_url}/api/mcp/servers",
+            json={
+                "tenant_id": tenant_id,
+                "name": "shared-mcp",
+                "command": "python",
+                "args": ["-m", "tenant_a"],
+                "env": {"TENANT": "A"},
+            },
+            timeout=5,
+        )
+        create_mcp_b_resp = requests.post(
+            f"{base_url}/api/mcp/servers",
+            json={
+                "tenant_id": tenant_id_2,
+                "name": "shared-mcp",
+                "command": "node",
+                "args": ["tenant-b.js"],
+                "env": {"TENANT": "B"},
+            },
+            timeout=5,
+        )
+        assert create_mcp_a_resp.status_code == 200
+        assert create_mcp_a_resp.json()["server"]["command"] == "python"
+        assert create_mcp_b_resp.status_code == 200
+        assert create_mcp_b_resp.json()["server"]["command"] == "node"
+
+        list_mcp_a_resp = requests.get(
+            f"{base_url}/api/mcp/servers",
+            params={"tenant_id": tenant_id},
+            timeout=5,
+        )
+        list_mcp_b_resp = requests.get(
+            f"{base_url}/api/mcp/servers",
+            params={"tenant_id": tenant_id_2},
+            timeout=5,
+        )
+        assert list_mcp_a_resp.status_code == 200
+        assert list_mcp_b_resp.status_code == 200
+        assert list_mcp_a_resp.json()["servers"][0]["command"] == "python"
+        assert list_mcp_b_resp.json()["servers"][0]["command"] == "node"
+
+        update_mcp_a_resp = requests.put(
+            f"{base_url}/api/mcp/servers/shared-mcp",
+            json={
+                "tenant_id": tenant_id,
+                "name": "shared-mcp",
+                "command": "python3",
+                "args": ["-m", "tenant_a_v2"],
+                "env": {"TENANT": "A2"},
+            },
+            timeout=5,
+        )
+        assert update_mcp_a_resp.status_code == 200
+        assert update_mcp_a_resp.json()["server"]["command"] == "python3"
+
+        verify_mcp_b_resp = requests.get(
+            f"{base_url}/api/mcp/servers",
+            params={"tenant_id": tenant_id_2},
+            timeout=5,
+        )
+        assert verify_mcp_b_resp.status_code == 200
+        assert verify_mcp_b_resp.json()["servers"][0]["command"] == "node"
+
+        delete_mcp_a_resp = requests.delete(
+            f"{base_url}/api/mcp/servers/shared-mcp",
+            params={"tenant_id": tenant_id},
+            timeout=5,
+        )
+        assert delete_mcp_a_resp.status_code == 200
+        assert delete_mcp_a_resp.json()["server"]["tenant_id"] == tenant_id
+
+        list_mcp_a_after_delete_resp = requests.get(
+            f"{base_url}/api/mcp/servers",
+            params={"tenant_id": tenant_id},
+            timeout=5,
+        )
+        list_mcp_b_after_delete_resp = requests.get(
+            f"{base_url}/api/mcp/servers",
+            params={"tenant_id": tenant_id_2},
+            timeout=5,
+        )
+        assert list_mcp_a_after_delete_resp.status_code == 200
+        assert list_mcp_a_after_delete_resp.json()["servers"] == []
+        assert list_mcp_b_after_delete_resp.status_code == 200
+        assert list_mcp_b_after_delete_resp.json()["servers"][0]["tenant_id"] == tenant_id_2
+
         tenant_user_meta = requests.get(f"{base_url}/api/platform/tenant-user-meta", timeout=5)
         assert tenant_user_meta.status_code == 200
         assert "owner" in tenant_user_meta.json()["roles"]

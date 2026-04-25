@@ -131,8 +131,8 @@ export function MemoryPanel({
         )}
       />
 
-      <Space className="memory-panel-layout" align="start" style={{ width: '100%' }} size={12}>
-        <Card title="文件列表" className="memory-file-list-card" bodyStyle={{ padding: 0 }}>
+      <Space className="memory-panel-layout" align="start" size={12}>
+        <Card title="文件列表" className="memory-file-list-card memory-file-table-card">
           <Table<MemoryFileItem>
             rowKey={(row) => row.filename}
             loading={loading}
@@ -149,13 +149,10 @@ export function MemoryPanel({
                 void loadFiles(targetPage);
               },
             }}
+            rowClassName={(row) => (selected === row.filename ? 'memory-row-selected' : '')}
             onRow={(row) => ({
               onClick: () => {
                 void loadContent(row.filename);
-              },
-              style: {
-                cursor: 'pointer',
-                background: selected === row.filename ? '#eff4ff' : undefined,
               },
             })}
           />
@@ -163,7 +160,7 @@ export function MemoryPanel({
 
         <Card
           title={selected ? `内容：${selected}` : '内容预览'}
-          style={{ flex: 1, minHeight: 540 }}
+          className="memory-content-card"
         >
           {contentLoading ? (
             <Spin />

@@ -137,6 +137,21 @@ _SCHEMA = [
     """,
     "ALTER TABLE platform_agents ADD COLUMN IF NOT EXISTS model_config_id TEXT NOT NULL DEFAULT ''",
     """
+    CREATE TABLE IF NOT EXISTS platform_mcp_servers (
+        tenant_id TEXT NOT NULL REFERENCES platform_tenants(tenant_id) ON DELETE CASCADE,
+        name TEXT NOT NULL,
+        command TEXT NOT NULL,
+        args JSONB NOT NULL DEFAULT '[]'::jsonb,
+        env JSONB NOT NULL DEFAULT '{}'::jsonb,
+        enabled BOOLEAN NOT NULL DEFAULT true,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        PRIMARY KEY (tenant_id, name)
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_platform_mcp_servers_scope ON platform_mcp_servers (tenant_id, enabled)",
+    """
     CREATE TABLE IF NOT EXISTS platform_tenant_users (
         tenant_id TEXT NOT NULL REFERENCES platform_tenants(tenant_id) ON DELETE CASCADE,
         user_id TEXT NOT NULL,

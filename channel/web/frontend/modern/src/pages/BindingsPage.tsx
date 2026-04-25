@@ -1,7 +1,7 @@
-import { Button, Card, Form, Input, Modal, Popconfirm, Select, Space, Switch, Table, Tag, Typography, message } from 'antd';
+import { Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Tag, Typography, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
-import { JsonBlock } from '../components/JsonBlock';
 import { PageTitle } from '../components/PageTitle';
+import { AdvancedJsonPanel, DataTableShell, PageToolbar, StatusTag } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
 import { api, formatBindingPayload } from '../services/api';
 import type { AgentItem, BindingItem, ChannelConfigItem, TenantItem } from '../types';
@@ -160,22 +160,22 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
   }, [currentTenantId]);
 
   const toolbar = (
-    <Space wrap>
+    <PageToolbar align="start">
       <Select
         allowClear
         placeholder="按租户过滤"
-        style={{ width: 220 }}
+        className="tenant-filter"
         value={tenantId || undefined}
         onChange={(value) => setTenantId(value || '')}
         options={tenants.map((tenant) => ({ label: tenant.name, value: tenant.tenant_id }))}
       />
       <Button onClick={() => void reload()}>刷新</Button>
       <Button type="primary" onClick={openCreate}>新建绑定</Button>
-    </Space>
+    </PageToolbar>
   );
 
   return (
-    <Card className={embedded ? 'channel-tab-card' : undefined}>
+    <div className={embedded ? 'channel-tab-panel' : undefined}>
       {embedded ? (
         <div className="channel-tab-toolbar">{toolbar}</div>
       ) : (
@@ -186,13 +186,24 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
         />
       )}
 
-      <Table<BindingItem>
+      <DataTableShell<BindingItem>
+        compact={embedded}
+        title={embedded ? undefined : '绑定列表'}
         rowKey={(row) => `${row.tenant_id}/${row.binding_id}`}
         loading={loading}
         dataSource={bindings}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: '名称', dataIndex: 'name' },
+          {
+            title: '绑定',
+            dataIndex: 'name',
+            render: (value: string, row) => (
+              <span className="entity-title-cell">
+                <span className="entity-title-cell-main">{value}</span>
+                <span className="entity-title-cell-meta">{row.binding_id}</span>
+              </span>
+            ),
+          },
           { title: '租户', dataIndex: 'tenant_id', render: (value: string) => tenantNameById.get(value) || value },
           { title: '渠道', dataIndex: 'channel_type', render: (value: string) => <Tag color="blue">{value}</Tag> },
           {
@@ -204,7 +215,7 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
             },
           },
           { title: '智能体', dataIndex: 'agent_id', render: (value: string) => agentNameById.get(value) || value },
-          { title: '启用', render: (_, row) => (row.enabled ? <Tag color="green">是</Tag> : <Tag>否</Tag>) },
+          { title: '状态', render: (_, row) => <StatusTag status={Boolean(row.enabled)}>{row.enabled ? '启用' : '停用'}</StatusTag> },
           {
             title: '操作',
             render: (_, row) => (
@@ -217,7 +228,7 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
             ),
           },
         ]}
-        expandable={{ expandedRowRender: (row) => <JsonBlock value={row.metadata || {}} /> }}
+        expandable={{ expandedRowRender: (row) => <AdvancedJsonPanel title="绑定 metadata" value={row.metadata || {}} defaultOpen /> }}
       />
 
       <Modal
@@ -230,11 +241,12 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
       >
         <Form form={form} layout="vertical">
           <Form.Item name="name" label="名称" rules={[{ required: true }]}>
-            <Input />
+            <Input aria-label="名称" />
           </Form.Item>
           <Form.Item name="channel_type" label="渠道类型" rules={[{ required: true }]}>
             <Select
               showSearch
+              aria-label="渠道类型"
               options={[
                 { label: 'Web', value: 'web' },
                 { label: '微信', value: 'weixin' },
@@ -253,6 +265,7 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
             <Select
               allowClear
               showSearch
+              aria-label="渠道配置"
               options={channelConfigs.map((config) => ({
                 label: `${config.name} (${config.channel_type})`,
                 value: config.channel_config_id,
@@ -270,18 +283,19 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
             <Select
               showSearch
               allowClear
+              aria-label="智能体"
               options={tenantAgentOptions}
               placeholder="选择智能体"
             />
           </Form.Item>
-          <Form.Item name="enabled" label="启用" valuePropName="checked">
-            <Switch />
+          <Form.Item name="enabled" label="启用" htmlFor="binding-enabled" valuePropName="checked">
+            <Switch id="binding-enabled" aria-label="启用绑定" />
           </Form.Item>
-          <Form.Item name="metadata" label="Metadata(JSON)">
-            <Input.TextArea rows={6} />
+          <Form.Item name="metadata" label="高级配置(JSON)" htmlFor="binding-metadata">
+            <Input.TextArea id="binding-metadata" rows={6} aria-label="高级配置 JSON" />
           </Form.Item>
         </Form>
       </Modal>
-    </Card>
+    </div>
   );
 }

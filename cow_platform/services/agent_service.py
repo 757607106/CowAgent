@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict
+from dataclasses import asdict, replace
 import os
 from pathlib import Path
 import secrets
@@ -10,6 +10,7 @@ from config import conf
 
 from cow_platform.domain.models import AgentDefinition
 from cow_platform.repositories.agent_repository import AgentRepository
+from cow_platform.services.mcp_server_service import TenantMcpServerService
 from cow_platform.services.tenant_service import TenantService
 
 
@@ -27,9 +28,11 @@ class AgentService:
         self,
         repository: AgentRepository | None = None,
         tenant_service: TenantService | None = None,
+        mcp_server_service: TenantMcpServerService | None = None,
     ):
         self.repository = repository or AgentRepository()
         self.tenant_service = tenant_service or TenantService()
+        self.mcp_server_service = mcp_server_service or TenantMcpServerService(tenant_service=self.tenant_service)
 
     def ensure_default_agent(self, tenant_id: str = DEFAULT_TENANT_ID) -> AgentDefinition:
         self.tenant_service.resolve_tenant(tenant_id)
@@ -58,12 +61,16 @@ class AgentService:
         self,
         tenant_id: str = DEFAULT_TENANT_ID,
         agent_id: str | None = None,
+        *,
+        resolve_mcp: bool = False,
     ) -> AgentDefinition:
         self.ensure_default_agent(tenant_id)
         resolved_agent_id = agent_id or DEFAULT_AGENT_ID
         definition = self.repository.get_agent(tenant_id, resolved_agent_id)
         if definition is None:
             raise KeyError(f"agent not found: {resolved_agent_id}")
+        if resolve_mcp:
+            return self._with_resolved_mcp_servers(definition)
         return definition
 
     def create_agent(
@@ -211,3 +218,10 @@ class AgentService:
             name=DEFAULT_AGENT_NAME,
             metadata=metadata,
         )
+
+    def _with_resolved_mcp_servers(self, definition: AgentDefinition) -> AgentDefinition:
+        resolved_servers = self.mcp_server_service.resolve_bound_servers(
+            definition.tenant_id,
+            dict(definition.mcp_servers or {}),
+        )
+        return replace(definition, mcp_servers=resolved_servers)

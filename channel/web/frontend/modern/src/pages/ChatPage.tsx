@@ -660,7 +660,7 @@ export default function ChatPage() {
       placement: 'end' as const,
       variant: 'shadow' as const,
       shape: 'round' as const,
-      avatar: <Avatar icon={<UserOutlined />} style={{ background: '#1a6ff5' }} />,
+      avatar: <Avatar className="chat-avatar-user" icon={<UserOutlined />} />,
       footerPlacement: 'outer-end' as const,
       footer: (_content: unknown, info: { extraInfo?: Record<string, unknown> }) => (
         <span className="chat-bubble-time">{formatClock(Number(info.extraInfo?.createdAt || Date.now()))}</span>
@@ -681,7 +681,7 @@ export default function ChatPage() {
     assistant: {
       placement: 'start' as const,
       variant: 'borderless' as const,
-      avatar: <Avatar icon={<RobotOutlined />} style={{ background: '#10b981' }} />,
+      avatar: <Avatar className="chat-avatar-assistant" icon={<RobotOutlined />} />,
       footerPlacement: 'outer-start' as const,
       footer: (_content: unknown, info: { extraInfo?: Record<string, unknown> }) => (
         <div className="chat-bubble-meta">
@@ -719,7 +719,7 @@ export default function ChatPage() {
       <aside className="chat-session-pane">
         <div className="chat-session-head">
           <div>
-            <Typography.Title level={5} style={{ margin: 0 }}>会话</Typography.Title>
+            <Typography.Title level={5} className="chat-pane-title">会话</Typography.Title>
           </div>
           <Tooltip title="刷新会话列表">
             <Button
@@ -780,7 +780,7 @@ export default function ChatPage() {
       <section className="chat-main-pane">
         <div className="chat-main-head">
           <div className="chat-main-intro">
-            <Typography.Title level={4} style={{ margin: 0 }}>
+            <Typography.Title level={4} className="chat-pane-title">
               {activeSession?.title || '新对话'}
             </Typography.Title>
             {historyHasMore ? (
@@ -816,7 +816,7 @@ export default function ChatPage() {
               <div className="chat-empty-wrap">
                 <Welcome
                   variant="borderless"
-                  icon={<Avatar size={56} icon={<RobotOutlined />} style={{ background: '#1a6ff5' }} />}
+                  icon={<Avatar size={56} icon={<RobotOutlined />} className="chat-welcome-avatar" />}
                   title="开始对话"
                   description="上传附件或直接提问"
                 />
@@ -1008,6 +1008,7 @@ export default function ChatPage() {
           </div>
         </div>
       </section>
+
     </div>
   );
 }

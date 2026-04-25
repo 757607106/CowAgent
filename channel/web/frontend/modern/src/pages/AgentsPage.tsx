@@ -30,7 +30,6 @@ import {
   Space,
   Statistic,
   Switch,
-  Table,
   Tabs,
   Tag,
   Typography,
@@ -38,7 +37,7 @@ import {
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { PageTitle } from '../components/PageTitle';
+import { ConsolePage, DataTableShell, PageToolbar, StatusTag } from '../components/console';
 import { displayAgentName, useRuntimeScope } from '../context/runtime';
 import { api, formatAgentPayload } from '../services/api';
 import type { AgentItem, ModelConfigItem, RuntimeScope, SkillItem, TenantItem, ToolItem } from '../types';
@@ -58,6 +57,7 @@ interface AgentFormValues {
 
 type AgentViewMode = 'table' | 'cards';
 type AgentBadgeStatus = 'success' | 'processing' | 'default' | 'warning' | 'error';
+type McpServerMap = NonNullable<AgentItem['mcp_servers']>;
 
 const LEGACY_MODEL_PREFIX = 'legacy-model:';
 
@@ -127,16 +127,52 @@ function agentWorkline(agent: AgentItem, toolCount: number, skillCount: number, 
 }
 
 function applyMcpEnabledState(
-  mcpServers: NonNullable<AgentItem['mcp_servers']>,
+  agentServers: McpServerMap,
   enabledMap: Record<string, boolean>,
-): NonNullable<AgentItem['mcp_servers']> {
+  catalogServers: McpServerMap,
+): McpServerMap {
+  const names = Array.from(new Set([
+    ...Object.keys(catalogServers),
+    ...Object.keys(agentServers),
+  ]));
+  const next: McpServerMap = {};
+
+  names.forEach((name) => {
+    const catalogConfig = catalogServers[name];
+    const agentConfig = agentServers[name];
+    const checked = enabledMap[name];
+
+    if (checked) {
+      if (catalogConfig) {
+        next[name] = { enabled: true };
+        return;
+      }
+      if (agentConfig) {
+        next[name] = {
+          ...agentConfig,
+          enabled: true,
+        };
+      }
+    }
+  });
+
+  return next;
+}
+
+function collectBindableMcpServers(catalogServers: McpServerMap, agentServers: McpServerMap): McpServerMap {
+  return {
+    ...agentServers,
+    ...catalogServers,
+  };
+}
+
+function buildMcpBindingMap(agent: AgentItem, catalogServers: McpServerMap): Record<string, boolean> {
+  const agentServers = agent.mcp_servers || {};
+  const bindableServers = collectBindableMcpServers(catalogServers, agentServers);
   return Object.fromEntries(
-    Object.entries(mcpServers).map(([name, config]) => [
+    Object.keys(bindableServers).map((name) => [
       name,
-      {
-        ...config,
-        enabled: enabledMap[name] ?? config.enabled ?? true,
-      },
+      Boolean(agentServers[name] && (agentServers[name].enabled ?? true)),
     ]),
   );
 }
@@ -163,6 +199,7 @@ export default function AgentsPage() {
   const [selectedTools, setSelectedTools] = useState<string[]>([]);
   const [selectedSkills, setSelectedSkills] = useState<string[]>([]);
   const [mcpEnabledMap, setMcpEnabledMap] = useState<Record<string, boolean>>({});
+  const [tenantMcpServers, setTenantMcpServers] = useState<McpServerMap>({});
   const [createForm] = Form.useForm<AgentFormValues>();
   const [detailForm] = Form.useForm<AgentFormValues>();
 
@@ -236,6 +273,16 @@ export default function AgentsPage() {
     };
   }, [selectedAgent]);
 
+  const bindableMcpServers = useMemo(
+    () => collectBindableMcpServers(tenantMcpServers, selectedAgent?.mcp_servers || {}),
+    [tenantMcpServers, selectedAgent],
+  );
+
+  const boundMcpCount = useMemo(
+    () => Object.values(mcpEnabledMap).filter(Boolean).length,
+    [mcpEnabledMap],
+  );
+
   const loadTenants = async () => {
     const data = await api.listTenants();
     setTenants(data.tenants || []);
@@ -251,21 +298,41 @@ export default function AgentsPage() {
     }
   };
 
+  const loadTenantMcpServers = async (tenant = tenantId): Promise<McpServerMap> => {
+    try {
+      const data = await api.listMcpServers(tenant);
+      const nextServers = Object.fromEntries(
+        (data.servers || []).map((server) => [server.name, server]),
+      ) as McpServerMap;
+      setTenantMcpServers(nextServers);
+      return nextServers;
+    } catch {
+      setTenantMcpServers({});
+      return {};
+    }
+  };
+
   const loadCapabilities = async (tenant = tenantId, agentId = '') => {
-    const [toolData, skillData, modelData] = await Promise.all([
+    const [toolData, skillData, modelData, nextMcpServers] = await Promise.all([
       api.listTools(),
       api.listSkills({ tenantId: tenant, agentId, bindingId: '' }),
       api.listAvailableModels(tenant),
+      loadTenantMcpServers(tenant),
     ]);
     const nextTools = toolData.tools || [];
     const nextSkills = skillData.skills || [];
     setTools(nextTools);
     setSkills(nextSkills);
     setAvailableModels(modelData.models || []);
-    return { tools: nextTools, skills: nextSkills };
+    return { tools: nextTools, skills: nextSkills, mcpServers: nextMcpServers };
   };
 
-  const fillDetailForm = (agent: AgentItem, availableTools = tools, availableSkills = skills) => {
+  const fillDetailForm = (
+    agent: AgentItem,
+    availableTools = tools,
+    availableSkills = skills,
+    availableMcpServers = tenantMcpServers,
+  ) => {
     const nextTools = effectiveToolNames(agent, availableTools);
     const nextSkills = effectiveSkillNames(agent, availableSkills);
     detailForm.setFieldsValue({
@@ -280,9 +347,7 @@ export default function AgentsPage() {
     });
     setSelectedTools(nextTools);
     setSelectedSkills(nextSkills);
-    setMcpEnabledMap(Object.fromEntries(
-      Object.entries(agent.mcp_servers || {}).map(([name, config]) => [name, config.enabled ?? true]),
-    ));
+    setMcpEnabledMap(buildMcpBindingMap(agent, availableMcpServers));
   };
 
   const openCreate = () => {
@@ -308,7 +373,7 @@ export default function AgentsPage() {
       setDetailTab('core');
       setMemoryTab('memory');
       const capabilityData = await loadCapabilities(agent.tenant_id, agent.agent_id);
-      fillDetailForm(agent, capabilityData.tools, capabilityData.skills);
+      fillDetailForm(agent, capabilityData.tools, capabilityData.skills, capabilityData.mcpServers);
     } finally {
       setDetailLoading(false);
     }
@@ -365,7 +430,11 @@ export default function AgentsPage() {
       tools: nextTools,
       skills: nextSkills,
       knowledge_enabled: values.knowledge_enabled,
-      mcp_servers: applyMcpEnabledState(selectedAgent.mcp_servers || {}, mcpEnabledMap),
+      mcp_servers: applyMcpEnabledState(
+        selectedAgent.mcp_servers || {},
+        mcpEnabledMap,
+        tenantMcpServers,
+      ),
     });
 
     setDetailSaving(true);
@@ -373,7 +442,7 @@ export default function AgentsPage() {
       const data = await api.updateAgent(selectedAgent.agent_id, payload);
       const updated = (data as { agent?: AgentItem }).agent || { ...selectedAgent, ...payload } as AgentItem;
       setSelectedAgent(updated);
-      fillDetailForm(updated);
+      fillDetailForm(updated, tools, skills, tenantMcpServers);
       message.success('数字员工已保存');
       await loadAgents(selectedAgent.tenant_id);
       await refreshAgentOptions();
@@ -431,10 +500,10 @@ export default function AgentsPage() {
             </Avatar>
             <div className="agent-detail-title">
               <Space align="center" size={10} wrap>
-                <Typography.Title level={3} style={{ margin: 0 }}>
+                <Typography.Title level={3} className="agent-detail-heading">
                   {selectedAgentName}
                 </Typography.Title>
-                <Tag color="green">工作中</Tag>
+                <StatusTag status="active">工作中</StatusTag>
               </Space>
               <Typography.Text type="secondary">
                 {tenantNameById.get(selectedAgent.tenant_id) || selectedAgent.tenant_id} / {selectedAgent.agent_id}
@@ -467,28 +536,25 @@ export default function AgentsPage() {
                   <Form form={detailForm} layout="vertical">
                     <div className="agent-core-grid">
                       <Form.Item name="name" label="员工名称" rules={[{ required: true, message: '请输入员工名称' }]}>
-                        <Input placeholder="例如：支付通客服" />
+                        <Input placeholder="例如：支付通客服" aria-label="员工名称" />
                       </Form.Item>
                       <Form.Item name="model_config_id" label="模型" rules={[{ required: true, message: '请选择模型' }]}>
                         <Select
                           showSearch
                           allowClear
+                          aria-label="模型"
                           options={modelOptions}
                           placeholder="选择平台或租户模型"
                         />
                       </Form.Item>
                     </div>
-                    <Form.Item name="system_prompt" label="角色设定与行为准则">
-                      <Input.TextArea rows={8} placeholder="设置该数字员工的身份、边界、语气和工作流程。" />
-                    </Form.Item>
+                    <Form.Item name="system_prompt" label="角色设定与行为准则" htmlFor="agent-detail-system-prompt"><Input.TextArea id="agent-detail-system-prompt" rows={8} placeholder="设置该数字员工的身份、边界、语气和工作流程。" aria-label="角色设定与行为准则" /></Form.Item>
                     <div className="agent-knowledge-switch">
                       <div>
                         <Typography.Text strong>启用知识库</Typography.Text>
                         <div className="channel-field-hint">开启后，该员工会读取自己工作区内的知识库内容。</div>
                       </div>
-                      <Form.Item name="knowledge_enabled" valuePropName="checked" noStyle>
-                        <Switch />
-                      </Form.Item>
+                      <Form.Item name="knowledge_enabled" label="启用知识库" htmlFor="agent-detail-knowledge-enabled" valuePropName="checked" colon={false} className="agent-knowledge-switch-control"><Switch id="agent-detail-knowledge-enabled" aria-label="启用知识库" /></Form.Item>
                     </div>
                   </Form>
                   <div className="agent-section-actions">
@@ -504,7 +570,7 @@ export default function AgentsPage() {
               label: `外接能力 (${selectedToolCount + selectedSkillCount})`,
               icon: <BranchesOutlined />,
               children: (
-                <Space direction="vertical" size={16} style={{ width: '100%' }}>
+                <div className="agent-capability-stack">
                   <Card
                     className="agent-section-card"
                     title={<Space><ToolOutlined />工具</Space>}
@@ -518,7 +584,7 @@ export default function AgentsPage() {
                           <label key={tool.name} className="agent-capability-item">
                             <span>
                               <Typography.Text strong>{tool.name}</Typography.Text>
-                              <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 0 }}>
+                              <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} className="compact-paragraph">
                                 {tool.description || '该工具未提供描述。'}
                               </Typography.Paragraph>
                             </span>
@@ -545,7 +611,7 @@ export default function AgentsPage() {
                           <label key={skill.name} className="agent-capability-item">
                             <span>
                               <Typography.Text strong>{skill.name}</Typography.Text>
-                              <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 0 }}>
+                              <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} className="compact-paragraph">
                                 {skill.description || '该技能未提供描述。'}
                               </Typography.Paragraph>
                             </span>
@@ -562,34 +628,37 @@ export default function AgentsPage() {
                   <Card
                     className="agent-section-card"
                     title={<Space><ApiOutlined />MCP 连接</Space>}
-                    extra={<Tag color={Object.keys(selectedAgent.mcp_servers || {}).length ? 'cyan' : 'default'}>{Object.keys(selectedAgent.mcp_servers || {}).length} 已配置</Tag>}
+                    extra={<Tag color={boundMcpCount ? 'cyan' : 'default'}>{boundMcpCount} 已绑定 / {Object.keys(bindableMcpServers).length} 可用</Tag>}
                   >
-                    {Object.keys(selectedAgent.mcp_servers || {}).length === 0 ? (
-                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前员工还没有已配置的 MCP 连接。" />
+                    {Object.keys(bindableMcpServers).length === 0 ? (
+                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前租户还没有可绑定的 MCP Server，请先在 MCP 服务管理页新增。" />
                     ) : (
                       <div className="agent-mcp-grid">
-                        {Object.entries(selectedAgent.mcp_servers || {}).map(([name, config]) => (
-                          <label key={name} className="agent-mcp-item">
-                            <span>
-                              <Space size={8} wrap>
-                                <Typography.Text strong>{name}</Typography.Text>
-                                <Tag color={(mcpEnabledMap[name] ?? config.enabled ?? true) ? 'green' : 'default'}>
-                                  {(mcpEnabledMap[name] ?? config.enabled ?? true) ? '已启用' : '未启用'}
-                                </Tag>
-                              </Space>
-                              <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} style={{ marginBottom: 0 }}>
-                                {config.command || '未配置启动命令'} {(config.args || []).join(' ')}
-                              </Typography.Paragraph>
-                            </span>
-                            <Checkbox
-                              checked={mcpEnabledMap[name] ?? config.enabled ?? true}
-                              onChange={(event) => setMcpEnabledMap((prev) => ({
-                                ...prev,
-                                [name]: event.target.checked,
-                              }))}
-                            />
-                          </label>
-                        ))}
+                        {Object.entries(bindableMcpServers).map(([name, config]) => {
+                          const bound = Boolean(mcpEnabledMap[name]);
+                          return (
+                            <label key={name} className="agent-mcp-item">
+                              <span>
+                                <Space size={8} wrap>
+                                  <Typography.Text strong>{name}</Typography.Text>
+                                  <Tag color={bound ? 'green' : 'default'}>
+                                    {bound ? '已绑定' : '未绑定'}
+                                  </Tag>
+                                </Space>
+                                <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} className="compact-paragraph">
+                                  {config.command ? 'MCP 服务配置已就绪' : '未配置启动命令'} {(config.args || []).length ? ` / 参数 ${config.args?.length}` : ''}
+                                </Typography.Paragraph>
+                              </span>
+                              <Checkbox
+                                checked={bound}
+                                onChange={(event) => setMcpEnabledMap((prev) => ({
+                                  ...prev,
+                                  [name]: event.target.checked,
+                                }))}
+                              />
+                            </label>
+                          );
+                        })}
                       </div>
                     )}
                   </Card>
@@ -599,7 +668,7 @@ export default function AgentsPage() {
                       保存外接能力
                     </Button>
                   </div>
-                </Space>
+                </div>
               ),
             },
             {
@@ -736,12 +805,11 @@ export default function AgentsPage() {
   ];
 
   return (
-    <div className="agents-page">
-      <PageTitle
-        title="AI 员工大厅"
-        description="像管理一支数字团队一样查看每位员工的状态、能力和工作入口。"
-        extra={(
-          <Space wrap>
+    <ConsolePage
+      className="agents-page"
+      title="AI 员工"
+      actions={(
+          <PageToolbar>
             <Segmented
               value={agentView}
               onChange={(value) => setAgentView(value as AgentViewMode)}
@@ -752,7 +820,8 @@ export default function AgentsPage() {
             />
             <Select
               value={tenantId}
-              style={{ width: 200 }}
+              className="agent-tenant-filter"
+              aria-label="租户"
               onChange={(value) => setTenantId(value)}
               options={(tenants.length > 0 ? tenants : [{ tenant_id: 'default', name: 'default' }]).map((tenant) => ({
                 label: tenant.name,
@@ -763,15 +832,16 @@ export default function AgentsPage() {
               allowClear
               prefix={<SearchOutlined />}
               placeholder="搜索员工..."
+              aria-label="搜索员工"
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              style={{ width: 220 }}
+              className="agent-search"
             />
             <Button icon={<ReloadOutlined />} onClick={() => void loadAgents(tenantId)}>刷新</Button>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新员工入职</Button>
-          </Space>
+          </PageToolbar>
         )}
-      />
+    >
 
       {agentView === 'table' ? (
         <div className="agent-overview-grid">
@@ -797,8 +867,8 @@ export default function AgentsPage() {
           </Empty>
         </Card>
       ) : agentView === 'table' ? (
-        <div className="agent-ops-table-shell">
-          <Table<AgentItem>
+        <DataTableShell<AgentItem>
+            title="员工列表"
             rowKey={(agent) => `${agent.tenant_id}/${agent.agent_id}`}
             loading={loading}
             columns={agentColumns}
@@ -806,10 +876,9 @@ export default function AgentsPage() {
             pagination={{ pageSize: 8, showSizeChanger: false }}
             scroll={{ x: 1080 }}
           />
-        </div>
       ) : (
         <div className="agent-card-grid">
-          {filteredAgents.map((agent, index) => {
+          {filteredAgents.map((agent) => {
             const agentName = displayAgentName(agent.agent_id, agent.name);
             const toolCount = effectiveToolNames(agent, tools).length;
             const skillCount = effectiveSkillNames(agent, skills).length;
@@ -826,23 +895,14 @@ export default function AgentsPage() {
               <Card
                 key={`${agent.tenant_id}/${agent.agent_id}`}
                 hoverable
-                className="agent-card agent-market-card"
+                className="agent-card agent-resource-card"
                 loading={loading}
               >
-                <div className={`agent-market-cover agent-market-cover-${index % 6}`}>
-                  <div className="agent-market-orb agent-market-orb-a" />
-                  <div className="agent-market-orb agent-market-orb-b" />
-                  <div className="agent-market-panel">
-                    <span />
-                    <span />
-                    <span />
-                  </div>
-                  <div className="agent-market-figure">
-                    <Avatar size={64} className="agent-market-avatar">{agentInitial(agentName)}</Avatar>
+                <div className="agent-market-body">
+                  <div className="agent-resource-head">
+                    <Avatar size={44} className="agent-market-avatar">{agentInitial(agentName)}</Avatar>
                     <span className={`agent-status-pulse agent-status-${state.status}`} />
                   </div>
-                </div>
-                <div className="agent-market-body">
                   <Space size={8} wrap>
                     <Typography.Title level={5} className="agent-card-heading">
                       {agentName}
@@ -890,6 +950,7 @@ export default function AgentsPage() {
         <Form form={createForm} layout="vertical">
           <Form.Item name="tenant_id" label="租户" hidden={tenants.length <= 1}>
             <Select
+              aria-label="租户"
               options={(tenants.length > 0 ? tenants : [{ tenant_id: 'default', name: 'default' }]).map((tenant) => ({
                 label: tenant.name,
                 value: tenant.tenant_id,
@@ -897,26 +958,28 @@ export default function AgentsPage() {
             />
           </Form.Item>
           <Form.Item name="agent_id" label="员工 ID">
-            <Input placeholder="留空则自动生成" />
+            <Input placeholder="留空则自动生成" aria-label="员工 ID" />
           </Form.Item>
           <Form.Item name="name" label="员工名称" rules={[{ required: true, message: '请输入员工名称' }]}>
-            <Input placeholder="例如：支付通客服" />
+            <Input placeholder="例如：支付通客服" aria-label="员工名称" />
           </Form.Item>
           <Form.Item name="model_config_id" label="模型" rules={[{ required: true, message: '请选择模型' }]}>
             <Select
               showSearch
               allowClear
+              aria-label="模型"
               options={modelOptions}
               placeholder="选择平台或租户模型"
             />
           </Form.Item>
-          <Form.Item name="system_prompt" label="角色设定与行为准则">
-            <Input.TextArea rows={5} />
+          <Form.Item name="system_prompt" label="角色设定与行为准则" htmlFor="agent-create-system-prompt">
+            <Input.TextArea id="agent-create-system-prompt" rows={5} aria-label="角色设定与行为准则" />
           </Form.Item>
           <Form.Item name="tools" label="工具">
             <Select
               mode="multiple"
               allowClear
+              aria-label="工具"
               options={tools.map((tool) => ({
                 label: tool.description ? `${tool.name} - ${tool.description}` : tool.name,
                 value: tool.name,
@@ -928,6 +991,7 @@ export default function AgentsPage() {
             <Select
               mode="multiple"
               allowClear
+              aria-label="技能"
               options={skills.map((skill) => ({
                 label: skill.description ? `${skill.name} - ${skill.description}` : skill.name,
                 value: skill.name,
@@ -935,11 +999,9 @@ export default function AgentsPage() {
               placeholder="选择技能"
             />
           </Form.Item>
-          <Form.Item name="knowledge_enabled" label="启用知识库" valuePropName="checked">
-            <Switch />
-          </Form.Item>
+          <Form.Item name="knowledge_enabled" label="启用知识库" htmlFor="agent-create-knowledge-enabled" valuePropName="checked"><Switch id="agent-create-knowledge-enabled" aria-label="启用知识库" /></Form.Item>
         </Form>
       </Modal>
-    </div>
+    </ConsolePage>
   );
 }

@@ -14,6 +14,7 @@ from cow_platform.domain.models import (
     PricingDefinition,
     QuotaDefinition,
     TenantDefinition,
+    TenantMcpServerDefinition,
     TenantUserDefinition,
     TenantUserIdentityDefinition,
     UsageRecord,
@@ -370,6 +371,49 @@ class InMemoryAgentRepository:
             "mcp_servers": dict(definition.mcp_servers),
             "updated_at": int(time.time()),
         }
+
+
+class InMemoryTenantMcpServerRepository:
+    def __init__(self) -> None:
+        self.servers: dict[tuple[str, str], TenantMcpServerDefinition] = {}
+
+    def list_servers(self, tenant_id: str) -> list[TenantMcpServerDefinition]:
+        return sorted(
+            [server for server in self.servers.values() if server.tenant_id == tenant_id],
+            key=lambda item: item.name,
+        )
+
+    def get_server(self, tenant_id: str, name: str) -> TenantMcpServerDefinition | None:
+        return self.servers.get((tenant_id, name))
+
+    def upsert_server(
+        self,
+        *,
+        tenant_id: str,
+        name: str,
+        command: str,
+        args: list[str] | tuple[str, ...] | None = None,
+        env: dict[str, str] | None = None,
+        enabled: bool = True,
+        metadata: dict[str, Any] | None = None,
+    ) -> TenantMcpServerDefinition:
+        definition = TenantMcpServerDefinition(
+            tenant_id=tenant_id,
+            name=name,
+            command=command,
+            args=tuple(args or ()),
+            env=dict(env or {}),
+            enabled=enabled,
+            metadata=dict(metadata or {}),
+        )
+        self.servers[(tenant_id, name)] = definition
+        return definition
+
+    def delete_server(self, tenant_id: str, name: str) -> TenantMcpServerDefinition:
+        definition = self.servers.pop((tenant_id, name), None)
+        if definition is None:
+            raise KeyError(f"mcp server not found: {name}")
+        return definition
 
 
 class InMemoryBindingRepository:

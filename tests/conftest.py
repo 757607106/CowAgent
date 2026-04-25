@@ -85,6 +85,7 @@ def _reset_platform_postgres_if_configured() -> None:
                     platform_model_configs,
                     platform_bindings,
                     platform_channel_configs,
+                    platform_mcp_servers,
                     platform_tenant_user_identities,
                     platform_tenant_users,
                     platform_agents,

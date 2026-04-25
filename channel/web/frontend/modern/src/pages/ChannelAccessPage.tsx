@@ -1,6 +1,6 @@
-import { Card, Tabs } from 'antd';
+import { Tabs } from 'antd';
 import { useEffect, useState } from 'react';
-import { PageTitle } from '../components/PageTitle';
+import { ConsolePage } from '../components/console';
 import BindingsPage from './BindingsPage';
 import ChannelsPage from './ChannelsPage';
 
@@ -16,12 +16,11 @@ export default function ChannelAccessPage({ defaultTab = 'bindings' }: ChannelAc
   }, [defaultTab]);
 
   return (
-    <div className="channel-access-page">
-      <PageTitle
+    <ConsolePage
+      className="channel-access-page"
         title="渠道接入"
-        description="数字员工通过绑定接入不同渠道，并在微信、飞书等入口中执行工作。"
-      />
-      <Card className="channel-access-shell">
+      >
+      <div className="channel-access-shell">
         <Tabs
           activeKey={activeKey}
           onChange={(key) => setActiveKey(key as 'bindings' | 'channels')}
@@ -38,7 +37,7 @@ export default function ChannelAccessPage({ defaultTab = 'bindings' }: ChannelAc
             },
           ]}
         />
-      </Card>
-    </div>
+      </div>
+    </ConsolePage>
   );
 }
