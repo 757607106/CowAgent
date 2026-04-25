@@ -4,16 +4,18 @@ import pytest
 
 from config import conf
 
-from cow_platform.repositories.agent_repository import AgentRepository, get_platform_workspace_root
 from cow_platform.services.agent_service import AgentService
+from cow_platform.services.tenant_service import TenantService
+from tests.platform_fakes import InMemoryAgentRepository, InMemoryTenantRepository
 
 
 def test_agent_service_can_create_update_and_list_agents(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
     monkeypatch.setitem(conf(), "model", "legacy-model")
 
-    repository = AgentRepository()
-    service = AgentService(repository)
+    tenant_service = TenantService(repository=InMemoryTenantRepository())
+    repository = InMemoryAgentRepository(tmp_path / "legacy")
+    service = AgentService(repository=repository, tenant_service=tenant_service)
 
     default_agent = service.ensure_default_agent()
     created = service.create_agent(
@@ -35,7 +37,7 @@ def test_agent_service_can_create_update_and_list_agents(tmp_path: Path, monkeyp
     assert updated["version"] == 2
     assert updated["name"] == "高级数据分析师"
     assert any(item["agent_id"] == "analyst" for item in listed)
-    assert Path(updated["workspace_path"]) == get_platform_workspace_root() / "default" / "analyst"
+    assert Path(updated["workspace_path"]) == tmp_path / "legacy" / "workspaces" / "default" / "analyst"
     assert len(updated["versions"]) == 2
 
 
@@ -43,8 +45,9 @@ def test_agent_service_can_auto_generate_agent_id(tmp_path: Path, monkeypatch) -
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
     monkeypatch.setitem(conf(), "model", "legacy-model")
 
-    repository = AgentRepository()
-    service = AgentService(repository)
+    tenant_service = TenantService(repository=InMemoryTenantRepository())
+    repository = InMemoryAgentRepository(tmp_path / "legacy")
+    service = AgentService(repository=repository, tenant_service=tenant_service)
 
     created = service.create_agent(
         name="自动编号",

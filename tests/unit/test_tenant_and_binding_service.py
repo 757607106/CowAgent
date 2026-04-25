@@ -3,15 +3,20 @@ from config import conf
 from cow_platform.services.agent_service import AgentService
 from cow_platform.services.binding_service import ChannelBindingService
 from cow_platform.services.tenant_service import TenantService
+from tests.platform_fakes import InMemoryAgentRepository, InMemoryBindingRepository, InMemoryTenantRepository
 
 
 def test_tenant_and_binding_services_support_multi_tenant_resources(tmp_path, monkeypatch) -> None:
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
     monkeypatch.setitem(conf(), "model", "legacy-model")
 
-    tenant_service = TenantService()
-    agent_service = AgentService()
+    tenant_service = TenantService(repository=InMemoryTenantRepository())
+    agent_service = AgentService(
+        repository=InMemoryAgentRepository(tmp_path / "legacy"),
+        tenant_service=tenant_service,
+    )
     binding_service = ChannelBindingService(
+        repository=InMemoryBindingRepository(),
         tenant_service=tenant_service,
         agent_service=agent_service,
     )

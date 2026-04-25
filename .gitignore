@@ -41,6 +41,7 @@ ref/
 .qoder/
 local/
 node_modules/
+cow/workspaces/
 
 # cow cli
 dist/

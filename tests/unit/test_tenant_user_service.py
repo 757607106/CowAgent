@@ -1,16 +1,22 @@
 import pytest
 
-from config import conf
 from cow_platform.services.tenant_service import TenantService
 from cow_platform.services.tenant_user_service import TenantUserService
+from tests.platform_fakes import EmptyPlatformUserService, InMemoryTenantRepository, InMemoryTenantUserRepository
 
 
-def test_tenant_user_service_supports_role_and_identity_management(tmp_path, monkeypatch) -> None:
-    monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
-    monkeypatch.setitem(conf(), "model", "legacy-model")
+def _build_services() -> tuple[TenantService, TenantUserService]:
+    tenant_service = TenantService(repository=InMemoryTenantRepository())
+    tenant_user_service = TenantUserService(
+        repository=InMemoryTenantUserRepository(),
+        tenant_service=tenant_service,
+        platform_user_service=EmptyPlatformUserService(),
+    )
+    return tenant_service, tenant_user_service
 
-    tenant_service = TenantService()
-    tenant_user_service = TenantUserService(tenant_service=tenant_service)
+
+def test_tenant_user_service_supports_role_and_identity_management() -> None:
+    tenant_service, tenant_user_service = _build_services()
 
     tenant_service.create_tenant(tenant_id="acme", name="Acme")
 
@@ -93,12 +99,8 @@ def test_tenant_user_service_supports_role_and_identity_management(tmp_path, mon
     assert generated_user["user_id"].startswith("user-dana-")
 
 
-def test_tenant_user_service_rejects_invalid_role_and_status(tmp_path, monkeypatch) -> None:
-    monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
-    monkeypatch.setitem(conf(), "model", "legacy-model")
-
-    tenant_service = TenantService()
-    tenant_user_service = TenantUserService(tenant_service=tenant_service)
+def test_tenant_user_service_rejects_invalid_role_and_status() -> None:
+    tenant_service, tenant_user_service = _build_services()
     tenant_service.create_tenant(tenant_id="acme", name="Acme")
 
     with pytest.raises(ValueError, match="unsupported role"):

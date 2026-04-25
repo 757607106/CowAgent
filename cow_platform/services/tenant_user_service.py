@@ -2,11 +2,18 @@ from __future__ import annotations
 
 import re
 import secrets
-import time
 from typing import Any
 
 from cow_platform.domain.models import TenantUserDefinition, TenantUserIdentityDefinition
 from cow_platform.repositories.tenant_user_repository import TenantUserRepository
+from cow_platform.services.auth_credentials import (
+    build_auth_metadata,
+    find_by_account,
+    get_auth_account,
+    normalize_account,
+    sanitize_user_record,
+    validate_password,
+)
 from cow_platform.services.tenant_service import TenantService
 
 
@@ -23,9 +30,11 @@ class TenantUserService:
         self,
         repository: TenantUserRepository | None = None,
         tenant_service: TenantService | None = None,
+        platform_user_service: Any | None = None,
     ):
         self.repository = repository or TenantUserRepository()
         self.tenant_service = tenant_service or TenantService()
+        self.platform_user_service = platform_user_service
 
     def list_users(
         self,
@@ -263,72 +272,48 @@ class TenantUserService:
         password: str,
         fallback_account: str,
     ) -> dict[str, Any]:
-        resolved_account = self._normalize_account(account)
+        resolved_account = normalize_account(account)
         resolved_password = password or ""
         if resolved_account and not resolved_password:
             raise ValueError("password is required when account is provided")
         if not resolved_password:
             return dict(metadata)
 
-        from cow_platform.services.auth_service import TenantAuthService
-
-        TenantAuthService._validate_password(resolved_password)
+        validate_password(resolved_password)
         if not resolved_account:
-            resolved_account = self._normalize_account(fallback_account)
+            resolved_account = normalize_account(fallback_account)
         if self._find_users_by_account(resolved_account) or self._find_platform_users_by_account(resolved_account):
             raise ValueError("account already registered")
 
         resolved_metadata = dict(metadata)
-        resolved_metadata["auth"] = {
-            "password_hash": TenantAuthService.hash_password(resolved_password),
-            "created_at": int(time.time()),
-            "account": resolved_account,
-        }
+        resolved_metadata["auth"] = build_auth_metadata(account=resolved_account, password=resolved_password)
         return resolved_metadata
 
     @staticmethod
     def _normalize_account(account: str) -> str:
-        return (account or "").strip().lower()
+        return normalize_account(account)
 
     @staticmethod
     def _get_auth_account(metadata: Any) -> str:
-        if not isinstance(metadata, dict):
-            return ""
-        auth_meta = metadata.get("auth")
-        if not isinstance(auth_meta, dict):
-            return ""
-        return str(auth_meta.get("account", "") or "")
+        return get_auth_account(metadata)
 
     def _find_users_by_account(self, account: str) -> list[TenantUserDefinition]:
-        return [
-            user
-            for user in self.repository.list_users()
-            if self._get_auth_account(user.metadata) == account
-        ]
+        return find_by_account(self.repository.list_users(), account)
 
-    @classmethod
-    def _find_platform_users_by_account(cls, account: str) -> list[Any]:
+    def _find_platform_users_by_account(self, account: str) -> list[Any]:
         try:
-            from cow_platform.services.platform_user_service import PlatformUserService
+            platform_user_service = self.platform_user_service
+            if platform_user_service is None:
+                from cow_platform.services.platform_user_service import PlatformUserService
 
-            return [
-                user
-                for user in PlatformUserService().list_users()
-                if cls._get_auth_account(user.metadata) == account
-            ]
+                platform_user_service = PlatformUserService()
+            return find_by_account(platform_user_service.list_users(), account)
         except Exception:
             return []
 
     @staticmethod
     def _sanitize_user_record(record: dict[str, Any]) -> dict[str, Any]:
-        cleaned = dict(record)
-        metadata = dict(cleaned.get("metadata") or {})
-        auth_meta = metadata.get("auth")
-        if isinstance(auth_meta, dict):
-            metadata["auth_enabled"] = bool(auth_meta.get("password_hash"))
-            metadata.pop("auth", None)
-        cleaned["metadata"] = metadata
-        return cleaned
+        return sanitize_user_record(record)
 
     def _has_other_active_owner(self, tenant_id: str, *, excluded_user_id: str) -> bool:
         owners = self.repository.list_users(tenant_id=tenant_id, role="owner", status="active")

@@ -5,6 +5,13 @@ from cow_platform.services.agent_service import AgentService
 from cow_platform.services.binding_service import ChannelBindingService
 from cow_platform.services.tenant_service import TenantService
 from cow_platform.services.tenant_user_service import TenantUserService
+from tests.platform_fakes import (
+    EmptyPlatformUserService,
+    InMemoryAgentRepository,
+    InMemoryBindingRepository,
+    InMemoryTenantRepository,
+    InMemoryTenantUserRepository,
+)
 
 
 def test_chat_channel_injects_platform_binding_target(tmp_path, monkeypatch) -> None:
@@ -14,13 +21,21 @@ def test_chat_channel_injects_platform_binding_target(tmp_path, monkeypatch) -> 
     monkeypatch.setitem(conf(), "single_chat_prefix", [""])
     monkeypatch.setitem(conf(), "image_create_prefix", [])
 
-    tenant_service = TenantService()
-    agent_service = AgentService()
+    tenant_service = TenantService(repository=InMemoryTenantRepository())
+    agent_service = AgentService(
+        repository=InMemoryAgentRepository(tmp_path / "legacy"),
+        tenant_service=tenant_service,
+    )
     binding_service = ChannelBindingService(
+        repository=InMemoryBindingRepository(),
         tenant_service=tenant_service,
         agent_service=agent_service,
     )
-    tenant_user_service = TenantUserService(tenant_service=tenant_service)
+    tenant_user_service = TenantUserService(
+        repository=InMemoryTenantUserRepository(),
+        tenant_service=tenant_service,
+        platform_user_service=EmptyPlatformUserService(),
+    )
 
     tenant_service.create_tenant(tenant_id="acme", name="Acme")
     agent_service.create_agent(
@@ -54,6 +69,14 @@ def test_chat_channel_injects_platform_binding_target(tmp_path, monkeypatch) -> 
         user_id="alice",
         channel_type="terminal",
         external_user_id="user-42",
+    )
+    monkeypatch.setattr(
+        "cow_platform.services.binding_service.ChannelBindingService",
+        lambda: binding_service,
+    )
+    monkeypatch.setattr(
+        "cow_platform.services.tenant_user_service.TenantUserService",
+        lambda: tenant_user_service,
     )
 
     channel = TerminalChannel()

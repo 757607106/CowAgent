@@ -83,15 +83,32 @@ class _TenantUserRepository:
         }
 
 
+class _PlatformUserService:
+    @staticmethod
+    def list_users(*, role: str = "", status: str = "") -> list[Any]:
+        return []
+
+    @staticmethod
+    def has_platform_admin() -> bool:
+        return False
+
+    @staticmethod
+    def resolve_user(user_id: str) -> Any:
+        raise KeyError(user_id)
+
+
 def test_tenant_user_service_create_user_writes_login_credentials() -> None:
     tenant_service = _TenantService()
+    platform_user_service = _PlatformUserService()
     tenant_user_service = TenantUserService(
         repository=_TenantUserRepository(),
         tenant_service=tenant_service,
+        platform_user_service=platform_user_service,
     )
     auth_service = TenantAuthService(
         tenant_service=tenant_service,
         tenant_user_service=tenant_user_service,
+        platform_user_service=platform_user_service,
         session_expire_seconds=3600,
     )
 

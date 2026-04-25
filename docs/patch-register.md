@@ -3,6 +3,9 @@
 本文档记录平台化过程中，对原有 CowAgent 上游文件做过的兼容修改。  
 目标不是把所有变更都记在这里，而是把“未来升级时最容易冲突的 patch 点”明确下来。
 
+当前二开基线把上游 CowAgent 作为 Agent 内核，平台能力优先落在 `cow_platform/`。
+上游参考版本：<https://github.com/zhayujie/CowAgent/tree/2.0.7>
+
 ## Patch 清单
 
 ### `app.py`
@@ -14,6 +17,15 @@
 
 - 如果上游调整应用启动或 ChannelManager，需要重新确认租户渠道仍只来自数据库配置
 
+### `config.py`
+
+- `Config.get()` / `Config.__getitem__()` 会优先读取当前 runtime scope 中的配置覆盖
+- 平台托管渠道运行时通过该覆盖机制注入模型、渠道密钥等租户级配置
+
+升级关注点：
+
+- 如果上游调整全局配置读取方式，需要重新确认 runtime scope 覆盖仍先于根 `config.json`
+
 ### `agent/memory/conversation_store.py`
 
 - 增加按 `workspace_root / db_path` 维度缓存 `ConversationStore`
@@ -23,6 +35,22 @@
 升级关注点：
 
 - 如果上游调整会话存储实现，需要重新确认多 Agent 隔离是否仍然成立
+
+### `agent/memory/storage.py`
+
+- 长期记忆存储使用平台 Agent 工作区路径派生隔离命名空间
+
+升级关注点：
+
+- 如果上游重构长期记忆索引路径，需要重新确认租户/Agent 工作区不会串用
+
+### `agent/protocol/agent_stream.py`
+
+- 思考输出开关会读取当前平台 runtime context
+
+升级关注点：
+
+- 如果上游调整流式输出或 thinking 控制，需要重新检查平台 Agent 策略是否仍能生效
 
 ### `bridge/agent_initializer.py`
 
@@ -55,6 +83,56 @@
 
 - 如果上游重构 web 控制台 API 或消息流处理，需要重新验证 binding 路由和 scoped queue
 
+### `channel/channel.py`
+
+- Channel 基类增加 `channel_config_id`、`tenant_id`、`config_overrides`
+- 托管渠道实例通过这些字段携带租户运行时配置
+
+升级关注点：
+
+- 如果上游调整 Channel 生命周期或字段初始化，需要重新确认托管渠道仍能注入平台上下文
+
+### `channel/chat_channel.py`
+
+- ChatChannel 支持按 `binding_id` 或渠道身份解析目标 Agent
+- 消息 context 会注入 `binding_id`、`tenant_id`、`agent_id`、租户用户身份和 config overrides
+
+升级关注点：
+
+- 如果上游调整终端/聊天通道消息上下文，需要重新验证 binding 解析和身份映射
+
+### `channel/qq/qq_channel.py`
+
+- 平台托管运行时会向消息 context 注入 `channel_config_id` 与 `source_tenant_id`
+
+升级关注点：
+
+- 如果上游调整 QQ 消息构造流程，需要重新挂回租户渠道上下文
+
+### `channel/weixin/weixin_channel.py`
+
+- 平台托管运行时会向消息 context 注入 `channel_config_id` 与 `source_tenant_id`
+
+升级关注点：
+
+- 如果上游调整微信消息构造流程，需要重新挂回租户渠道上下文
+
+### `channel/wecom_bot/wecom_bot_channel.py`
+
+- 平台托管运行时会向消息 context 注入 `channel_config_id` 与 `source_tenant_id`
+
+升级关注点：
+
+- 如果上游调整企微机器人消息构造流程，需要重新挂回租户渠道上下文
+
+### `channel/feishu/feishu_channel.py`
+
+- 平台托管运行时会向消息 context 注入 `channel_config_id` 与 `source_tenant_id`
+
+升级关注点：
+
+- 如果上游调整飞书消息构造流程，需要重新挂回租户渠道上下文
+
 ### `channel/web/chat.html`
 
 - 新增 Agent 选择器
@@ -80,6 +158,30 @@
 升级关注点：
 
 - 如果上游调整打包方式，需要确认 platform 模块仍会被安装
+
+### `cli/commands/platform.py`
+
+- 新增 `cow platform` 治理、doctor、worker 相关命令
+
+升级关注点：
+
+- 如果上游调整 CLI 命令加载方式，需要确认 platform 命令仍能注册
+
+### `docker/entrypoint.sh`
+
+- 支持平台 API / worker 等部署入口
+
+升级关注点：
+
+- 如果上游调整容器启动脚本，需要重新确认 legacy 与 platform 两种模式都能启动
+
+### `docker/compose.platform.yml`
+
+- 定义平台 API、worker、PostgreSQL 等运行组件
+
+升级关注点：
+
+- 如果上游调整 compose 文件组织方式，需要重新确认平台部署文件不被覆盖
 
 ## 使用方式
 

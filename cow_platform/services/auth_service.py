@@ -12,13 +12,19 @@ from typing import Any
 
 from cow_platform.db import connect
 from cow_platform.services.agent_service import AgentService
+from cow_platform.services.auth_credentials import (
+    build_auth_metadata,
+    get_auth_account,
+    get_password_hash,
+    hash_password,
+    normalize_account,
+    sanitize_user_record,
+    validate_password,
+    verify_password,
+)
 from cow_platform.services.platform_user_service import PLATFORM_SUPER_ADMIN_ROLE, PlatformUserService
 from cow_platform.services.tenant_service import TenantService
 from cow_platform.services.tenant_user_service import TenantUserService
-
-
-PASSWORD_HASH_SCHEME = "pbkdf2_sha256"
-PASSWORD_ITERATIONS = 260000
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,11 +68,12 @@ class TenantAuthService:
         session_expire_seconds: int = 30 * 86400,
     ):
         self.tenant_service = tenant_service or TenantService()
+        self.platform_user_service = platform_user_service or PlatformUserService()
         self.tenant_user_service = tenant_user_service or TenantUserService(
             tenant_service=self.tenant_service,
+            platform_user_service=self.platform_user_service,
         )
         self.agent_service = agent_service or AgentService(tenant_service=self.tenant_service)
-        self.platform_user_service = platform_user_service or PlatformUserService()
         self.session_expire_seconds = session_expire_seconds
 
     def register_platform_admin(
@@ -76,12 +83,12 @@ class TenantAuthService:
         password: str,
         name: str = "",
     ) -> dict[str, Any]:
-        resolved_account = self._normalize_account(account)
+        resolved_account = normalize_account(account)
         if not resolved_account:
             raise ValueError("account must not be empty")
         if self.has_platform_admin():
             raise ValueError("platform admin already exists")
-        self._validate_password(password)
+        validate_password(password)
         self._ensure_account_available(resolved_account)
         return {
             "platform_user": self.platform_user_service.create_platform_admin(
@@ -102,8 +109,8 @@ class TenantAuthService:
         account: str = "",
     ) -> dict[str, Any]:
         resolved_tenant_name = self._normalize_required("tenant_name", tenant_name)
-        resolved_account = self._normalize_account(account)
-        self._validate_password(password)
+        resolved_account = normalize_account(account)
+        validate_password(password)
         if not resolved_account and not ((tenant_id or "").strip() and (user_id or "").strip()):
             raise ValueError("account must not be empty")
         if resolved_account:
@@ -121,12 +128,7 @@ class TenantAuthService:
             tenant_id=resolved_tenant_id,
             seed=resolved_account or name or "owner",
         )
-        auth_metadata = {
-            "password_hash": self.hash_password(password),
-            "created_at": int(time.time()),
-        }
-        if resolved_account:
-            auth_metadata["account"] = resolved_account
+        auth_metadata = build_auth_metadata(account=resolved_account, password=password)
         user = self.tenant_user_service.create_user(
             tenant_id=resolved_tenant_id,
             user_id=resolved_user_id,
@@ -157,14 +159,14 @@ class TenantAuthService:
         if user.status != "active":
             raise PermissionError("tenant user is not active")
 
-        password_hash = self._get_password_hash(user.metadata)
-        if not password_hash or not self.verify_password(password, password_hash):
+        password_hash = get_password_hash(user.metadata)
+        if not password_hash or not verify_password(password, password_hash):
             raise PermissionError("invalid tenant_id, user_id or password")
 
         return self._build_session(tenant=tenant, user=user)
 
     def authenticate_account(self, *, account: str, password: str) -> TenantAuthSession:
-        resolved_account = self._normalize_required("account", self._normalize_account(account))
+        resolved_account = self._normalize_required("account", normalize_account(account))
         platform_matches = self._find_platform_users_by_account(resolved_account)
         if platform_matches:
             if len(platform_matches) != 1:
@@ -172,8 +174,8 @@ class TenantAuthService:
             platform_user = platform_matches[0]
             if platform_user.status != "active" or platform_user.role != PLATFORM_SUPER_ADMIN_ROLE:
                 raise PermissionError("invalid account or password")
-            password_hash = self._get_password_hash(platform_user.metadata)
-            if not password_hash or not self.verify_password(password, password_hash):
+            password_hash = get_password_hash(platform_user.metadata)
+            if not password_hash or not verify_password(password, password_hash):
                 raise PermissionError("invalid account or password")
             return self._build_platform_session(platform_user)
 
@@ -186,15 +188,15 @@ class TenantAuthService:
         if tenant.status != "active" or user.status != "active":
             raise PermissionError("invalid account or password")
 
-        password_hash = self._get_password_hash(user.metadata)
-        if not password_hash or not self.verify_password(password, password_hash):
+        password_hash = get_password_hash(user.metadata)
+        if not password_hash or not verify_password(password, password_hash):
             raise PermissionError("invalid account or password")
 
         return self._build_session(tenant=tenant, user=user)
 
     def has_credentials(self) -> bool:
         for user in self.tenant_user_service.list_users():
-            if self._get_password_hash(user.metadata):
+            if get_password_hash(user.metadata):
                 return True
         return False
 
@@ -259,7 +261,7 @@ class TenantAuthService:
                 expires_at=expires_at,
                 principal_type="platform",
                 user_name=platform_user.name,
-                account=self._get_auth_account(platform_user.metadata),
+                account=get_auth_account(platform_user.metadata),
             )
 
         if not tenant_id:
@@ -281,76 +283,36 @@ class TenantAuthService:
             principal_type="tenant",
             tenant_name=tenant.name,
             user_name=user.name,
-            account=self._get_auth_account(user.metadata),
+            account=get_auth_account(user.metadata),
         )
 
     @staticmethod
     def hash_password(password: str) -> str:
-        salt = secrets.token_bytes(16)
-        digest = hashlib.pbkdf2_hmac(
-            "sha256",
-            password.encode("utf-8"),
-            salt,
-            PASSWORD_ITERATIONS,
-        )
-        return (
-            f"{PASSWORD_HASH_SCHEME}${PASSWORD_ITERATIONS}$"
-            f"{salt.hex()}${digest.hex()}"
-        )
+        return hash_password(password)
 
     @staticmethod
     def verify_password(password: str, password_hash: str) -> bool:
-        try:
-            scheme, iterations_text, salt_hex, digest_hex = password_hash.split("$", 3)
-            if scheme != PASSWORD_HASH_SCHEME:
-                return False
-            digest = hashlib.pbkdf2_hmac(
-                "sha256",
-                password.encode("utf-8"),
-                bytes.fromhex(salt_hex),
-                int(iterations_text),
-            )
-            return hmac.compare_digest(digest.hex(), digest_hex)
-        except Exception:
-            return False
+        return verify_password(password, password_hash)
 
     @staticmethod
     def sanitize_user_record(record: dict[str, Any]) -> dict[str, Any]:
-        cleaned = dict(record)
-        metadata = dict(cleaned.get("metadata") or {})
-        auth_meta = metadata.get("auth")
-        if isinstance(auth_meta, dict):
-            metadata["auth_enabled"] = bool(auth_meta.get("password_hash"))
-            metadata.pop("auth", None)
-        cleaned["metadata"] = metadata
-        return cleaned
+        return sanitize_user_record(record)
 
     @staticmethod
     def _get_password_hash(metadata: Any) -> str:
-        if not isinstance(metadata, dict):
-            return ""
-        auth_meta = metadata.get("auth")
-        if not isinstance(auth_meta, dict):
-            return ""
-        return str(auth_meta.get("password_hash", "") or "")
+        return get_password_hash(metadata)
 
     @staticmethod
     def _get_auth_account(metadata: Any) -> str:
-        if not isinstance(metadata, dict):
-            return ""
-        auth_meta = metadata.get("auth")
-        if not isinstance(auth_meta, dict):
-            return ""
-        return str(auth_meta.get("account", "") or "")
+        return get_auth_account(metadata)
 
     @staticmethod
     def _normalize_account(account: str) -> str:
-        return (account or "").strip().lower()
+        return normalize_account(account)
 
     @staticmethod
     def _validate_password(password: str) -> None:
-        if len(password or "") < 8:
-            raise ValueError("password must be at least 8 characters")
+        validate_password(password)
 
     @staticmethod
     def _normalize_required(name: str, value: str) -> str:
@@ -368,7 +330,7 @@ class TenantAuthService:
             principal_type="tenant",
             tenant_name=tenant.name,
             user_name=user.name,
-            account=self._get_auth_account(user.metadata),
+            account=get_auth_account(user.metadata),
         )
 
     def _build_platform_session(self, platform_user: Any) -> TenantAuthSession:
@@ -379,7 +341,7 @@ class TenantAuthService:
             expires_at=int(time.time()) + self.session_expire_seconds,
             principal_type="platform",
             user_name=platform_user.name,
-            account=self._get_auth_account(platform_user.metadata),
+            account=get_auth_account(platform_user.metadata),
         )
 
     def _ensure_account_available(self, account: str) -> None:
@@ -390,14 +352,14 @@ class TenantAuthService:
         return [
             user
             for user in self.tenant_user_service.list_users()
-            if self._get_auth_account(user.metadata) == account
+            if get_auth_account(user.metadata) == account
         ]
 
     def _find_platform_users_by_account(self, account: str) -> list[Any]:
         return [
             user
             for user in self.platform_user_service.list_users()
-            if self._get_auth_account(user.metadata) == account
+            if get_auth_account(user.metadata) == account
         ]
 
     def _generate_unique_tenant_id(self, tenant_name: str) -> str:

@@ -6,12 +6,12 @@ from pathlib import Path
 from types import MappingProxyType
 
 from config import conf
-from cow_platform.db import connect, jsonb
 
 from cow_platform.domain.models import AgentDefinition
 from cow_platform.repositories.agent_repository import AgentRepository
 from cow_platform.services.agent_service import AgentService
 from cow_platform.services.tenant_service import TenantService
+from tests.platform_fakes import InMemoryAgentRepository, InMemoryTenantRepository
 
 
 def test_agent_definition_with_tools_skills(tmp_path: Path, monkeypatch) -> None:
@@ -19,8 +19,7 @@ def test_agent_definition_with_tools_skills(tmp_path: Path, monkeypatch) -> None
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
 
     mcp_config = {"server1": {"url": "http://localhost:3000", "transport": "stdio"}}
-    TenantService().ensure_default_tenant()
-    repo = AgentRepository()
+    repo = InMemoryAgentRepository(tmp_path / "legacy")
 
     # Create with all extended fields
     definition = repo.create_agent(
@@ -54,8 +53,7 @@ def test_agent_definition_default_values(tmp_path: Path, monkeypatch) -> None:
     """Verify new fields have correct default values when not provided."""
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
 
-    TenantService().ensure_default_tenant()
-    repo = AgentRepository()
+    repo = InMemoryAgentRepository(tmp_path / "legacy")
     definition = repo.create_agent(
         tenant_id="default",
         agent_id="default-agent",
@@ -72,34 +70,17 @@ def test_agent_definition_backward_compat(tmp_path: Path, monkeypatch) -> None:
     """Verify old PostgreSQL rows missing optional JSON fields load with defaults."""
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
 
-    TenantService().ensure_default_tenant()
-    repo = AgentRepository()
-
-    with connect() as conn:
-        conn.execute(
-            """
-            INSERT INTO platform_agents
-                (tenant_id, agent_id, name, version, model, system_prompt,
-                 metadata, created_at, updated_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                "default",
-                "legacy-agent",
-                "Legacy Agent",
-                1,
-                "gpt-4",
-                "Old agent",
-                jsonb({"source": "legacy"}),
-                1700000000,
-                1700000000,
-            ),
-        )
-        conn.commit()
-
-    # Load and verify defaults
-    loaded = repo.get_agent("default", "legacy-agent")
-    assert loaded is not None
+    loaded = AgentRepository._to_definition(
+        {
+            "tenant_id": "default",
+            "agent_id": "legacy-agent",
+            "name": "Legacy Agent",
+            "version": 1,
+            "model": "gpt-4",
+            "system_prompt": "Old agent",
+            "metadata": {"source": "legacy"},
+        }
+    )
     assert loaded.agent_id == "legacy-agent"
     assert loaded.tools == ()
     assert loaded.skills == ()
@@ -111,8 +92,7 @@ def test_agent_definition_update_extended_fields(tmp_path: Path, monkeypatch) ->
     """Verify updating extended fields works correctly."""
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
 
-    TenantService().ensure_default_tenant()
-    repo = AgentRepository()
+    repo = InMemoryAgentRepository(tmp_path / "legacy")
 
     # Create without extended fields
     repo.create_agent(
@@ -141,8 +121,7 @@ def test_agent_definition_export_record_includes_new_fields(tmp_path: Path, monk
     """Verify export_record includes new fields in the serialized output."""
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
 
-    TenantService().ensure_default_tenant()
-    repo = AgentRepository()
+    repo = InMemoryAgentRepository(tmp_path / "legacy")
     definition = repo.create_agent(
         tenant_id="default",
         agent_id="export-agent",
@@ -165,8 +144,10 @@ def test_agent_service_create_with_extended_fields(tmp_path: Path, monkeypatch) 
     """Verify AgentService.create_agent passes through extended fields."""
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
 
-    repo = AgentRepository()
-    service = AgentService(repo)
+    tenant_service = TenantService(repository=InMemoryTenantRepository())
+    tenant_service.ensure_default_tenant()
+    repo = InMemoryAgentRepository(tmp_path / "legacy")
+    service = AgentService(repository=repo, tenant_service=tenant_service)
 
     result = service.create_agent(
         agent_id="svc-agent",

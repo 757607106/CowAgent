@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from functools import lru_cache
 import socket
 import subprocess
 import time
@@ -11,6 +12,59 @@ import requests
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+POSTGRES_BACKED_TESTS = {
+    "tests/e2e/test_platform_doctor_cli.py",
+    "tests/e2e/test_platform_health_startup.py",
+    "tests/e2e/test_platform_job_worker_flow.py",
+    "tests/e2e/test_platform_real_http_flow.py",
+    "tests/e2e/test_web_console_platform_bridge.py",
+    "tests/integration/test_agent_api_extended.py",
+    "tests/integration/test_agent_bridge_usage_quota.py",
+    "tests/integration/test_binding_runtime_resolution.py",
+    "tests/integration/test_platform_admin_model_flow.py",
+    "tests/integration/test_platform_agent_api.py",
+    "tests/integration/test_platform_api_authz.py",
+    "tests/integration/test_platform_app.py",
+    "tests/integration/test_platform_auth_api.py",
+    "tests/integration/test_platform_channel_config_flow.py",
+    "tests/integration/test_platform_governance_api.py",
+    "tests/integration/test_platform_job_api.py",
+    "tests/integration/test_platform_tenant_binding_api.py",
+    "tests/integration/test_platform_tenant_user_api.py",
+    "tests/integration/test_platform_usage_quota_api.py",
+    "tests/integration/test_runtime_agent_isolation.py",
+    "tests/integration/test_web_tenant_auth_isolation.py",
+}
+
+
+@lru_cache(maxsize=1)
+def _platform_postgres_available() -> tuple[bool, str]:
+    try:
+        from cow_platform.db import connect
+
+        with connect() as conn:
+            conn.execute("SELECT 1").fetchone()
+        return True, ""
+    except Exception as exc:
+        return False, str(exc)
+
+
+def pytest_collection_modifyitems(config, items):
+    postgres_items = []
+    for item in items:
+        path = Path(str(item.path)).relative_to(REPO_ROOT).as_posix()
+        if path in POSTGRES_BACKED_TESTS:
+            postgres_items.append(item)
+    if not postgres_items:
+        return
+    available, error = _platform_postgres_available()
+    if available:
+        return
+    skip = pytest.mark.skip(reason=f"PostgreSQL platform database is not available: {error}")
+    for item in postgres_items:
+        item.add_marker(skip)
 
 
 def _reset_platform_postgres_if_configured() -> None:

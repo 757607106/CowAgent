@@ -4,15 +4,21 @@ from cow_platform.services.pricing_service import PricingService
 from cow_platform.services.quota_service import QuotaService
 from cow_platform.services.tenant_service import TenantService
 from cow_platform.services.usage_service import UsageService
+from tests.platform_fakes import (
+    InMemoryPricingRepository,
+    InMemoryQuotaRepository,
+    InMemoryTenantRepository,
+    InMemoryUsageRepository,
+)
 
 
 def test_usage_cost_and_quota_services_work_together(tmp_path, monkeypatch) -> None:
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
 
-    pricing_service = PricingService()
-    usage_service = UsageService(pricing_service=pricing_service)
-    quota_service = QuotaService(usage_service=usage_service)
-    TenantService().create_tenant(tenant_id="acme", name="Acme")
+    pricing_service = PricingService(repository=InMemoryPricingRepository())
+    usage_service = UsageService(repository=InMemoryUsageRepository(), pricing_service=pricing_service)
+    quota_service = QuotaService(repository=InMemoryQuotaRepository(), usage_service=usage_service)
+    TenantService(repository=InMemoryTenantRepository()).create_tenant(tenant_id="acme", name="Acme")
 
     pricing = pricing_service.upsert_pricing(
         model="qwen-plus",
@@ -71,9 +77,10 @@ def test_usage_cost_and_quota_services_work_together(tmp_path, monkeypatch) -> N
 def test_tenant_token_quota_uses_daily_summary(tmp_path, monkeypatch) -> None:
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
 
-    usage_service = UsageService()
-    quota_service = QuotaService(usage_service=usage_service)
-    TenantService().create_tenant(tenant_id="team-a", name="Team A")
+    pricing_service = PricingService(repository=InMemoryPricingRepository())
+    usage_service = UsageService(repository=InMemoryUsageRepository(), pricing_service=pricing_service)
+    quota_service = QuotaService(repository=InMemoryQuotaRepository(), usage_service=usage_service)
+    TenantService(repository=InMemoryTenantRepository()).create_tenant(tenant_id="team-a", name="Team A")
 
     usage_service.record_chat_usage(
         request_id="req-usage-2",
