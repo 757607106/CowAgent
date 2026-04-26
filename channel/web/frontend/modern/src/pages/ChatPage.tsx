@@ -4,7 +4,6 @@ import {
   Conversations,
   Prompts,
   Sender,
-  Suggestion,
   Welcome,
   type BubbleItemType,
   type ConversationItemType,
@@ -321,6 +320,9 @@ export default function ChatPage() {
     userMessage: string;
   } | null>(null);
   const previousRequestingRef = useRef(false);
+  const [suggestionOpen, setSuggestionOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const suggestionListRef = useRef<HTMLDivElement>(null);
 
   const [sessionId, setSessionId] = useState<string>(() => readStoredSessionId(scope));
   const [sessions, setSessions] = useState<SessionItem[]>([]);
@@ -330,7 +332,6 @@ export default function ChatPage() {
   const [uploading, setUploading] = useState(false);
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [draft, setDraft] = useState('');
-  const [suggestionOpen, setSuggestionOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [deepThink, setDeepThink] = useState<boolean | null>(null);
   const inputHistoryRef = useRef<string[]>([]);
@@ -456,8 +457,9 @@ export default function ChatPage() {
   const activateSession = useCallback((nextSessionId: string) => {
     persistSessionId(scope, nextSessionId);
     setSessionId(nextSessionId);
-    setDraft('');
     setSuggestionOpen(false);
+    setActiveIndex(-1);
+    setDraft('');
     setAttachments([]);
     setAttachmentPanelOpen(false);
   }, [scope.agentId, scope.bindingId]);
@@ -469,8 +471,9 @@ export default function ChatPage() {
     const now = Math.floor(Date.now() / 1000);
     persistSessionId(scope, nextSessionId);
     setSessionId(nextSessionId);
-    setDraft('');
     setSuggestionOpen(false);
+    setActiveIndex(-1);
+    setDraft('');
     setAttachments([]);
     setAttachmentPanelOpen(false);
     setHistoryHasMore(false);
@@ -554,8 +557,9 @@ export default function ChatPage() {
     }
     historyIndexRef.current = -1;
     historyDraftRef.current = '';
-    setDraft('');
     setSuggestionOpen(false);
+    setActiveIndex(-1);
+    setDraft('');
 
     const nextAttachments = [...attachments];
     setAttachments([]);
@@ -592,9 +596,8 @@ export default function ChatPage() {
     });
   }, [attachments, conversationKey, deepThink, onRequest, scope.agentId, scope.bindingId, sessionId, sessions]);
 
-  const handleSenderKeyDown = useCallback((event: ReactKeyboardEvent, suggestionOpen: boolean) => {
+  const handleSenderKeyDown = useCallback((event: ReactKeyboardEvent) => {
     if ((event.nativeEvent as KeyboardEvent).isComposing) return;
-
     if (event.key === 'ArrowUp') {
       if (inputHistoryRef.current.length === 0 || draft.includes('\n') || suggestionOpen) return;
       if (draft.trim() !== '' && historyIndexRef.current < 0) return;
@@ -624,7 +627,7 @@ export default function ChatPage() {
         historyDraftRef.current = '';
       }
     }
-  }, [draft]);
+  }, [draft, suggestionOpen]);
 
   useEffect(() => {
     if (previousRequestingRef.current && !isRequesting) {
@@ -856,60 +859,71 @@ export default function ChatPage() {
               }
             }}
           >
-            <Suggestion
-              open={suggestionOpen}
-              onOpenChange={setSuggestionOpen}
-              items={suggestionItems}
-              rootClassName="chat-suggestion"
-              styles={{
-                popup: {
-                  width: 'min(420px, calc(100vw - 64px))',
-                },
-              }}
-              classNames={{
-                popup: 'chat-suggestion-popup',
-                content: 'chat-suggestion-content',
-              }}
-              onSelect={(value) => {
-                setDraft(value);
-                setSuggestionOpen(false);
-              }}
-            >
-              {({ onTrigger, onKeyDown }) => (
-                <Sender
-                  value={draft}
-                  loading={isRequesting}
-                  disabled={uploading || !sessionId}
-                  placeholder={isRequesting ? '模型正在回复...' : '输入消息，输入 / 查看命令'}
-                  autoSize={{ minRows: 2, maxRows: 6 }}
-                  onChange={(value) => {
-                    setDraft(value);
-                    const nextOpen = value.trimStart().startsWith('/');
-                    onTrigger(nextOpen ? value : false);
-                    setSuggestionOpen(nextOpen);
-                  }}
-                  onKeyDown={(event) => {
-                    onKeyDown(event);
-                    if (event.isDefaultPrevented()) return;
-                    handleSenderKeyDown(event, suggestionOpen);
-                  }}
-                  onFocus={() => {
-                    if (draft.trimStart().startsWith('/')) {
-                      onTrigger(draft);
-                      setSuggestionOpen(true);
-                    }
-                  }}
-                  onBlur={() => {
-                    window.setTimeout(() => {
-                      onTrigger(false);
+            {suggestionOpen && suggestionItems.length > 0 && (
+              <div className="chat-command-popup" ref={suggestionListRef}>
+                {suggestionItems.map((item, index) => (
+                  <div
+                    key={item.value}
+                    className={`chat-command-item ${index === activeIndex ? 'chat-command-item-active' : ''}`}
+                    onMouseEnter={() => setActiveIndex(index)}
+                    onClick={() => {
+                      setDraft(item.value);
                       setSuggestionOpen(false);
-                    }, 120);
-                  }}
-                  onSubmit={(value) => submitMessage(value)}
-                  onCancel={abort}
-                  onPasteFile={(files) => {
-                    void uploadFiles(Array.from(files));
-                  }}
+                      setActiveIndex(-1);
+                    }}
+                  >
+                    <span className="chat-command-label">{item.label}</span>
+                    {item.extra && <span className="chat-command-extra">{item.extra}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+            <Sender
+              value={draft}
+              loading={isRequesting}
+              disabled={uploading || !sessionId}
+              placeholder={isRequesting ? '模型正在回复...' : '输入消息，输入 / 查看命令'}
+              autoSize={{ minRows: 2, maxRows: 6 }}
+              onChange={(value) => {
+                setDraft(value);
+                const shouldOpen = value.trimStart().startsWith('/');
+                setSuggestionOpen(shouldOpen);
+                if (!shouldOpen) setActiveIndex(-1);
+              }}
+              onKeyDown={(event) => {
+                if (suggestionOpen && suggestionItems.length > 0) {
+                  const { key, shiftKey } = event;
+                  if (key === 'Escape') {
+                    setSuggestionOpen(false);
+                    setActiveIndex(-1);
+                    event.preventDefault();
+                    return;
+                  }
+                  if (key === 'ArrowUp') {
+                    event.preventDefault();
+                    setActiveIndex((prev) => (prev <= 0 ? suggestionItems.length - 1 : prev - 1));
+                    return;
+                  }
+                  if (key === 'ArrowDown') {
+                    event.preventDefault();
+                    setActiveIndex((prev) => (prev >= suggestionItems.length - 1 ? 0 : prev + 1));
+                    return;
+                  }
+                  if (key === 'Enter' && !shiftKey && activeIndex >= 0) {
+                    event.preventDefault();
+                    setDraft(suggestionItems[activeIndex].value);
+                    setSuggestionOpen(false);
+                    setActiveIndex(-1);
+                    return;
+                  }
+                }
+                handleSenderKeyDown(event);
+              }}
+              onSubmit={(value) => submitMessage(value)}
+              onCancel={abort}
+              onPasteFile={(files) => {
+                void uploadFiles(Array.from(files));
+              }}
                   header={(
                     <SenderHeader
                       open={attachmentPanelOpen}
@@ -1002,9 +1016,7 @@ export default function ChatPage() {
                     </div>
                   )}
                   suffix={false}
-                />
-              )}
-            </Suggestion>
+            />
           </div>
         </div>
       </section>

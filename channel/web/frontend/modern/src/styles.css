@@ -592,60 +592,49 @@ body,
   box-shadow: inset 0 0 0 1px var(--color-primary-border);
 }
 
-/* Suggestion popup */
-.chat-suggestion {
-  display: block;
-  width: 100%;
-}
-
-.chat-suggestion-popup {
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  box-shadow: var(--shadow-xl);
-}
-
-.chat-suggestion-popup .ant-cascader-menus {
-  max-height: 280px;
+/* Command suggestion popup */
+.chat-command-popup {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  right: 0;
+  max-height: 320px;
   overflow-y: auto;
-  overscroll-behavior: contain;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xl);
+  z-index: 1050;
+  padding: 4px;
+  margin-bottom: 4px;
 }
 
-.chat-suggestion-popup .ant-cascader-menu {
-  min-width: 0;
-  height: auto;
-}
-
-.chat-suggestion-popup .ant-cascader-option {
-  padding-block: 10px;
-}
-
-.chat-suggestion-popup .ant-suggestion-item {
-  width: 100%;
-  align-items: center;
+.chat-command-item {
+  display: flex;
   justify-content: space-between;
-  gap: var(--space-3);
+  align-items: center;
+  padding: 8px 12px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: background-color var(--transition-base);
 }
 
-.chat-suggestion-popup .ant-suggestion-item-extra {
-  margin-inline-start: auto;
-  flex: 0 0 auto;
+.chat-command-item:hover,
+.chat-command-item-active {
+  background-color: var(--bg-hover);
 }
 
-.chat-suggestion-popup .ant-suggestion-item>*:first-child {
-  min-width: 0;
-}
-
-.chat-suggestion-popup .ant-suggestion-item>*:first-child,
-.chat-suggestion-popup .ant-suggestion-item>*:first-child>span {
+.chat-command-label {
+  font-family: var(--font-mono);
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-medium);
   color: var(--text-primary);
-  font-family: var(--font-mono);
 }
 
-.chat-suggestion-popup .ant-suggestion-item-extra {
-  font-size: var(--font-size-sm);
+.chat-command-extra {
   color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+  margin-left: 12px;
   white-space: nowrap;
 }
 
