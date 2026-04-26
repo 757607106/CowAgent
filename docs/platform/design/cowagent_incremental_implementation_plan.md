@@ -33,7 +33,7 @@
    - `agent/memory/*`
 4. Web 控制台和 CLI 直接读写项目根 `config.json`
 5. 当前 Docker 仅面向单应用实例：
-   - `docker/docker-compose.yml`
+   - `docker/compose.platform.yml`
 6. 当前自动化测试基础非常薄弱：
    - 只有 `tests/test_minimax_provider.py`
 

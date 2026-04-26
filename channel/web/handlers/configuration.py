@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from collections import OrderedDict
 
 import web
@@ -16,6 +15,13 @@ from channel.web.handlers.dependencies import (
     _require_auth,
     _require_platform_admin,
 )
+
+
+def _get_platform_config_service():
+    from cow_platform.services.platform_config_service import PlatformConfigService
+
+    return PlatformConfigService()
+
 
 class AuthPlatformRegisterHandler:
     def POST(self):
@@ -203,10 +209,7 @@ class ConfigHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
     def POST(self):
-        if _is_tenant_auth_enabled():
-            _require_platform_admin()
-        else:
-            _require_auth()
+        _require_platform_admin()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
             data = json.loads(web.data())
@@ -214,7 +217,6 @@ class ConfigHandler:
             if not updates:
                 return json.dumps({"status": "error", "message": "no updates provided"})
 
-            local_config = conf()
             applied = {}
             for key, value in updates.items():
                 if key not in self.EDITABLE_KEYS:
@@ -223,24 +225,14 @@ class ConfigHandler:
                     value = int(value)
                 if key in ("use_linkai", "enable_thinking"):
                     value = bool(value)
-                local_config[key] = value
                 applied[key] = value
 
             if not applied:
                 return json.dumps({"status": "error", "message": "no valid keys to update"})
 
-            config_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(
-                os.path.abspath(__file__)))), "config.json")
-            if os.path.exists(config_path):
-                with open(config_path, "r", encoding="utf-8") as f:
-                    file_cfg = json.load(f)
-            else:
-                file_cfg = {}
-            file_cfg.update(applied)
-            with open(config_path, "w", encoding="utf-8") as f:
-                json.dump(file_cfg, f, indent=4, ensure_ascii=False)
-
-            logger.info(f"[WebChannel] Config updated: {list(applied.keys())}")
+            applied = _get_platform_config_service().update_settings(applied)
+            conf().set_platform_settings(applied)
+            logger.info(f"[WebChannel] Platform DB config updated: {list(applied.keys())}")
             return json.dumps({"status": "success", "applied": applied}, ensure_ascii=False)
         except Exception as e:
             logger.error(f"Error updating config: {e}")

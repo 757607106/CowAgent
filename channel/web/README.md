@@ -4,16 +4,16 @@
 
 # 使用说明
 
- - 在 `config.json` 配置文件中的 `channel_type` 字段填入 `web`
+ - 平台模式默认启动 Web 控制台，不再通过 `config.json` / `channel_type` 接入全局渠道
  - 程序运行后将监听9899端口，浏览器访问 http://localhost:9899/chat 即可使用
- - 监听端口可以在配置文件 `web_port` 中自定义
+ - 监听端口通过环境变量或平台数据库配置中的 `web_port` 自定义
  - 对于Docker运行方式，如果需要外部访问，需要在 `docker-compose.yml` 中通过 ports配置将端口监听映射到宿主机
 
 # 前端结构
 
  - `frontend/modern/src/` 是现代前端源码（React + TypeScript + Vite）
  - `frontend/modern/dist/` 是现代前端构建产物，`/chat` 固定返回 `frontend/modern/dist/index.html`
- - `frontend/legacy/` 保留旧版静态页面与资源，便于对照上游和历史 patch
+ - `frontend/legacy/` 保留旧版静态页面与资源用于上游对照，运行时不再作为入口
  - `/assets/*` 路由仅从 `frontend/modern/dist/` 解析静态资源
  - Web 基础 handler（`auth/chat/assets/version/upload`）已收敛到 `channel/web/handlers/core.py`，`web_channel.py` 仅保留组装与业务 handler
  - Web 路由总表已收敛到 `channel/web/route_table.py`，避免在 `web_channel.py` 中维护超长路由元组

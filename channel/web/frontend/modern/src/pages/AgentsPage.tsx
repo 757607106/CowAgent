@@ -6,6 +6,7 @@ import {
   BranchesOutlined,
   BuildOutlined,
   DatabaseOutlined,
+  EditOutlined,
   MessageOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -25,6 +26,7 @@ import {
   Input,
   Modal,
   Popconfirm,
+  Popover,
   Segmented,
   Select,
   Space,
@@ -48,6 +50,9 @@ interface AgentFormValues {
   tenant_id: string;
   agent_id: string;
   name: string;
+  position: string;
+  role_intro: string;
+  avatar_key: string;
   model_config_id: string;
   system_prompt: string;
   tools: string[];
@@ -60,6 +65,93 @@ type AgentBadgeStatus = 'success' | 'processing' | 'default' | 'warning' | 'erro
 type McpServerMap = NonNullable<AgentItem['mcp_servers']>;
 
 const LEGACY_MODEL_PREFIX = 'legacy-model:';
+const AGENT_AVATAR_OPTIONS = [
+  {
+    key: 'chibi-service-rep',
+    label: '形象 01',
+    src: new URL('../../../avatars/chibi-service-rep.png', import.meta.url).href,
+  },
+  {
+    key: 'flat-data-analyst',
+    label: '形象 02',
+    src: new URL('../../../avatars/flat-data-analyst.png', import.meta.url).href,
+  },
+  {
+    key: 'chibi-sales-expert',
+    label: '形象 03',
+    src: new URL('../../../avatars/chibi-sales-expert.png', import.meta.url).href,
+  },
+  {
+    key: 'flat-ops-engineer',
+    label: '形象 04',
+    src: new URL('../../../avatars/flat-ops-engineer.png', import.meta.url).href,
+  },
+  {
+    key: 'chibi-researcher',
+    label: '形象 05',
+    src: new URL('../../../avatars/chibi-researcher.png', import.meta.url).href,
+  },
+  {
+    key: 'flat-content-writer',
+    label: '形象 06',
+    src: new URL('../../../avatars/flat-content-writer.png', import.meta.url).href,
+  },
+  {
+    key: 'flat-security',
+    label: '形象 07',
+    src: new URL('../../../avatars/flat-security.png', import.meta.url).href,
+  },
+  {
+    key: 'chibi-inspector',
+    label: '形象 08',
+    src: new URL('../../../avatars/chibi-inspector.png', import.meta.url).href,
+  },
+  {
+    key: 'flat-tech-support',
+    label: '形象 09',
+    src: new URL('../../../avatars/flat-tech-support.png', import.meta.url).href,
+  },
+  {
+    key: 'flat-hr-people',
+    label: '形象 10',
+    src: new URL('../../../avatars/flat-hr-people.png', import.meta.url).href,
+  },
+  {
+    key: 'chibi-detective',
+    label: '形象 11',
+    src: new URL('../../../avatars/chibi-detective.png', import.meta.url).href,
+  },
+  {
+    key: 'chibi-release-mgr',
+    label: '形象 12',
+    src: new URL('../../../avatars/chibi-release-mgr.png', import.meta.url).href,
+  },
+  {
+    key: 'chibi-consultant',
+    label: '形象 13',
+    src: new URL('../../../avatars/chibi-consultant.png', import.meta.url).href,
+  },
+  {
+    key: 'chibi-ops-engineer',
+    label: '形象 14',
+    src: new URL('../../../avatars/chibi-ops-engineer.png', import.meta.url).href,
+  },
+  {
+    key: 'flat-service-rep',
+    label: '形象 15',
+    src: new URL('../../../avatars/flat-service-rep.png', import.meta.url).href,
+  },
+  {
+    key: 'flat-sales-manager',
+    label: '形象 16',
+    src: new URL('../../../avatars/flat-sales-manager.png', import.meta.url).href,
+  },
+] as const;
+const DEFAULT_AGENT_AVATAR_KEY = AGENT_AVATAR_OPTIONS[0].key;
+const AGENT_AVATAR_KEYS = new Set<string>(AGENT_AVATAR_OPTIONS.map((option) => option.key));
+const DEFAULT_AGENT_POSITION = 'AI 业务专员';
+const EMPTY_ROLE_INTRO = '暂无角色简介';
+type AgentAvatarOption = (typeof AGENT_AVATAR_OPTIONS)[number];
 
 function selectedCountText(count: number): string {
   return count > 0 ? `${count} 已选择` : '未选择';
@@ -103,6 +195,26 @@ function agentInitial(name: string): string {
   return text.slice(0, 1).toUpperCase();
 }
 
+function agentMetadata(agent: AgentItem | null | undefined): Record<string, unknown> {
+  return agent?.metadata || {};
+}
+
+function avatarOptionByKey(value: unknown): AgentAvatarOption {
+  const key = typeof value === 'string' && AGENT_AVATAR_KEYS.has(value) ? value : DEFAULT_AGENT_AVATAR_KEY;
+  return AGENT_AVATAR_OPTIONS.find((option) => option.key === key) || AGENT_AVATAR_OPTIONS[0];
+}
+
+function agentAvatarOption(agent: AgentItem | null | undefined): AgentAvatarOption {
+  const metadata = agentMetadata(agent);
+  return avatarOptionByKey(metadata.avatar_key || metadata.avatar);
+}
+
+function agentPosition(agent: AgentItem): string {
+  const value = agentMetadata(agent).position;
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  return DEFAULT_AGENT_POSITION;
+}
+
 function mcpServerCount(agent: AgentItem): number {
   return Object.keys(agent.mcp_servers || {}).length;
 }
@@ -117,13 +229,89 @@ function agentOperationalState(agent: AgentItem, capabilityCount: number): { sta
   return { status: 'success', label: '可服务' };
 }
 
-function agentWorkline(agent: AgentItem, toolCount: number, skillCount: number, mcpCount: number): string {
-  if (!agent.model) return '还缺少模型配置，补齐后才能稳定接入业务。';
-  if (mcpCount > 0) return '已接入外部服务，可把对话延展到真实工作流。';
-  if (skillCount > 0) return '带有可复用技能，适合持续处理一类业务任务。';
-  if (toolCount > 0) return '拥有工具权限，可在会话中执行具体动作。';
-  if (agent.knowledge_enabled) return '已接入知识库，适合回答团队内部资料问题。';
-  return '保持轻量待命，适合做基础问答和角色化沟通。';
+function agentRoleIntro(agent: AgentItem): string {
+  const value = agentMetadata(agent).role_intro;
+  if (typeof value === 'string' && value.trim()) return value.trim();
+  return EMPTY_ROLE_INTRO;
+}
+
+function buildAgentMetadata(
+  existing: Record<string, unknown> | undefined,
+  values: Pick<AgentFormValues, 'avatar_key' | 'position' | 'role_intro'>,
+): Record<string, unknown> {
+  const metadata = { ...(existing || {}) };
+  metadata.avatar_key = avatarOptionByKey(values.avatar_key).key;
+  const position = (values.position || '').trim();
+  if (position) {
+    metadata.position = position;
+  } else {
+    delete metadata.position;
+  }
+  const roleIntro = (values.role_intro || '').trim();
+  if (roleIntro) {
+    metadata.role_intro = roleIntro;
+  } else {
+    delete metadata.role_intro;
+  }
+  return metadata;
+}
+
+interface AgentAvatarTriggerProps {
+  value?: string;
+  onChange?: (value: string) => void;
+  name?: string;
+  size?: 'normal' | 'large';
+}
+
+function AgentAvatarTrigger({ value, onChange, name = 'AI 员工', size = 'normal' }: AgentAvatarTriggerProps) {
+  const [open, setOpen] = useState(false);
+  const selectedAvatar = avatarOptionByKey(value);
+  const avatarSize = size === 'large' ? 72 : 64;
+
+  const content = (
+    <div className="agent-avatar-popover">
+      <Typography.Title level={5} className="agent-avatar-popover-title">
+        选择数字员工形象
+      </Typography.Title>
+      <div className="agent-avatar-popover-grid">
+        {AGENT_AVATAR_OPTIONS.map((option) => (
+          <button
+            key={option.key}
+            type="button"
+            className={`agent-avatar-option${option.key === selectedAvatar.key ? ' agent-avatar-option-selected' : ''}`}
+            onClick={() => {
+              onChange?.(option.key);
+              setOpen(false);
+            }}
+            aria-label={option.label}
+          >
+            <img src={option.src} alt={option.label} draggable={false} />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <Popover
+      content={content}
+      trigger="click"
+      open={open}
+      onOpenChange={setOpen}
+      placement="bottomLeft"
+      arrow={{ pointAtCenter: true }}
+      classNames={{ root: 'agent-avatar-popover-root' }}
+    >
+      <button type="button" className={`agent-avatar-trigger agent-avatar-trigger-${size}`} aria-label="选择员工头像">
+        <Avatar size={avatarSize} src={selectedAvatar.src} className="agent-profile-avatar">
+          {agentInitial(name)}
+        </Avatar>
+        <span className="agent-avatar-edit">
+          <EditOutlined />
+        </span>
+      </button>
+    </Popover>
+  );
 }
 
 function applyMcpEnabledState(
@@ -335,10 +523,14 @@ export default function AgentsPage() {
   ) => {
     const nextTools = effectiveToolNames(agent, availableTools);
     const nextSkills = effectiveSkillNames(agent, availableSkills);
+    const agentName = displayAgentName(agent.agent_id, agent.name);
     detailForm.setFieldsValue({
       tenant_id: agent.tenant_id,
       agent_id: agent.agent_id,
-      name: displayAgentName(agent.agent_id, agent.name),
+      name: agentName,
+      position: agentPosition(agent),
+      role_intro: agentRoleIntro(agent) === EMPTY_ROLE_INTRO ? '' : agentRoleIntro(agent),
+      avatar_key: agentAvatarOption(agent).key,
       model_config_id: agent.model_config_id || (agent.model ? `${LEGACY_MODEL_PREFIX}${agent.model}` : ''),
       system_prompt: agent.system_prompt || '',
       tools: nextTools,
@@ -355,6 +547,9 @@ export default function AgentsPage() {
       tenant_id: tenantId,
       agent_id: '',
       name: '',
+      position: DEFAULT_AGENT_POSITION,
+      role_intro: '',
+      avatar_key: DEFAULT_AGENT_AVATAR_KEY,
       model_config_id: availableModels[0]?.model_config_id || '',
       system_prompt: '',
       tools: [],
@@ -390,6 +585,7 @@ export default function AgentsPage() {
       model: modelSelection.model,
       model_config_id: modelSelection.model_config_id,
       system_prompt: values.system_prompt,
+      metadata: buildAgentMetadata(undefined, values),
       tools: values.tools || [],
       skills: values.skills || [],
       knowledge_enabled: values.knowledge_enabled,
@@ -427,6 +623,7 @@ export default function AgentsPage() {
       model: modelSelection.model,
       model_config_id: modelSelection.model_config_id,
       system_prompt: values.system_prompt,
+      metadata: buildAgentMetadata(agentMetadata(selectedAgent), values),
       tools: nextTools,
       skills: nextSkills,
       knowledge_enabled: values.knowledge_enabled,
@@ -488,22 +685,23 @@ export default function AgentsPage() {
 
   if (selectedAgent) {
     const selectedAgentName = displayAgentName(selectedAgent.agent_id, selectedAgent.name);
+    const selectedAgentPosition = agentPosition(selectedAgent);
     const selectedToolCount = effectiveToolNames(selectedAgent, tools).length;
     const selectedSkillCount = effectiveSkillNames(selectedAgent, skills).length;
 
     return (
-      <div className="agent-detail-page">
+      <Form form={detailForm} layout="vertical" className="agent-detail-page">
         <Card className="agent-detail-hero" loading={detailLoading}>
           <div className="agent-detail-hero-main">
-            <Avatar size={64} className="agent-avatar-large">
-              {agentInitial(selectedAgentName)}
-            </Avatar>
+            <Form.Item name="avatar_key" rules={[{ required: true, message: '请选择员工头像' }]} noStyle>
+              <AgentAvatarTrigger name={selectedAgentName} size="large" />
+            </Form.Item>
             <div className="agent-detail-title">
               <Space align="center" size={10} wrap>
                 <Typography.Title level={3} className="agent-detail-heading">
                   {selectedAgentName}
                 </Typography.Title>
-                <StatusTag status="active">工作中</StatusTag>
+                <StatusTag status="active">{selectedAgentPosition}</StatusTag>
               </Space>
               <Typography.Text type="secondary">
                 {tenantNameById.get(selectedAgent.tenant_id) || selectedAgent.tenant_id} / {selectedAgent.agent_id}
@@ -532,11 +730,14 @@ export default function AgentsPage() {
               label: '核心配置',
               icon: <SettingOutlined />,
               children: (
-                <Card className="agent-section-card">
-                  <Form form={detailForm} layout="vertical">
-                    <div className="agent-core-grid">
-                      <Form.Item name="name" label="员工名称" rules={[{ required: true, message: '请输入员工名称' }]}>
-                        <Input placeholder="例如：支付通客服" aria-label="员工名称" />
+                <div className="agent-core-panel-grid">
+                  <Card className="agent-section-card" title="核心设定">
+                    <div className="agent-core-form-grid">
+                      <Form.Item name="name" label="员工昵称" rules={[{ required: true, message: '请输入员工昵称' }]}>
+                        <Input placeholder="例如：支付通客服" aria-label="员工昵称" />
+                      </Form.Item>
+                      <Form.Item name="position" label="职位">
+                        <Input placeholder="例如：AI 业务专员" aria-label="职位" />
                       </Form.Item>
                       <Form.Item name="model_config_id" label="模型" rules={[{ required: true, message: '请选择模型' }]}>
                         <Select
@@ -547,8 +748,10 @@ export default function AgentsPage() {
                           placeholder="选择平台或租户模型"
                         />
                       </Form.Item>
+                      <Form.Item name="role_intro" label="角色简介">
+                        <Input.TextArea rows={4} placeholder="用一两句话描述该数字员工的角色、擅长领域和服务边界。" aria-label="角色简介" />
+                      </Form.Item>
                     </div>
-                    <Form.Item name="system_prompt" label="角色设定与行为准则" htmlFor="agent-detail-system-prompt"><Input.TextArea id="agent-detail-system-prompt" rows={8} placeholder="设置该数字员工的身份、边界、语气和工作流程。" aria-label="角色设定与行为准则" /></Form.Item>
                     <div className="agent-knowledge-switch">
                       <div>
                         <Typography.Text strong>启用知识库</Typography.Text>
@@ -556,13 +759,21 @@ export default function AgentsPage() {
                       </div>
                       <Form.Item name="knowledge_enabled" label="启用知识库" htmlFor="agent-detail-knowledge-enabled" valuePropName="checked" colon={false} className="agent-knowledge-switch-control"><Switch id="agent-detail-knowledge-enabled" aria-label="启用知识库" /></Form.Item>
                     </div>
-                  </Form>
-                  <div className="agent-section-actions">
-                    <Button type="primary" icon={<SaveOutlined />} loading={detailSaving} onClick={() => void saveDetail()}>
-                      保存核心配置
-                    </Button>
-                  </div>
-                </Card>
+                  </Card>
+                  <Card
+                    className="agent-section-card agent-command-card"
+                    title="核心指令"
+                  >
+                    <Form.Item name="system_prompt" label="核心指令" htmlFor="agent-detail-system-prompt">
+                      <Input.TextArea id="agent-detail-system-prompt" rows={14} placeholder="设置该数字员工的身份、边界、语气和工作流程。" aria-label="核心指令" />
+                    </Form.Item>
+                    <div className="agent-section-actions">
+                      <Button type="primary" icon={<SaveOutlined />} loading={detailSaving} onClick={() => void saveDetail()}>
+                        保存核心配置
+                      </Button>
+                    </div>
+                  </Card>
+                </div>
               ),
             },
             {
@@ -717,7 +928,7 @@ export default function AgentsPage() {
             },
           ]}
         />
-      </div>
+      </Form>
     );
   }
 
@@ -728,13 +939,14 @@ export default function AgentsPage() {
       width: 260,
       render: (_: unknown, agent: AgentItem) => {
         const agentName = displayAgentName(agent.agent_id, agent.name);
+        const avatar = agentAvatarOption(agent);
         const toolCount = effectiveToolNames(agent, tools).length;
         const skillCount = effectiveSkillNames(agent, skills).length;
         const capabilityCount = toolCount + skillCount + mcpServerCount(agent);
         const state = agentOperationalState(agent, capabilityCount);
         return (
           <div className="agent-table-name">
-            <Avatar size={40} className="agent-avatar">{agentInitial(agentName)}</Avatar>
+            <Avatar size={40} src={avatar.src} className="agent-avatar">{agentInitial(agentName)}</Avatar>
             <div className="agent-table-title">
               <Space size={8} wrap>
                 <Typography.Text strong>{agentName}</Typography.Text>
@@ -878,49 +1090,39 @@ export default function AgentsPage() {
           />
       ) : (
         <div className="agent-card-grid">
-          {filteredAgents.map((agent) => {
+          {filteredAgents.map((agent, index) => {
             const agentName = displayAgentName(agent.agent_id, agent.name);
             const toolCount = effectiveToolNames(agent, tools).length;
             const skillCount = effectiveSkillNames(agent, skills).length;
             const mcpCount = mcpServerCount(agent);
             const state = agentOperationalState(agent, toolCount + skillCount + mcpCount);
-            const capabilityCount = toolCount + skillCount + mcpCount + (agent.knowledge_enabled ? 1 : 0);
-            const tags = [
-              '官方认证',
-              agent.knowledge_enabled ? '知识库' : '通用行业',
-              skillCount > 0 ? 'AI助手' : '基础对话',
-              mcpCount > 0 ? '外部服务' : agent.model || '待配置',
-            ];
+            const avatar = agentAvatarOption(agent);
+            const position = agentPosition(agent);
+            const roleIntro = agentRoleIntro(agent);
             return (
               <Card
                 key={`${agent.tenant_id}/${agent.agent_id}`}
                 hoverable
-                className="agent-card agent-resource-card"
+                className="agent-card agent-employee-card"
                 loading={loading}
               >
-                <div className="agent-market-body">
-                  <div className="agent-resource-head">
-                    <Avatar size={44} className="agent-market-avatar">{agentInitial(agentName)}</Avatar>
-                    <span className={`agent-status-pulse agent-status-${state.status}`} />
-                  </div>
-                  <Space size={8} wrap>
-                    <Typography.Title level={5} className="agent-card-heading">
-                      {agentName}
-                    </Typography.Title>
-                    <Badge status={state.status} text={state.label} />
-                  </Space>
-                  <div className="agent-market-tags">
-                    {tags.map((tag) => <Tag key={tag}>{tag}</Tag>)}
-                  </div>
+                <div className={`agent-employee-cover agent-cover-tone-${index % 6}`}>
+                  <img src={avatar.src} alt={`${agentName} 头像`} className="agent-employee-portrait" draggable={false} />
+                  <span className={`agent-status-pulse agent-status-${state.status}`} title={state.label} />
                 </div>
-                <Typography.Paragraph className="agent-market-desc" type="secondary" ellipsis={{ rows: 2 }}>
-                  {agent.system_prompt || '负责特定业务场景的数字员工，可独立完成连续任务。'}
-                </Typography.Paragraph>
-                <div className="agent-market-footer">
-                  <Typography.Text type="secondary">
-                    <BranchesOutlined /> 能力 {capabilityCount}
+                <div className="agent-employee-body">
+                  <Typography.Title level={5} className="agent-card-heading" ellipsis>
+                    {agentName}
+                  </Typography.Title>
+                  <Typography.Text className="agent-position-text">
+                    {position}
                   </Typography.Text>
-                  <Space size={8}>
+                  <Typography.Paragraph className="agent-market-desc" type="secondary" ellipsis={{ rows: 3 }}>
+                    {roleIntro}
+                  </Typography.Paragraph>
+                </div>
+                <div className="agent-market-footer agent-employee-footer">
+                  <Space size={8} wrap>
                     <Button type="text" icon={<SettingOutlined />} onClick={() => void openDetail(agent)}>
                       配置
                     </Button>
@@ -929,9 +1131,6 @@ export default function AgentsPage() {
                     </Button>
                   </Space>
                 </div>
-                <Typography.Text className="agent-market-workline" type="secondary">
-                  {agentWorkline(agent, toolCount, skillCount, mcpCount)}
-                </Typography.Text>
               </Card>
             );
           })}
@@ -944,10 +1143,19 @@ export default function AgentsPage() {
         onCancel={() => setCreateOpen(false)}
         onOk={() => void onCreateSubmit()}
         confirmLoading={submitting}
-        width={760}
+        width={820}
         destroyOnClose
       >
         <Form form={createForm} layout="vertical">
+          <div className="agent-create-profile">
+            <Form.Item name="avatar_key" rules={[{ required: true, message: '请选择员工头像' }]} noStyle>
+              <AgentAvatarTrigger name="新员工" size="large" />
+            </Form.Item>
+            <div className="agent-create-profile-copy">
+              <Typography.Title level={4}>新员工</Typography.Title>
+              <Typography.Text type="secondary">设置该数字员工的基础资料、角色简介与响应模型</Typography.Text>
+            </div>
+          </div>
           <Form.Item name="tenant_id" label="租户" hidden={tenants.length <= 1}>
             <Select
               aria-label="租户"
@@ -957,23 +1165,31 @@ export default function AgentsPage() {
               }))}
             />
           </Form.Item>
-          <Form.Item name="agent_id" label="员工 ID">
-            <Input placeholder="留空则自动生成" aria-label="员工 ID" />
+          <div className="agent-create-grid">
+            <Form.Item name="agent_id" label="员工 ID">
+              <Input placeholder="留空则自动生成" aria-label="员工 ID" />
+            </Form.Item>
+            <Form.Item name="name" label="员工昵称" rules={[{ required: true, message: '请输入员工昵称' }]}>
+              <Input placeholder="例如：支付通客服" aria-label="员工昵称" />
+            </Form.Item>
+            <Form.Item name="position" label="职位">
+              <Input placeholder="例如：AI 业务专员" aria-label="职位" />
+            </Form.Item>
+            <Form.Item name="model_config_id" label="模型" rules={[{ required: true, message: '请选择模型' }]}>
+              <Select
+                showSearch
+                allowClear
+                aria-label="模型"
+                options={modelOptions}
+                placeholder="选择平台或租户模型"
+              />
+            </Form.Item>
+          </div>
+          <Form.Item name="role_intro" label="角色简介">
+            <Input.TextArea rows={3} placeholder="用一两句话描述该数字员工的角色、擅长领域和服务边界。" aria-label="角色简介" />
           </Form.Item>
-          <Form.Item name="name" label="员工名称" rules={[{ required: true, message: '请输入员工名称' }]}>
-            <Input placeholder="例如：支付通客服" aria-label="员工名称" />
-          </Form.Item>
-          <Form.Item name="model_config_id" label="模型" rules={[{ required: true, message: '请选择模型' }]}>
-            <Select
-              showSearch
-              allowClear
-              aria-label="模型"
-              options={modelOptions}
-              placeholder="选择平台或租户模型"
-            />
-          </Form.Item>
-          <Form.Item name="system_prompt" label="角色设定与行为准则" htmlFor="agent-create-system-prompt">
-            <Input.TextArea id="agent-create-system-prompt" rows={5} aria-label="角色设定与行为准则" />
+          <Form.Item name="system_prompt" label="核心指令" htmlFor="agent-create-system-prompt">
+            <Input.TextArea id="agent-create-system-prompt" rows={5} placeholder="设置该数字员工的身份、边界、语气和工作流程。" aria-label="核心指令" />
           </Form.Item>
           <Form.Item name="tools" label="工具">
             <Select

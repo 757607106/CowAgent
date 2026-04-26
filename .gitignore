@@ -8,6 +8,8 @@ venv*
 *.pyc
 python
 config.json
+.env*
+!.env*.example
 QR.png
 nohup.out
 tmp

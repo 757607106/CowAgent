@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from pathlib import Path
 import secrets
 from dataclasses import dataclass
 from typing import Any
 
+from common.log import logger
 from cow_platform.domain.models import ChannelConfigDefinition
 from cow_platform.repositories.channel_config_repository import ChannelConfigRepository
 from cow_platform.services.tenant_service import TenantService
@@ -117,7 +119,8 @@ CHANNEL_TYPE_DEFS: dict[str, ChannelTypeDefinition] = {
             ChannelFieldDefinition("weixin_token", "Bot Token", "secret", visible=False),
             ChannelFieldDefinition("weixin_base_url", "API Base URL", default="https://ilinkai.weixin.qq.com", visible=False),
             ChannelFieldDefinition("weixin_cdn_base_url", "CDN Base URL", default="https://novac2c.cdn.weixin.qq.com/c2c", visible=False),
-            ChannelFieldDefinition("weixin_credentials_path", "Credentials Path", visible=False),
+            ChannelFieldDefinition("weixin_bot_id", "Bot ID", visible=False),
+            ChannelFieldDefinition("weixin_user_id", "User ID", visible=False),
         ),
     ),
 }
@@ -245,6 +248,7 @@ class ChannelConfigService:
         )
         if linked_bindings:
             raise ValueError("channel config is still used by bindings")
+        self.delete_channel_runtime_artifacts(existing)
         return self.serialize_channel_config(
             self.repository.delete_channel_config(
                 channel_config_id=existing.channel_config_id,
@@ -253,10 +257,74 @@ class ChannelConfigService:
         )
 
     def build_runtime_overrides(self, definition: ChannelConfigDefinition) -> dict[str, Any]:
-        overrides = self._config_with_defaults(definition.channel_type, dict(definition.config or {}))
-        if definition.channel_type == "weixin" and not overrides.get("weixin_credentials_path"):
-            overrides["weixin_credentials_path"] = f"~/.cowagent/weixin/{definition.channel_config_id}.json"
-        return overrides
+        return self._config_with_defaults(definition.channel_type, dict(definition.config or {}))
+
+    def save_weixin_credentials(
+        self,
+        *,
+        channel_config_id: str,
+        tenant_id: str = "",
+        token: str,
+        base_url: str,
+        bot_id: str = "",
+        user_id: str = "",
+    ) -> dict[str, Any]:
+        existing = self.resolve_channel_config(channel_config_id=channel_config_id, tenant_id=tenant_id)
+        if existing.channel_type != "weixin":
+            raise ValueError("channel config is not a weixin config")
+        config = dict(existing.config or {})
+        config.update(
+            {
+                "weixin_token": str(token or "").strip(),
+                "weixin_base_url": str(base_url or "").strip(),
+                "weixin_bot_id": str(bot_id or "").strip(),
+                "weixin_user_id": str(user_id or "").strip(),
+            }
+        )
+        # 旧版本曾把微信登录凭证落到本地 json；保存新凭证时主动剔除这类旧字段。
+        config.pop("weixin_credentials_path", None)
+        definition = self.repository.update_channel_config(
+            channel_config_id=existing.channel_config_id,
+            tenant_id=existing.tenant_id,
+            config=self._normalize_config("weixin", config),
+            enabled=True,
+        )
+        return self.serialize_channel_config(definition)
+
+    def clear_weixin_credentials(self, *, channel_config_id: str, tenant_id: str = "") -> dict[str, Any]:
+        existing = self.resolve_channel_config(channel_config_id=channel_config_id, tenant_id=tenant_id)
+        if existing.channel_type != "weixin":
+            raise ValueError("channel config is not a weixin config")
+        config = dict(existing.config or {})
+        for key in ("weixin_token", "weixin_bot_id", "weixin_user_id", "weixin_credentials_path"):
+            config.pop(key, None)
+        definition = self.repository.update_channel_config(
+            channel_config_id=existing.channel_config_id,
+            tenant_id=existing.tenant_id,
+            config=self._normalize_config("weixin", config),
+        )
+        return self.serialize_channel_config(definition)
+
+    def delete_channel_runtime_artifacts(self, definition: ChannelConfigDefinition | dict[str, Any]) -> list[str]:
+        """Delete safe legacy runtime files left by the old local-credential mode."""
+        channel_type = self._record_value(definition, "channel_type")
+        if channel_type != "weixin":
+            return []
+        channel_config_id = self._record_value(definition, "channel_config_id")
+        config = self._record_value(definition, "config") or {}
+        candidates = self._weixin_credentials_paths(channel_config_id, config)
+        deleted: list[str] = []
+        for path in candidates:
+            if not self._is_safe_weixin_credentials_path(path, channel_config_id):
+                logger.warning(f"[ChannelConfigService] Skip unsafe weixin credential path: {path}")
+                continue
+            try:
+                if path.exists():
+                    path.unlink()
+                    deleted.append(str(path))
+            except Exception as exc:
+                logger.warning(f"[ChannelConfigService] Failed to delete weixin credential file {path}: {exc}")
+        return deleted
 
     def serialize_channel_config(
         self,
@@ -435,3 +503,37 @@ class ChannelConfigService:
         if isinstance(value, (list, tuple)):
             return [str(item).strip() for item in value]
         return [str(value).strip()]
+
+    @staticmethod
+    def _record_value(record: ChannelConfigDefinition | dict[str, Any], key: str) -> Any:
+        if isinstance(record, dict):
+            return record.get(key)
+        return getattr(record, key)
+
+    @staticmethod
+    def _weixin_credentials_paths(channel_config_id: str, config: dict[str, Any]) -> list[Path]:
+        paths: list[Path] = []
+        configured_path = str((config or {}).get("weixin_credentials_path", "") or "").strip()
+        if configured_path:
+            paths.append(Path(configured_path).expanduser())
+        paths.append(Path.home() / ".cowagent" / "weixin" / f"{channel_config_id}.json")
+        unique: list[Path] = []
+        seen: set[str] = set()
+        for path in paths:
+            key = str(path)
+            if key not in seen:
+                unique.append(path)
+                seen.add(key)
+        return unique
+
+    @staticmethod
+    def _is_safe_weixin_credentials_path(path: Path, channel_config_id: str) -> bool:
+        if path.name != f"{channel_config_id}.json":
+            return False
+        try:
+            resolved = path.expanduser().resolve(strict=False)
+            allowed_root = (Path.home() / ".cowagent" / "weixin").resolve(strict=False)
+            resolved.relative_to(allowed_root)
+            return True
+        except Exception:
+            return False

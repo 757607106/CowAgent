@@ -91,6 +91,7 @@ export interface AgentItem {
   model: string;
   model_config_id?: string;
   system_prompt?: string;
+  metadata?: Record<string, unknown>;
   tools?: string[];
   skills?: string[];
   knowledge_enabled?: boolean;

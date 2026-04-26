@@ -21,15 +21,13 @@ def _build_layout(tmp_path: Path):
 
 def test_frontend_mode_always_resolves_to_modern(tmp_path: Path) -> None:
     layout = _build_layout(tmp_path)
-    assert resolve_frontend_mode(layout, "legacy") == FRONTEND_MODE_MODERN
-    assert resolve_frontend_mode(layout, "auto") == FRONTEND_MODE_MODERN
+    assert resolve_frontend_mode(layout, "unknown") == FRONTEND_MODE_MODERN
     assert resolve_frontend_mode(layout, None) == FRONTEND_MODE_MODERN
 
 
 def test_frontend_layout_uses_grouped_frontend_roots(tmp_path: Path) -> None:
     layout = _build_layout(tmp_path)
     assert layout.frontend_root == tmp_path / "frontend"
-    assert layout.legacy_root == tmp_path / "frontend" / "legacy"
     assert layout.modern_root == tmp_path / "frontend" / "modern"
     assert layout.modern_dist == tmp_path / "frontend" / "modern" / "dist"
 

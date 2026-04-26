@@ -2,11 +2,9 @@
 Weixin channel implementation.
 
 Uses HTTP long-poll (getUpdates) to receive messages and sendMessage to reply.
-Login via QR code scan through the ilink bot API.
+Login token is supplied by the tenant channel config after web QR binding.
 """
 
-import json
-import os
 import threading
 import time
 import uuid
@@ -31,38 +29,12 @@ BACKOFF_DELAY = 30
 RETRY_DELAY = 2
 SESSION_EXPIRED_ERRCODE = -14
 TEXT_CHUNK_LIMIT = 4000
-QR_LOGIN_TIMEOUT_S = 480
-QR_MAX_REFRESHES = 10
-
-
-def _load_credentials(cred_path: str) -> dict:
-    """Load saved credentials from JSON file."""
-    try:
-        if os.path.exists(cred_path):
-            with open(cred_path, "r") as f:
-                return json.load(f)
-    except Exception as e:
-        logger.warning(f"[Weixin] Failed to load credentials: {e}")
-    return {}
-
-
-def _save_credentials(cred_path: str, data: dict):
-    """Save credentials to JSON file."""
-    os.makedirs(os.path.dirname(cred_path), exist_ok=True)
-    with open(cred_path, "w") as f:
-        json.dump(data, f, indent=2)
-    try:
-        os.chmod(cred_path, 0o600)
-    except Exception:
-        pass
 
 
 @singleton
 class WeixinChannel(ChatChannel):
 
     LOGIN_STATUS_IDLE = "idle"
-    LOGIN_STATUS_WAITING = "waiting_scan"
-    LOGIN_STATUS_SCANNED = "scanned"
     LOGIN_STATUS_OK = "logged_in"
 
     def __init__(self):
@@ -73,9 +45,7 @@ class WeixinChannel(ChatChannel):
         self._context_tokens = {}  # user_id -> context_token
         self._received_msgs = ExpiredDict(60 * 60 * 7.1)
         self._get_updates_buf = ""
-        self._credentials_path = ""
         self.login_status = self.LOGIN_STATUS_IDLE
-        self._current_qr_url = ""
 
         conf()["single_chat_prefix"] = [""]
 
@@ -88,222 +58,57 @@ class WeixinChannel(ChatChannel):
         cdn_base_url = conf().get("weixin_cdn_base_url", CDN_BASE_URL)
         token = conf().get("weixin_token", "")
 
-        self._credentials_path = os.path.expanduser(
-            conf().get("weixin_credentials_path", "~/.weixin_cow_credentials.json")
-        )
+        if not self.channel_config_id:
+            logger.error("[Weixin] 平台多租户模式不支持全局微信通道，请通过租户渠道配置启动")
+            return
 
         if not token:
-            creds = _load_credentials(self._credentials_path)
-            token = creds.get("token", "")
-            if creds.get("base_url"):
-                base_url = creds["base_url"]
-
-        if not token:
-            token, base_url = self._login_with_retry(base_url)
-            if not token:
-                return
+            # 平台模式下微信 token 只能来自租户渠道配置数据库；旧本地 credentials 文件不再回退读取。
+            logger.info(
+                f"[Weixin] 租户微信渠道配置 {self.channel_config_id} 未绑定数据库凭证，请在渠道页面扫码绑定"
+            )
+            return
 
         self.api = WeixinApi(base_url=base_url, token=token, cdn_base_url=cdn_base_url)
         self.login_status = self.LOGIN_STATUS_OK
 
-        logger.info(f"[Weixin] 微信通道已启动，凭证保存在 {self._credentials_path}，"
-                     f"如需重新扫码登录请删除该文件后重启")
+        logger.info(
+            f"[Weixin] 微信通道已启动，凭证来自租户渠道配置数据库 "
+            f"(channel_config_id={self.channel_config_id})，如需重新绑定请在渠道页面扫码登录或删除后重建"
+        )
         self.report_startup_success()
 
         self._poll_loop()
-
-    def _login_with_retry(self, base_url: str) -> tuple:
-        """Attempt QR login, then wait for stop if failed.
-        Returns (token, base_url) on success, or ("", "") if stopped."""
-        logger.info("[Weixin] No token found, starting QR login...")
-        self.login_status = self.LOGIN_STATUS_WAITING
-        login_result = self._qr_login(base_url)
-        if login_result:
-            return login_result["token"], login_result.get("base_url", base_url)
-
-        self.login_status = self.LOGIN_STATUS_IDLE
-        if not self._stop_event.is_set():
-            logger.info("[Weixin] QR login timed out, waiting for stop or reconnect...")
-            print("  二维码登录超时，请通过控制台重新接入\n")
-            self._stop_event.wait()
-
-        logger.info("[Weixin] Login cancelled by stop event")
-        return "", ""
 
     def stop(self):
         logger.info("[Weixin] stop() called")
         self._stop_event.set()
 
     def _relogin(self) -> bool:
-        """Re-login after session expiry. Returns True on success."""
-        base_url = self.api.base_url if self.api else DEFAULT_BASE_URL
-        if os.path.exists(self._credentials_path):
-            try:
-                os.remove(self._credentials_path)
-            except Exception:
-                pass
-        self.login_status = self.LOGIN_STATUS_WAITING
-        result = self._qr_login(base_url)
-        if not result:
-            self.login_status = self.LOGIN_STATUS_IDLE
-            return False
-        self.api = WeixinApi(
-            base_url=result.get("base_url", base_url),
-            token=result["token"],
-            cdn_base_url=self.api.cdn_base_url if self.api else CDN_BASE_URL,
+        """Stop the tenant runtime after token expiry; rebinding is done only from the channel page."""
+        logger.error(
+            f"[Weixin] 租户微信渠道配置 {self.channel_config_id} 的登录已失效，"
+            f"已清空数据库 token，请在渠道页面重新扫码绑定"
         )
-        self.login_status = self.LOGIN_STATUS_OK
-        self._context_tokens.clear()
-        return True
+        self._clear_tenant_credentials()
+        self._stop_event.set()
+        return False
 
-    # ── QR Login ───────────────────────────────────────────────────────
-
-    @staticmethod
-    def _print_qr(qrcode_url: str):
-        """Print QR code to terminal for scanning."""
-        print("\n" + "=" * 60)
-        print("  请使用微信扫描二维码登录 (二维码约2分钟后过期)")
-        print("=" * 60)
-        try:
-            import qrcode as qr_lib
-            import io
-            qr = qr_lib.QRCode(error_correction=qr_lib.constants.ERROR_CORRECT_L, box_size=1, border=1)
-            qr.add_data(qrcode_url)
-            qr.make(fit=True)
-            buf = io.StringIO()
-            qr.print_ascii(out=buf, invert=True)
-            try:
-                print(buf.getvalue())
-            except UnicodeEncodeError:
-                # Windows GBK terminals cannot render Unicode block characters
-                print(f"\n  (终端不支持显示二维码，请使用链接扫码)")
-                print(f"  二维码链接: {qrcode_url}\n")
-        except ImportError:
-            print(f"\n  二维码链接: {qrcode_url}")
-            print("  (安装 'qrcode' 包可在终端显示二维码)\n")
-
-    def _notify_cloud_qrcode(self, qrcode_url: str):
-        """Send QR code URL to cloud console when running in cloud mode."""
-        if not self.cloud_mode:
+    def _clear_tenant_credentials(self):
+        if not self.channel_config_id:
             return
         try:
-            from common import cloud_client
-            client = getattr(cloud_client, "chat_client", None)
-            if client and getattr(client, "client_id", None):
-                client.send_channel_qrcode("weixin", qrcode_url)
-        except Exception as e:
-            logger.warning(f"[Weixin] Failed to notify cloud QR code: {e}")
+            from cow_platform.services.channel_config_service import ChannelConfigService
 
-    def _notify_cloud_connected(self):
-        """Send connected status to cloud console when login succeeds."""
-        if not self.cloud_mode:
-            return
-        try:
-            from common import cloud_client
-            client = getattr(cloud_client, "chat_client", None)
-            if client and getattr(client, "client_id", None):
-                client.send_channel_status("weixin", "connected")
-        except Exception as e:
-            logger.warning(f"[Weixin] Failed to notify cloud connected: {e}")
-
-    def _qr_login(self, base_url: str) -> dict:
-        """Perform interactive QR code login. Returns dict with token/base_url or empty dict."""
-        api = WeixinApi(base_url=base_url)
-        try:
-            qr_resp = api.fetch_qr_code()
-        except Exception as e:
-            logger.error(f"[Weixin] Failed to fetch QR code: {e}")
-            return {}
-
-        qrcode = qr_resp.get("qrcode", "")
-        qrcode_url = qr_resp.get("qrcode_img_content", "")
-
-        if not qrcode:
-            logger.error("[Weixin] No QR code returned from server")
-            return {}
-
-        self._current_qr_url = qrcode_url
-        logger.info(f"[Weixin] 微信二维码链接: {qrcode_url}")
-        self._print_qr(qrcode_url)
-        self._notify_cloud_qrcode(qrcode_url)
-        print("  等待扫码...\n")
-
-        scanned_printed = False
-        refresh_count = 0
-        deadline = time.time() + QR_LOGIN_TIMEOUT_S
-
-        while not self._stop_event.is_set():
-            if time.time() >= deadline:
-                logger.warning(f"[Weixin] QR login timed out after {QR_LOGIN_TIMEOUT_S}s")
-                print(f"\n  二维码登录超时（{QR_LOGIN_TIMEOUT_S}s），请重启后重试")
-                break
-
-            try:
-                status_resp = api.poll_qr_status(qrcode)
-            except Exception as e:
-                logger.error(f"[Weixin] QR status poll error: {e}")
-                return {}
-
-            status = status_resp.get("status", "wait")
-
-            if status == "wait":
-                pass
-            elif status == "scaned":
-                self.login_status = self.LOGIN_STATUS_SCANNED
-                if not scanned_printed:
-                    print("  已扫码，请在手机上确认...")
-                    scanned_printed = True
-            elif status == "expired":
-                refresh_count += 1
-                if refresh_count >= QR_MAX_REFRESHES:
-                    logger.warning(f"[Weixin] QR code refreshed {QR_MAX_REFRESHES} times, giving up")
-                    print(f"\n  二维码已刷新 {QR_MAX_REFRESHES} 次仍未扫码，请重启后重试")
-                    break
-                print(f"  二维码已过期，正在刷新（{refresh_count}/{QR_MAX_REFRESHES}）...")
-                try:
-                    qr_resp = api.fetch_qr_code()
-                    qrcode = qr_resp.get("qrcode", "")
-                    qrcode_url = qr_resp.get("qrcode_img_content", "")
-                    scanned_printed = False
-                    self._current_qr_url = qrcode_url
-                    logger.info(f"[Weixin] 微信二维码链接 ({refresh_count}/{QR_MAX_REFRESHES}): {qrcode_url}")
-                    self._print_qr(qrcode_url)
-                    self._notify_cloud_qrcode(qrcode_url)
-                except Exception as e:
-                    logger.error(f"[Weixin] QR refresh failed: {e}")
-                    return {}
-            elif status == "confirmed":
-                bot_token = status_resp.get("bot_token", "")
-                bot_id = status_resp.get("ilink_bot_id", "")
-                result_base_url = status_resp.get("baseurl", base_url)
-                user_id = status_resp.get("ilink_user_id", "")
-
-                if not bot_token or not bot_id:
-                    logger.error("[Weixin] Login confirmed but missing token/bot_id")
-                    return {}
-
-                self._current_qr_url = ""
-                print(f"\n  ✅ 微信登录成功！bot_id={bot_id}")
-                logger.info(f"[Weixin] Login confirmed: bot_id={bot_id}")
-                self._notify_cloud_connected()
-
-                creds = {
-                    "token": bot_token,
-                    "base_url": result_base_url,
-                    "bot_id": bot_id,
-                    "user_id": user_id,
-                }
-                _save_credentials(self._credentials_path, creds)
-                logger.info(f"[Weixin] Credentials saved to {self._credentials_path}")
-
-                return {"token": bot_token, "base_url": result_base_url}
-
-            self._stop_event.wait(1)
-
-        self._current_qr_url = ""
-        if self._stop_event.is_set():
-            logger.info("[Weixin] QR login cancelled by stop event")
-        return {}
+            ChannelConfigService().clear_weixin_credentials(
+                channel_config_id=self.channel_config_id,
+                tenant_id=self.tenant_id,
+            )
+        except Exception as exc:
+            logger.warning(
+                f"[Weixin] Failed to clear tenant weixin credentials "
+                f"(channel_config_id={self.channel_config_id}): {exc}"
+            )
 
     # ── Long-poll loop ─────────────────────────────────────────────────
 

@@ -12,6 +12,7 @@ class AgentCreateRequest(BaseModel):
     model: str = ""
     model_config_id: str = ""
     system_prompt: str = ""
+    metadata: dict[str, object] = Field(default_factory=dict)
     tools: list[str] = Field(default_factory=list)
     skills: list[str] = Field(default_factory=list)
     knowledge_enabled: bool = False
@@ -24,6 +25,7 @@ class AgentUpdateRequest(BaseModel):
     model: str | None = None
     model_config_id: str | None = None
     system_prompt: str | None = None
+    metadata: dict[str, object] | None = None
     tools: list[str] | None = None
     skills: list[str] | None = None
     knowledge_enabled: bool | None = None

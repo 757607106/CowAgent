@@ -9,7 +9,7 @@ import pickle
 from common.log import logger
 
 # 将所有可用的配置项写在字典里, 请使用小写字母
-# 此处的配置值无实际意义，程序不会读取此处的配置，仅用于提示格式，请将配置加入到config.json中
+# 此处列出平台可识别的配置项。多租户平台模式下运行时配置以数据库和环境变量为准。
 available_setting = {
     # openai api配置
     "open_ai_api_key": "",  # openai api key
@@ -26,7 +26,7 @@ available_setting = {
     "azure_api_version": "",  # azure api版本
     # Bot触发配置
     "single_chat_prefix": ["bot", "@bot"],  # 私聊时文本需要包含该前缀才能触发机器人回复
-    "single_chat_reply_prefix": "[bot] ",  # 私聊时自动回复的前缀，用于区分真人
+    "single_chat_reply_prefix": "",  # 平台模式默认不在回复前追加旧版 [bot] 前缀
     "single_chat_reply_suffix": "",  # 私聊时自动回复的后缀，\n 可以换行
     "group_chat_prefix": ["@bot"],  # 群聊时包含该前缀则会触发机器人回复
     "no_need_at": False,  # 群聊回复时是否不需要艾特
@@ -157,11 +157,10 @@ available_setting = {
     "weixin_token": "",  # 微信登录后获取的bot_token，留空则启动时自动扫码登录
     "weixin_base_url": "https://ilinkai.weixin.qq.com",  # Weixin ilink API base URL
     "weixin_cdn_base_url": "https://novac2c.cdn.weixin.qq.com/c2c",  # CDN base URL
-    "weixin_credentials_path": "~/.weixin_cow_credentials.json",  # credentials file path
     # chatgpt指令自定义触发词
     "clear_memory_commands": ["#清除记忆"],  # 重置会话指令，必须以#开头
     # channel配置
-    "channel_type": "",  # 通道类型，支持多渠道同时运行。单个: "feishu"，多个: "feishu, dingtalk" 或 ["feishu", "dingtalk"]。可选值: web,feishu,dingtalk,wecom_bot,weixin,wechatmp,wechatmp_service,wechatcom_app
+    # 平台模式不再支持通过 channel_type 启动全局渠道；租户渠道统一来自数据库。
     "web_console": True,  # 是否自动启动Web控制台（默认启动）。设为False可禁用
     "subscribe_msg": "",  # 订阅消息, 支持: wechatmp, wechatmp_service, wechatcom_app
     "debug": False,  # 是否开启debug模式，开启后会打印更多日志
@@ -180,6 +179,8 @@ available_setting = {
     # 豆包(火山方舟) 平台配置
     "ark_api_key": "",
     "ark_base_url": "https://ark.cn-beijing.volces.com/api/v3",
+    "deepseek_api_key": "",
+    "deepseek_api_base": "https://api.deepseek.com/v1",
     # 魔搭社区 平台配置
     "modelscope_api_key": "",
     "modelscope_base_url": "https://api-inference.modelscope.cn/v1/chat/completions",
@@ -222,6 +223,7 @@ class Config(dict):
         super().__init__()
         if d is None:
             d = {}
+        self.platform_settings = {}
         for k, v in d.items():
             self[k] = v
         # user_datas: 用户数据，key为用户名，value为用户数据，也是dict
@@ -234,6 +236,8 @@ class Config(dict):
         override_found, override_value = self._get_runtime_override(key)
         if override_found:
             return override_value
+        if key in self.platform_settings:
+            return self.platform_settings[key]
         return super().__getitem__(key)
 
     def __setitem__(self, key, value):
@@ -250,6 +254,8 @@ class Config(dict):
         override_found, override_value = self._get_runtime_override(key)
         if override_found:
             return override_value
+        if key in self.platform_settings:
+            return self.platform_settings[key]
         
         # 如果key不在available_setting中，直接返回default
         if key not in available_setting:
@@ -261,6 +267,13 @@ class Config(dict):
             return default
         except Exception as e:
             raise e
+
+    def set_platform_settings(self, settings: dict):
+        for key, value in (settings or {}).items():
+            self.platform_settings[key] = value
+
+    def clear_platform_settings(self):
+        self.platform_settings = {}
 
     @staticmethod
     def _get_runtime_override(key):
@@ -303,6 +316,57 @@ class Config(dict):
 config = Config()
 
 
+_CONFIG_TO_ENV = {
+    "open_ai_api_key": "OPENAI_API_KEY",
+    "open_ai_api_base": "OPENAI_API_BASE",
+    "linkai_api_key": "LINKAI_API_KEY",
+    "linkai_api_base": "LINKAI_API_BASE",
+    "claude_api_key": "CLAUDE_API_KEY",
+    "claude_api_base": "CLAUDE_API_BASE",
+    "gemini_api_key": "GEMINI_API_KEY",
+    "gemini_api_base": "GEMINI_API_BASE",
+    "dashscope_api_key": "DASHSCOPE_API_KEY",
+    "minimax_api_key": "MINIMAX_API_KEY",
+    "minimax_api_base": "MINIMAX_API_BASE",
+    "zhipu_ai_api_key": "ZHIPU_AI_API_KEY",
+    "zhipu_ai_api_base": "ZHIPU_AI_API_BASE",
+    "moonshot_api_key": "MOONSHOT_API_KEY",
+    "moonshot_api_base": "MOONSHOT_API_BASE",
+    "ark_api_key": "ARK_API_KEY",
+    "ark_api_base": "ARK_API_BASE",
+    "deepseek_api_key": "DEEPSEEK_API_KEY",
+    "deepseek_api_base": "DEEPSEEK_API_BASE",
+    "modelscope_api_key": "MODELSCOPE_API_KEY",
+    # Channel credentials (used by skills that check env vars)
+    "feishu_app_id": "FEISHU_APP_ID",
+    "feishu_app_secret": "FEISHU_APP_SECRET",
+    "dingtalk_client_id": "DINGTALK_CLIENT_ID",
+    "dingtalk_client_secret": "DINGTALK_CLIENT_SECRET",
+    "wechatmp_app_id": "WECHATMP_APP_ID",
+    "wechatmp_app_secret": "WECHATMP_APP_SECRET",
+    "wechatcomapp_agent_id": "WECHATCOMAPP_AGENT_ID",
+    "wechatcomapp_secret": "WECHATCOMAPP_SECRET",
+    "qq_app_id": "QQ_APP_ID",
+    "qq_app_secret": "QQ_APP_SECRET",
+    "weixin_token": "WEIXIN_TOKEN",
+    "platform_env": "COW_PLATFORM_ENV",
+    "platform_require_dependencies": "COW_PLATFORM_REQUIRE_DEPENDENCIES",
+    "platform_database_url": "COW_PLATFORM_DATABASE_URL",
+    "platform_redis_url": "COW_PLATFORM_REDIS_URL",
+    "platform_qdrant_url": "COW_PLATFORM_QDRANT_URL",
+    "platform_minio_endpoint": "COW_PLATFORM_MINIO_ENDPOINT",
+    "platform_minio_access_key": "COW_PLATFORM_MINIO_ACCESS_KEY",
+    "platform_minio_secret_key": "COW_PLATFORM_MINIO_SECRET_KEY",
+    "platform_minio_bucket": "COW_PLATFORM_MINIO_BUCKET",
+}
+
+
+_ENV_TO_CONFIG = {
+    env_key: conf_key
+    for conf_key, env_key in _CONFIG_TO_ENV.items()
+}
+
+
 def drag_sensitive(config):
     try:
         if isinstance(config, str):
@@ -327,6 +391,58 @@ def drag_sensitive(config):
     return config
 
 
+def _parse_env_value(value: str):
+    try:
+        return eval(value)
+    except Exception:
+        lowered = value.lower()
+        if lowered == "false":
+            return False
+        if lowered == "true":
+            return True
+        return value
+
+
+def _apply_environment_overrides():
+    for name, value in os.environ.items():
+        normalized_name = name.lower()
+        if normalized_name.startswith("_"):
+            continue
+        config_key = normalized_name if normalized_name in available_setting else _ENV_TO_CONFIG.get(name)
+        if not config_key:
+            continue
+        logger.info("[INIT] override config by environ args: {}={}".format(config_key, value))
+        config[config_key] = _parse_env_value(value)
+
+
+def _sync_config_to_environment(force_keys=None):
+    force_keys = set(force_keys or ())
+    injected = 0
+    for conf_key, env_key in _CONFIG_TO_ENV.items():
+        if env_key not in os.environ or conf_key in force_keys:
+            val = config.get(conf_key, "")
+            if val:
+                os.environ[env_key] = str(val)
+                injected += 1
+    if injected:
+        logger.info("[INIT] Synced {} config values to environment variables".format(injected))
+
+
+def _load_platform_settings_from_database():
+    # 平台固定多租户模式，运行时配置统一从 platform_settings 叠加。
+    try:
+        from cow_platform.services.platform_config_service import PlatformConfigService
+
+        settings = PlatformConfigService().list_settings()
+        if settings:
+            config.set_platform_settings(settings)
+            logger.info("[INIT] Loaded {} platform settings from database".format(len(settings)))
+        return settings
+    except Exception as e:
+        logger.warning("[INIT] Platform database settings unavailable, continue with environment/default config: {}".format(e))
+    return {}
+
+
 def load_config():
     global config
 
@@ -338,47 +454,27 @@ def load_config():
     logger.info(" \\____\\___/ \\_/\\_//_/   \\_\\__, |\\___|_| |_|\\__|")
     logger.info("                          |___/                 ")
     logger.info("")
-    config_path = "./config.json"
-    if not os.path.exists(config_path):
-        logger.info("配置文件不存在，将使用config-template.json模板")
-        config_path = "./config-template.json"
+    config = Config(copy.deepcopy(available_setting))
 
-    config_str = read_file(config_path)
-    logger.debug("[INIT] config str: {}".format(drag_sensitive(config_str)))
-
-    # 将json字符串反序列化为dict类型
-    config = Config(json.loads(config_str))
-
-    # override config with environment variables.
-    # Some online deployment platforms (e.g. Railway) deploy project from github directly. So you shouldn't put your secrets like api key in a config file, instead use environment variables to override the default config.
-    for name, value in os.environ.items():
-        name = name.lower()
-        # 跳过以下划线开头的注释字段
-        if name.startswith("_"):
-            continue
-        if name in available_setting:
-            logger.info("[INIT] override config by environ args: {}={}".format(name, value))
-            try:
-                config[name] = eval(value)
-            except Exception:
-                if value == "false":
-                    config[name] = False
-                elif value == "true":
-                    config[name] = True
-                else:
-                    config[name] = value
+    # 环境变量是平台启动层；数据库里的平台运行时配置会覆盖内存配置。
+    _apply_environment_overrides()
+    _sync_config_to_environment()
+    platform_settings = _load_platform_settings_from_database()
+    _sync_config_to_environment(force_keys=platform_settings.keys())
 
     if config.get("debug", False):
         logger.setLevel(logging.DEBUG)
         logger.debug("[INIT] set log level to DEBUG")
 
-    logger.info("[INIT] load config: {}".format(drag_sensitive(config)))
+    effective_config = dict(config)
+    effective_config.update(getattr(config, "platform_settings", {}) or {})
+    logger.info("[INIT] load config: {}".format(drag_sensitive(effective_config)))
 
     # 打印系统初始化信息
     logger.info("[INIT] ========================================")
     logger.info("[INIT] System Initialization")
     logger.info("[INIT] ========================================")
-    logger.info("[INIT] Channel: {}".format(config.get("channel_type", "unknown")))
+    logger.info("[INIT] Channel: web (platform tenant mode)")
     logger.info("[INIT] Model: {}".format(config.get("model", "unknown")))
 
     # Agent模式信息
@@ -386,62 +482,10 @@ def load_config():
         workspace = config.get("agent_workspace", "~/cow")
         logger.info("[INIT] Mode: Agent (workspace: {})".format(workspace))
     else:
-        logger.info("[INIT] Mode: Chat (在config.json中设置 \"agent\":true 可启用Agent模式)")
+        logger.info("[INIT] Mode: Chat (可通过平台设置或环境变量启用Agent模式)")
 
     logger.info("[INIT] Debug: {}".format(config.get("debug", False)))
     logger.info("[INIT] ========================================")
-
-    # Sync selected config values to environment variables so that
-    # subprocesses (e.g. shell skill scripts) can access them directly.
-    # Existing env vars are NOT overwritten (env takes precedence).
-    _CONFIG_TO_ENV = {
-        "open_ai_api_key": "OPENAI_API_KEY",
-        "open_ai_api_base": "OPENAI_API_BASE",
-        "linkai_api_key": "LINKAI_API_KEY",
-        "linkai_api_base": "LINKAI_API_BASE",
-        "claude_api_key": "CLAUDE_API_KEY",
-        "claude_api_base": "CLAUDE_API_BASE",
-        "gemini_api_key": "GEMINI_API_KEY",
-        "gemini_api_base": "GEMINI_API_BASE",
-        "minimax_api_key": "MINIMAX_API_KEY",
-        "minimax_api_base": "MINIMAX_API_BASE",
-        "zhipu_ai_api_key": "ZHIPU_AI_API_KEY",
-        "zhipu_ai_api_base": "ZHIPU_AI_API_BASE",
-        "moonshot_api_key": "MOONSHOT_API_KEY",
-        "moonshot_api_base": "MOONSHOT_API_BASE",
-        "ark_api_key": "ARK_API_KEY",
-        "ark_api_base": "ARK_API_BASE",
-        # Channel credentials (used by skills that check env vars)
-        "feishu_app_id": "FEISHU_APP_ID",
-        "feishu_app_secret": "FEISHU_APP_SECRET",
-        "dingtalk_client_id": "DINGTALK_CLIENT_ID",
-        "dingtalk_client_secret": "DINGTALK_CLIENT_SECRET",
-        "wechatmp_app_id": "WECHATMP_APP_ID",
-        "wechatmp_app_secret": "WECHATMP_APP_SECRET",
-        "wechatcomapp_agent_id": "WECHATCOMAPP_AGENT_ID",
-        "wechatcomapp_secret": "WECHATCOMAPP_SECRET",
-        "qq_app_id": "QQ_APP_ID",
-        "qq_app_secret": "QQ_APP_SECRET",
-        "weixin_token": "WEIXIN_TOKEN",
-        "platform_env": "COW_PLATFORM_ENV",
-        "platform_require_dependencies": "COW_PLATFORM_REQUIRE_DEPENDENCIES",
-        "platform_database_url": "COW_PLATFORM_DATABASE_URL",
-        "platform_redis_url": "COW_PLATFORM_REDIS_URL",
-        "platform_qdrant_url": "COW_PLATFORM_QDRANT_URL",
-        "platform_minio_endpoint": "COW_PLATFORM_MINIO_ENDPOINT",
-        "platform_minio_access_key": "COW_PLATFORM_MINIO_ACCESS_KEY",
-        "platform_minio_secret_key": "COW_PLATFORM_MINIO_SECRET_KEY",
-        "platform_minio_bucket": "COW_PLATFORM_MINIO_BUCKET",
-    }
-    injected = 0
-    for conf_key, env_key in _CONFIG_TO_ENV.items():
-        if env_key not in os.environ:
-            val = config.get(conf_key, "")
-            if val:
-                os.environ[env_key] = str(val)
-                injected += 1
-    if injected:
-        logger.info("[INIT] Synced {} config values to environment variables".format(injected))
 
     config.load_user_datas()
 

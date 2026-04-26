@@ -239,6 +239,7 @@ export function formatAgentPayload(input: Partial<AgentItem>): Record<string, an
     model: input.model || '',
     model_config_id: input.model_config_id || '',
     system_prompt: input.system_prompt || '',
+    metadata: input.metadata || {},
     tools: input.tools || [],
     skills: input.skills || [],
     knowledge_enabled: Boolean(input.knowledge_enabled),

@@ -10,7 +10,7 @@
 
 ### `app.py`
 
-- 多租户鉴权开启时，启动阶段只保留 `web` 控制台，不再根据 `config.json/channel_type` 启动微信、飞书、QQ 等全局渠道
+- 平台模式强制按多租户运行，启动阶段只保留 `web` 控制台，不再根据启动配置中的 `channel_type` 启动微信、飞书、QQ 等全局渠道
 - 启动后仍会从租户数据库加载已启用的渠道配置，并按 `channel_config_id` 维度启动托管运行时
 
 升级关注点：
@@ -21,10 +21,21 @@
 
 - `Config.get()` / `Config.__getitem__()` 会优先读取当前 runtime scope 中的配置覆盖
 - 平台托管渠道运行时通过该覆盖机制注入模型、渠道密钥等租户级配置
+- 平台模式不读取项目根目录 `config.json` / `config-template.json`，启动层来自环境变量，平台运行时配置来自 PostgreSQL `platform_settings`
+- 数据库平台设置会覆盖内存配置，并同步到环境变量供子进程使用，避免旧环境变量压过平台数据库配置
 
 升级关注点：
 
-- 如果上游调整全局配置读取方式，需要重新确认 runtime scope 覆盖仍先于根 `config.json`
+- 如果上游调整全局配置读取方式，需要重新确认优先级仍是 runtime scope > platform_settings > environment > 内置默认值
+
+### `cow_platform/services/platform_config_service.py`
+
+- `platform_settings` 表承载平台级运行时配置，替代 Web 控制台写 `config.json`
+- 该服务只保存平台级设置；租户渠道、模型、Agent、MCP、技能等仍使用各自租户隔离表
+
+升级关注点：
+
+- 如果上游新增平台级配置入口，需要接入该服务，不能重新写回根 `config.json`
 
 ### `agent/memory/conversation_store.py`
 
@@ -99,6 +110,18 @@
 
 - 如果上游新增渠道类型，需要确认该渠道是否应纳入租户级 `channel_config_id` 强约束
 
+### `cow_platform/services/channel_config_service.py`
+
+- 租户级渠道配置是托管渠道运行时的唯一配置来源
+- 微信扫码成功后的 token / base_url / bot_id / user_id 写入租户渠道配置数据库
+- 删除微信渠道配置时会清理历史默认路径下的本地凭证文件，避免旧文件在重新绑定时被误用
+- 运行时覆盖不再为租户微信渠道自动注入 `weixin_credentials_path`
+
+升级关注点：
+
+- 如果上游新增微信登录或渠道配置字段，需要确认租户微信凭证仍以数据库为准，不能重新依赖本地 credentials json
+- 如果上游调整渠道配置删除流程，需要确认删除配置后历史本地凭证不会残留复用
+
 ### `cow_platform/services/agent_service.py`
 
 - 默认 Agent 在未配置 MCP allowlist 时继承本租户已启用的 MCP catalog
@@ -110,6 +133,7 @@
 
 ### `channel/web/web_channel.py`
 
+- Web 控制台强制按租户鉴权模式运行，平台不再支持关闭多租户鉴权回到全局控制台模式
 - 支持显式 `agent_id`
 - 支持 `binding_id -> tenant_id + agent_id` 路由
 - 支持 Agent 作用域下的 sessions/history/memory/knowledge API
@@ -123,15 +147,24 @@
 - 如果上游调整租户参数默认值，需要重新确认 Web 与 FastAPI 的租户 scope 解析仍一致
 - 如果上游新增 Web API，优先放到对应 `channel/web/handlers/*` 模块，不要继续扩大 `web_channel.py`
 
+### `channel/web/handlers/configuration.py`
+
+- 多租户平台模式下 `/config` 的写入落到 PostgreSQL `platform_settings`，不再写项目根目录 `config.json`
+
+升级关注点：
+
+- 如果上游调整 Web 配置接口，需要确认平台模式下仍不触碰根 `config.json`
+
 ### `channel/web/frontend_layout.py`
 
 - Web 前端入口路径集中在该文件解析
 - modern 前端固定使用 `channel/web/frontend/modern/dist`
-- legacy 静态前端保留在 `channel/web/frontend/legacy` 作为历史 patch 参考
+- legacy 静态前端文件保留作上游对照，运行时不再作为可选入口
 
 升级关注点：
 
 - 如果上游调整 Web 静态资源目录或路由，需要先复核这里的前端路径解析
+- 如果上游调整旧静态页面，需要确认平台运行时仍不会绕过 modern 前端的租户鉴权与租户渠道配置入口
 
 ### `channel/channel.py`
 
@@ -163,10 +196,13 @@
 ### `channel/weixin/weixin_channel.py`
 
 - 平台托管运行时会向消息 context 注入 `channel_config_id` 与 `source_tenant_id`
+- 平台托管微信运行时只读取数据库中的租户渠道 token，不再从本地 credentials json 回退加载
+- 会话失效处理会清空租户渠道配置数据库中的微信凭证，重新绑定只能通过 Web 渠道页面扫码
 
 升级关注点：
 
 - 如果上游调整微信消息构造流程，需要重新挂回租户渠道上下文
+- 如果上游调整微信扫码或重登录流程，需要确认平台托管渠道不会重新写入或读取全局本地凭证文件
 
 ### `channel/wecom_bot/wecom_bot_channel.py`
 
@@ -200,26 +236,6 @@
 升级关注点：
 
 - 如果上游调整测试夹具，必须保留“真实平台库不可被测试清空”的保护
-
-### `channel/web/frontend/legacy/chat.html`
-
-- 新增 Agent 选择器
-- 新增 binding 选择器
-- 该文件仅作为旧版静态前端的历史 patch 参考，运行时默认使用 modern 前端
-
-升级关注点：
-
-- 如果上游大改前端结构，需要重新挂回平台选择控件
-
-### `channel/web/frontend/legacy/static/js/console.js`
-
-- 前端请求增加 `agent_id` / `binding_id` 透传
-- 增加运行时作用域切换后的历史刷新、会话刷新逻辑
-- 该文件仅作为旧版静态前端的历史 patch 参考，运行时默认使用 modern 前端
-
-升级关注点：
-
-- 如果上游重构前端状态管理，需要重新检查所有带作用域的 API 调用
 
 ### `channel/web/frontend/modern/`
 
@@ -255,7 +271,7 @@
 
 升级关注点：
 
-- 如果上游调整容器启动脚本，需要重新确认 legacy 与 platform 两种模式都能启动
+- 如果上游调整容器启动脚本，需要重新确认平台 API / worker / Web 控制台能按数据库配置启动
 
 ### `docker/compose.platform.yml`
 

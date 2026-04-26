@@ -5,20 +5,12 @@ from dataclasses import dataclass
 from pathlib import Path
 
 FRONTEND_MODE_MODERN = "modern"
-FRONTEND_MODE_LEGACY = "legacy"
-FRONTEND_MODE_AUTO = "auto"
-_VALID_MODES = {
-    FRONTEND_MODE_LEGACY,
-    FRONTEND_MODE_MODERN,
-    FRONTEND_MODE_AUTO,
-}
 
 
 @dataclass(frozen=True)
 class FrontendLayout:
     web_root: Path
     frontend_root: Path
-    legacy_root: Path
     modern_root: Path
     modern_dist: Path
 
@@ -30,16 +22,14 @@ def build_frontend_layout(web_channel_file: str | Path) -> FrontendLayout:
     return FrontendLayout(
         web_root=web_root,
         frontend_root=frontend_root,
-        legacy_root=frontend_root / "legacy",
         modern_root=modern_root,
         modern_dist=modern_root / "dist",
     )
 
 
 def normalize_frontend_mode(raw_mode: str | None) -> str:
-    mode = str(raw_mode or FRONTEND_MODE_MODERN).strip().lower()
-    if mode not in _VALID_MODES:
-        return FRONTEND_MODE_MODERN
+    _ = raw_mode
+    # 旧静态前端文件保留作上游对照，但平台运行时只允许 modern 构建产物入口。
     return FRONTEND_MODE_MODERN
 
 

@@ -57,7 +57,7 @@ def _is_password_enabled():
 
 
 def _is_tenant_auth_enabled():
-    return bool(conf().get("web_tenant_auth", True))
+    return True
 
 
 def _session_expire_seconds():
@@ -331,7 +331,7 @@ def _scope_tenant_id(tenant_id: str = "", *, default: str = "default") -> str:
 
 
 def _scope_optional_tenant_id(tenant_id: str = "") -> str:
-    """Like _scope_tenant_id, but preserves blank tenant filters in legacy mode."""
+    """Like _scope_tenant_id, but keeps blank filters for platform admin list APIs."""
     session = _get_authenticated_tenant_session()
     if session:
         if session.principal_type == "platform":
@@ -1007,20 +1007,7 @@ class WebChannel(ChatChannel):
     def startup(self):
         port = conf().get("web_port", 9899)
 
-        if _is_tenant_auth_enabled():
-            logger.info("[WebChannel] 多租户模式已启用：渠道接入只通过租户级渠道配置管理。")
-        else:
-            logger.info(
-                "[WebChannel] 全部可用通道如下，可修改 config.json 配置文件中的 channel_type 字段进行切换，多个通道用逗号分隔：")
-            logger.info("[WebChannel]   1. weixin           - 微信")
-            logger.info("[WebChannel]   2. web              - 网页")
-            logger.info("[WebChannel]   3. terminal         - 终端")
-            logger.info("[WebChannel]   4. feishu           - 飞书")
-            logger.info("[WebChannel]   5. dingtalk         - 钉钉")
-            logger.info("[WebChannel]   6. wecom_bot        - 企微智能机器人")
-            logger.info("[WebChannel]   7. wechatcom_app    - 企微自建应用")
-            logger.info("[WebChannel]   8. wechatmp         - 个人公众号")
-            logger.info("[WebChannel]   9. wechatmp_service - 企业公众号")
+        logger.info("[WebChannel] 多租户模式已启用：渠道接入只通过租户级渠道配置管理。")
         logger.info("[WebChannel] ✅ Web控制台已运行")
         logger.info(f"[WebChannel] 🌐 本地访问: http://localhost:{port}")
         logger.info(f"[WebChannel] 🌍 服务器访问: http://YOUR_IP:{port} (请将YOUR_IP替换为服务器IP)")

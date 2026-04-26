@@ -20,53 +20,16 @@ def get_channel_manager():
     return _channel_mgr
 
 
-def _parse_channel_type(raw) -> list:
-    """
-    Parse channel_type config value into a list of channel names.
-    Supports:
-      - single string: "feishu"
-      - comma-separated string: "feishu, dingtalk"
-      - list: ["feishu", "dingtalk"]
-    """
-    if isinstance(raw, list):
-        return [ch.strip() for ch in raw if ch.strip()]
-    if isinstance(raw, str):
-        return [ch.strip() for ch in raw.split(",") if ch.strip()]
-    return []
-
-
-def _is_tenant_channel_mode() -> bool:
-    return bool(conf().get("web_tenant_auth", True))
-
-
 def _resolve_startup_channels(
-    raw_channel,
     *,
     web_console_enabled: bool,
-    tenant_channel_mode: bool,
     command_mode: bool = False,
 ) -> list:
     if command_mode:
         return ["terminal"]
 
-    channel_names = _parse_channel_type(raw_channel)
-    if not channel_names:
-        channel_names = ["web"] if web_console_enabled else []
-
-    if web_console_enabled and "web" not in channel_names:
-        channel_names.append("web")
-
-    if tenant_channel_mode:
-        skipped = [name for name in channel_names if name != "web"]
-        channel_names = [name for name in channel_names if name == "web"]
-        if skipped:
-            logger.warning(
-                "[App] 多租户模式已忽略 config.json/channel_type 中的全局渠道: %s。"
-                "请在控制台的租户渠道配置中接入这些渠道。",
-                ",".join(skipped),
-            )
-
-    return channel_names
+    # 平台多租户模式只在启动配置里保留 Web 控制台；微信、飞书等托管渠道随后从数据库按 channel_config_id 启动。
+    return ["web"] if web_console_enabled else []
 
 
 class ChannelManager:
@@ -388,12 +351,9 @@ def run():
         # kill signal
         sigterm_handler_wrap(signal.SIGTERM)
 
-        raw_channel = conf().get("channel_type", "web")
         web_console_enabled = conf().get("web_console", True)
         channel_names = _resolve_startup_channels(
-            raw_channel,
             web_console_enabled=web_console_enabled,
-            tenant_channel_mode=_is_tenant_channel_mode(),
             command_mode="--cmd" in sys.argv,
         )
 

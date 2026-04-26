@@ -11,7 +11,7 @@ def test_platform_docs_are_grouped_under_platform_design() -> None:
     assert (REPO_ROOT / "docs" / "platform" / "design").is_dir()
 
 
-def test_web_frontend_has_explicit_modern_and_legacy_roots() -> None:
+def test_web_frontend_uses_modern_runtime_and_keeps_legacy_reference() -> None:
     web_root = REPO_ROOT / "channel" / "web"
     assert (web_root / "frontend" / "modern" / "src").is_dir()
     assert (web_root / "frontend" / "modern" / "package.json").is_file()
@@ -38,7 +38,7 @@ def test_web_backend_handlers_are_split_by_responsibility() -> None:
         assert sum(1 for _ in f) < 1500
 
 
-def test_platform_scripts_are_grouped_but_legacy_entrypoints_remain() -> None:
+def test_platform_scripts_are_grouped_with_root_wrappers() -> None:
     platform_dir = REPO_ROOT / "scripts" / "platform"
     for script_name in [
         "platform_real_scenario_test.py",

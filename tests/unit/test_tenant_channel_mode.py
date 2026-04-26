@@ -3,36 +3,27 @@ import web
 
 from app import _resolve_startup_channels
 from channel.web import web_channel
+from channel.web.handlers import channel_admin
 from channel.web.web_channel import ChannelsHandler, PlatformBindingsHandler, WeixinQrHandler
-from config import conf
 
 
-def test_tenant_channel_mode_ignores_legacy_channel_type_entries() -> None:
+def test_startup_channels_are_platform_web_only() -> None:
     assert _resolve_startup_channels(
-        "web,weixin,feishu",
         web_console_enabled=True,
-        tenant_channel_mode=True,
     ) == ["web"]
 
 
-def test_legacy_channel_mode_keeps_configured_channels() -> None:
-    assert _resolve_startup_channels(
-        "web,weixin,feishu",
-        web_console_enabled=True,
-        tenant_channel_mode=False,
-    ) == ["web", "weixin", "feishu"]
+def test_channels_handler_is_tenant_only_compat_shell(monkeypatch) -> None:
+    monkeypatch.setattr(channel_admin, "_require_auth", lambda: None)
+    monkeypatch.setattr(channel_admin.web, "header", lambda *_args, **_kwargs: None)
+
+    payload = json.loads(ChannelsHandler().GET())
+
+    assert payload["channels"] == []
+    assert payload["tenant_only"] is True
 
 
-def test_channels_handler_hides_global_channels_in_tenant_mode(monkeypatch) -> None:
-    monkeypatch.setitem(conf(), "web_tenant_auth", True)
-    monkeypatch.setitem(conf(), "channel_type", "web,weixin")
-
-    assert ChannelsHandler._active_channel_set() == {"web"}
-
-
-def test_global_weixin_qr_is_disabled_in_tenant_mode(monkeypatch) -> None:
-    monkeypatch.setitem(conf(), "web_tenant_auth", True)
-
+def test_global_weixin_qr_is_disabled_in_tenant_mode() -> None:
     payload = json.loads(WeixinQrHandler()._fetch_qr(""))
 
     assert payload["status"] == "error"
