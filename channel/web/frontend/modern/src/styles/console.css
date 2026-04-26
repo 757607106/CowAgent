@@ -142,6 +142,19 @@
   width: 160px;
 }
 
+.usage-agent-name {
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+
+.usage-table-shell .ant-table-body {
+  scrollbar-gutter: stable;
+}
+
 .tenant-filter {
   width: 220px;
 }

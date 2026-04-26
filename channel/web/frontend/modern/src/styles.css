@@ -2135,6 +2135,71 @@ body,
   margin-bottom: var(--space-3);
 }
 
+.knowledge-graph-view {
+  position: relative;
+  height: 60vh;
+  min-height: 520px;
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  background: var(--bg-surface);
+  overflow: hidden;
+}
+
+.knowledge-graph-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.knowledge-graph-legend {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  color: #64748b;
+  font-size: 11px;
+  z-index: 10;
+}
+
+.knowledge-graph-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.knowledge-graph-legend-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.knowledge-graph-tooltip {
+  position: absolute;
+  z-index: 20;
+  padding: 6px 10px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+  background: var(--bg-surface);
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.08);
+  color: var(--text-primary);
+  font-size: 12px;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s;
+}
+
+.knowledge-graph-empty {
+  display: flex;
+  min-height: 420px;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-lg);
+  background: var(--neutral-25);
+}
+
 /* ── Config Page ──────────────────────────────────────────────── */
 .config-shell {
   border-color: var(--border-default);

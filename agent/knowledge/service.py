@@ -18,6 +18,8 @@ from typing import Optional
 from common.log import logger
 from config import conf
 
+MARKDOWN_LINK_RE = re.compile(r"\[([^\]]*)\]\(([^)]+\.md)\)")
+
 
 class KnowledgeService:
     """
@@ -78,8 +80,7 @@ class KnowledgeService:
                     try:
                         with open(fpath, "r", encoding="utf-8") as f:
                             first_line = f.readline().strip()
-                        if first_line.startswith("# "):
-                            title = first_line[2:].strip()
+                        title = self._extract_markdown_title(first_line, title)
                     except Exception:
                         pass
                     files.append({"name": fname, "title": title, "size": size})
@@ -126,7 +127,7 @@ class KnowledgeService:
     # ------------------------------------------------------------------
     def build_graph(self) -> dict:
         """
-        Parse all knowledge pages and extract cross-reference links.
+        Parse all knowledge pages and extract real cross-reference links.
 
         Returns::
 
@@ -150,43 +151,53 @@ class KnowledgeService:
 
         nodes = {}
         links = []
-        link_re = re.compile(r'\[([^\]]*)\]\(([^)]+\.md)\)')
-
-        for md_file in knowledge_path.rglob("*.md"):
+        for md_file in sorted(knowledge_path.rglob("*.md")):
             rel = str(md_file.relative_to(knowledge_path))
             if rel in ("index.md", "log.md"):
                 continue
+
             parts = rel.split("/")
             category = parts[0] if len(parts) > 1 else "root"
             title = md_file.stem.replace("-", " ").title()
             try:
                 content = md_file.read_text(encoding="utf-8")
-                first_line = content.strip().split("\n")[0]
-                if first_line.startswith("# "):
-                    title = first_line[2:].strip()
-                for _, link_target in link_re.findall(content):
-                    resolved = (md_file.parent / link_target).resolve()
-                    try:
-                        target_rel = str(resolved.relative_to(knowledge_path))
-                    except ValueError:
-                        continue
-                    if target_rel != rel:
-                        links.append({"source": rel, "target": target_rel})
             except Exception:
-                pass
+                content = ""
+
+            title = self._extract_markdown_title(content, title)
+            for _, link_target in MARKDOWN_LINK_RE.findall(content):
+                resolved = (md_file.parent / link_target).resolve()
+                try:
+                    target_rel = str(resolved.relative_to(knowledge_path))
+                except ValueError:
+                    continue
+                if target_rel != rel:
+                    links.append({"source": rel, "target": target_rel})
             nodes[rel] = {"id": rel, "label": title, "category": category}
 
         valid_ids = set(nodes.keys())
-        links = [l for l in links if l["source"] in valid_ids and l["target"] in valid_ids]
+        links = [link for link in links if link["source"] in valid_ids and link["target"] in valid_ids]
         seen = set()
         deduped = []
-        for l in links:
-            key = tuple(sorted([l["source"], l["target"]]))
-            if key not in seen:
-                seen.add(key)
-                deduped.append(l)
+        for link in links:
+            key = tuple(sorted([link["source"], link["target"]]))
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(link)
 
         return {"nodes": list(nodes.values()), "links": deduped, "enabled": self.enabled}
+
+    @staticmethod
+    def _extract_markdown_title(content: str, default_title: str) -> str:
+        for line in content.splitlines():
+            stripped = line.strip()
+            if not stripped:
+                continue
+            if stripped.startswith("# "):
+                return stripped[2:].strip() or default_title
+            return default_title
+        return default_title
 
     # ------------------------------------------------------------------
     # dispatch — single entry point for protocol messages

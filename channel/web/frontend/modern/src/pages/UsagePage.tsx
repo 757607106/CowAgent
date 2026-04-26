@@ -1,7 +1,7 @@
 import { Button, Card, DatePicker, Select, Statistic, Tag, message } from 'antd';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AdvancedJsonPanel, ConsolePage, DataTableShell, PageToolbar } from '../components/console';
-import { useRuntimeScope } from '../context/runtime';
+import { displayAgentName, useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type { AgentItem, UsageRecordItem, UsageSummary } from '../types';
 
@@ -27,11 +27,44 @@ export default function UsagePage() {
   const [tenantSummary, setTenantSummary] = useState<UsageSummary>(EMPTY_SUMMARY);
   const [scopeSummary, setScopeSummary] = useState<UsageSummary>(EMPTY_SUMMARY);
   const [records, setRecords] = useState<UsageRecordItem[]>([]);
+  const [agentsLoaded, setAgentsLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  const agentNameById = useMemo(
+    () => new Map(agents.map((agent) => [agent.agent_id, displayAgentName(agent.agent_id, agent.name)])),
+    [agents],
+  );
+
+  const agentOptions = useMemo(
+    () => agents.map((agent) => ({
+      label: displayAgentName(agent.agent_id, agent.name),
+      value: agent.agent_id,
+    })),
+    [agents],
+  );
+
+  const formatAgentName = (value?: string) => {
+    const normalized = (value || '').trim();
+    if (!normalized) return '';
+    return agentNameById.get(normalized) || '';
+  };
+
+  const renderAgentName = (value: string) => (
+    <span className="usage-agent-name">
+      {formatAgentName(value)}
+    </span>
+  );
+
   const loadAgents = async () => {
-    const data = await api.listAgents(tenantId);
-    setAgents(data.agents || []);
+    setAgentsLoaded(false);
+    try {
+      const data = await api.listAgents(tenantId);
+      setAgents(data.agents || []);
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '加载 AI 员工失败');
+    } finally {
+      setAgentsLoaded(true);
+    }
   };
 
   const loadUsage = async () => {
@@ -67,14 +100,14 @@ export default function UsagePage() {
           <PageToolbar>
             <Select
               allowClear
+              showSearch
               className="usage-agent-filter"
               value={agentId || undefined}
-              placeholder="全部 Agent"
+              placeholder="全部 AI 员工"
+              optionFilterProp="label"
+              labelRender={(item) => formatAgentName(String(item.value || ''))}
               onChange={(value) => setAgentId(value || '')}
-              options={agents.map((agent) => ({
-                label: `${agent.name} (${agent.agent_id})`,
-                value: agent.agent_id,
-              }))}
+              options={agentOptions}
             />
             <DatePicker
               allowClear
@@ -96,7 +129,7 @@ export default function UsagePage() {
           <Statistic title="租户总费用" value={tenantSummary.estimated_cost} precision={6} loading={loading} />
         </Card>
         <Card className="operations-summary-card">
-          <Statistic title={agentId ? 'Agent Token' : '筛选 Token'} value={scopeSummary.total_tokens} loading={loading} />
+          <Statistic title={agentId ? 'AI 员工 Token' : '筛选 Token'} value={scopeSummary.total_tokens} loading={loading} />
         </Card>
         <Card className="operations-summary-card">
           <Statistic title="MCP 调用" value={scopeSummary.mcp_call_count} loading={loading} />
@@ -104,15 +137,16 @@ export default function UsagePage() {
       </div>
 
       <DataTableShell<UsageRecordItem>
+        className="usage-table-shell"
         title="用量明细"
         rowKey="event_id"
-        loading={loading}
+        loading={loading || !agentsLoaded}
         dataSource={records}
-        pagination={{ pageSize: 20 }}
-        scroll={{ x: 1100 }}
+        pagination={{ pageSize: 20, showSizeChanger: false }}
+        scroll={{ x: 1100, y: 'max(360px, calc(100vh - 430px))' }}
         columns={[
           { title: '时间', dataIndex: 'created_at', width: 170 },
-          { title: 'Agent', dataIndex: 'agent_id', width: 140 },
+          { title: 'AI 员工', dataIndex: 'agent_id', width: 140, render: renderAgentName },
           { title: '模型', dataIndex: 'model', width: 150, render: (value: string) => (value ? <Tag color="blue">{value}</Tag> : '-') },
           { title: '总 Token', dataIndex: 'total_tokens', width: 110 },
           { title: '输入', dataIndex: 'prompt_tokens', width: 100 },
