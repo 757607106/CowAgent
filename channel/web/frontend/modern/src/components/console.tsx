@@ -80,7 +80,7 @@ export function ConsolePage({ title, description, actions, children, className }
 export function PageToolbar({ children, align = 'end' }: PageToolbarProps) {
   return (
     <div className={`page-toolbar page-toolbar-${align}`}>
-      <Space wrap size={8}>
+      <Space wrap size={0}>
         {children}
       </Space>
     </div>

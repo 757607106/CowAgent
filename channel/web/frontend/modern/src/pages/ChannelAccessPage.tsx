@@ -18,8 +18,8 @@ export default function ChannelAccessPage({ defaultTab = 'bindings' }: ChannelAc
   return (
     <ConsolePage
       className="channel-access-page"
-        title="渠道接入"
-      >
+      title="渠道接入"
+    >
       <div className="channel-access-shell">
         <Tabs
           activeKey={activeKey}

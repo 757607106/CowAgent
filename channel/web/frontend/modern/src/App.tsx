@@ -388,7 +388,7 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
           className="app-mobile-drawer"
           title="CowAgent 2.0.6"
           placement="left"
-          width={280}
+          width="17.5rem"
           open={mobileMenuOpen}
           onClose={() => setMobileMenuOpen(false)}
         >

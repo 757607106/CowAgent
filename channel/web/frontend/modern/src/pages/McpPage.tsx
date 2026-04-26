@@ -427,7 +427,7 @@ export function McpServersPanel({
         onCancel={() => setOpen(false)}
         onOk={() => void saveServer()}
         confirmLoading={submitting}
-        width={860}
+        width="min(53.75rem, calc(100vw - 3rem))"
         footer={(_, { OkBtn, CancelBtn }) => (
           <Space>
             <Button icon={<PlayCircleOutlined />} loading={testing} onClick={() => void runFormTest()}>
@@ -514,7 +514,7 @@ export function McpServersPanel({
         title={testViewer ? `测试结果：${testViewer.serverName}` : '测试结果'}
         footer={null}
         onCancel={() => setTestViewer(null)}
-        width={820}
+        width="min(51.25rem, calc(100vw - 3rem))"
       >
         {testViewer ? (
           <>
@@ -555,7 +555,7 @@ export function McpServersPanel({
         title={schemaViewer ? `${schemaViewer.serverName} / ${schemaViewer.tool.name}` : '工具 Schema'}
         footer={null}
         onCancel={() => setSchemaViewer(null)}
-        width={880}
+        width="min(55rem, calc(100vw - 3rem))"
       >
         {schemaViewer ? (
           <Space vertical size={12} className="full-width-stack">

@@ -1,6 +1,7 @@
-import { Alert, Button, Form, Input, InputNumber, Modal, Popconfirm, QRCode, Select, Space, Spin, Switch, Table, Tag, Typography, message } from 'antd';
+import { Alert, Button, Form, Input, InputNumber, Modal, Popconfirm, QRCode, Select, Space, Spin, Switch, Tag, Typography, message } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PageTitle } from '../components/PageTitle';
+import { DataTableShell } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type { ChannelConfigItem, ChannelField, ChannelTypeItem, WeixinQrInfo } from '../types';
@@ -321,38 +322,65 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
         </div>
       )}
 
-      <Table<ChannelConfigItem>
+      <DataTableShell<ChannelConfigItem>
+        compact={embedded}
+        className="channel-table-shell"
+        title={embedded ? undefined : '渠道列表'}
         rowKey="channel_config_id"
         loading={loading}
         dataSource={configs}
-        pagination={{ pageSize: 12 }}
+        pagination={{
+          pageSize: embedded ? 10 : 12,
+          hideOnSinglePage: configs.length <= (embedded ? 10 : 12),
+        }}
+        tableLayout="fixed"
         columns={[
-          { title: '名称', dataIndex: 'name' },
+          {
+            title: '名称',
+            dataIndex: 'name',
+            width: '15%',
+            ellipsis: true,
+            render: (value: string) => (
+              <span className="entity-title-cell">
+                <span className="entity-title-cell-main">{value}</span>
+              </span>
+            ),
+          },
           {
             title: '渠道',
             dataIndex: 'channel_type',
+            width: '12%',
             render: (_value: string, row) => <Tag color="blue">{channelTypeLabel(row, channelTypes)}</Tag>,
           },
           {
             title: '状态',
             dataIndex: 'enabled',
+            width: '8%',
             render: (value: boolean) => (value ? <Tag color="green">启用</Tag> : <Tag>停用</Tag>),
           },
           {
             title: '回调路径',
             dataIndex: 'webhook_path',
+            width: '17%',
             render: (value: string, row) => {
               if (row.channel_type === 'weixin') return <Typography.Text type="secondary">扫码登录</Typography.Text>;
-              return value ? <Typography.Text copyable code>{value}</Typography.Text> : <Typography.Text type="secondary">长连接</Typography.Text>;
+              return value ? (
+                <Typography.Text className="channel-webhook-text" copyable code ellipsis={{ tooltip: value }}>
+                  {value}
+                </Typography.Text>
+              ) : (
+                <Typography.Text type="secondary">长连接</Typography.Text>
+              );
             },
           },
           {
             title: '密钥',
+            width: '22%',
             render: (_, row) => {
               const secretFields = (row.fields || []).filter((field) => field.type === 'secret');
               if (!secretFields.length) return <Typography.Text type="secondary">无</Typography.Text>;
               return (
-                <Space wrap size={[4, 4]}>
+                <Space wrap size={0} className="channel-secret-tags">
                   {secretFields.map((field) => (
                     <Tag key={field.key} color={field.secret_set ? 'green' : 'default'}>
                       {field.label}{field.secret_set ? ' 已设置' : ' 未设置'}
@@ -364,8 +392,10 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
           },
           {
             title: '操作',
+            width: '26%',
+            align: 'right',
             render: (_, row) => canManage ? (
-              <Space>
+              <Space wrap size={0} className="channel-row-actions">
                 {row.channel_type === 'weixin' && (
                   <Button size="small" type="primary" onClick={() => void openWeixinQr(row)}>扫码登录</Button>
                 )}
@@ -396,7 +426,7 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
         onOk={() => void submit()}
         confirmLoading={submitting}
         destroyOnClose
-        width={720}
+        width="min(45rem, calc(100vw - 3rem))"
       >
         <Form form={form} layout="vertical">
           <Form.Item name="name" label="名称" rules={[{ required: true, message: '请输入名称' }]}>
@@ -447,7 +477,7 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
             <Button onClick={() => void refreshWeixinQr()} loading={qrLoading}>刷新二维码</Button>
           </Space>
         )}
-        width={520}
+        width="min(32.5rem, calc(100vw - 3rem))"
       >
         <Space vertical size={16} className="full-width-stack">
           <Alert
@@ -481,5 +511,9 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
     </>
   );
 
-  return embedded ? content : <div>{content}</div>;
+  return (
+    <div className={embedded ? 'channels-page-embedded channel-tab-panel' : 'channels-page'}>
+      {content}
+    </div>
+  );
 }

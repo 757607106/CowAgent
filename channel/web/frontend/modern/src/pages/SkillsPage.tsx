@@ -328,7 +328,7 @@ export default function SkillsPage() {
                   <Tag>{skillCategory(skill)}</Tag>
                   {skill.version ? <Tag>v{String(skill.version)}</Tag> : null}
                 </div>
-                <Typography.Paragraph className="skill-card-desc" type="secondary" ellipsis={{ rows: 3 }}>
+                <Typography.Paragraph className="skill-card-desc" type="secondary" ellipsis={{ rows: 2 }}>
                   {skill.description || '该技能未提供描述。'}
                 </Typography.Paragraph>
                 <div className="skill-card-footer">

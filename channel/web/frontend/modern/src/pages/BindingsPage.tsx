@@ -258,7 +258,7 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
         onCancel={() => setOpen(false)}
         onOk={() => void onSubmit()}
         confirmLoading={submitting}
-        width={760}
+        width="min(47.5rem, calc(100vw - 3rem))"
       >
         <Form form={form} layout="vertical">
           <Form.Item name="name" label="名称" rules={[{ required: true }]}>

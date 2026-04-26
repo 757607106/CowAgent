@@ -67,21 +67,22 @@ export default function LogsPage() {
 
   return (
     <ConsolePage
-        title="运行日志"
-        actions={(
-          <PageToolbar>
-            <Tag color={running ? 'blue' : 'default'}>
-              {running ? '实时监听' : '已停止'}
-            </Tag>
-            {running ? (
-              <Button danger onClick={stop}>停止</Button>
-            ) : (
-              <Button type="primary" onClick={start}>开始</Button>
-            )}
-            <Button onClick={() => setLines([])}>清空</Button>
-          </PageToolbar>
-        )}
-      >
+      className="logs-page"
+      title="运行日志"
+      actions={(
+        <PageToolbar>
+          <Tag color={running ? 'blue' : 'default'}>
+            {running ? '实时监听' : '已停止'}
+          </Tag>
+          {running ? (
+            <Button danger onClick={stop}>停止</Button>
+          ) : (
+            <Button type="primary" onClick={start}>开始</Button>
+          )}
+          <Button onClick={() => setLines([])}>清空</Button>
+        </PageToolbar>
+      )}
+    >
       <Card className="logs-simple-card">
         <Typography.Text type="secondary" className="logs-simple-meta">
           最近 {lines.length} 行，最多保留 {MAX_LOG_LINES} 行

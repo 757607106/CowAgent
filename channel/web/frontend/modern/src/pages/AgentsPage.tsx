@@ -1117,7 +1117,7 @@ export default function AgentsPage() {
                   <Typography.Text className="agent-position-text">
                     {position}
                   </Typography.Text>
-                  <Typography.Paragraph className="agent-market-desc" type="secondary" ellipsis={{ rows: 3 }}>
+                  <Typography.Paragraph className="agent-market-desc" type="secondary" ellipsis={{ rows: 2 }}>
                     {roleIntro}
                   </Typography.Paragraph>
                 </div>
@@ -1143,7 +1143,7 @@ export default function AgentsPage() {
         onCancel={() => setCreateOpen(false)}
         onOk={() => void onCreateSubmit()}
         confirmLoading={submitting}
-        width={820}
+        width="min(51.25rem, calc(100vw - 3rem))"
         destroyOnClose
       >
         <Form form={createForm} layout="vertical">

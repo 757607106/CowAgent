@@ -297,7 +297,7 @@ export default function TenantUsersPage() {
       <Drawer
         open={identityOpen}
         onClose={() => setIdentityOpen(false)}
-        width={560}
+        width="min(35rem, calc(100vw - 3rem))"
         title={identityUser ? `身份映射：${identityUser.name}` : '身份映射'}
       >
         <Form form={identityForm} layout="vertical">
