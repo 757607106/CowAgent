@@ -44,11 +44,24 @@ class ChatChannel(Channel):
         """Best-effort binding resolution for non-web channels using channel metadata."""
         if context is None or not conf().get("agent", False):
             return context
-        if context.get("binding_id") or (context.get("tenant_id") and context.get("agent_id")):
+
+        channel_config_id = str(context.get("channel_config_id", "") or "").strip()
+        source_tenant_id = str(context.get("source_tenant_id", "") or "").strip()
+        tenant_managed = bool(channel_config_id or source_tenant_id)
+        if (
+            not tenant_managed
+            and (context.get("binding_id") or (context.get("tenant_id") and context.get("agent_id")))
+        ):
             return context
 
         cmsg = context.get("msg")
         if cmsg is None:
+            if tenant_managed:
+                logger.warning(
+                    "[chat_channel] managed channel context missing message metadata: "
+                    f"tenant={source_tenant_id}, channel_config_id={channel_config_id}"
+                )
+                return None
             return context
 
         external_app_id = str(getattr(cmsg, "to_user_id", "") or "").strip()
@@ -58,6 +71,12 @@ class ChatChannel(Channel):
         ).strip()
 
         if not any((external_app_id, external_chat_id, external_user_id)):
+            if tenant_managed:
+                logger.warning(
+                    "[chat_channel] managed channel context missing external identity: "
+                    f"tenant={source_tenant_id}, channel_config_id={channel_config_id}"
+                )
+                return None
             return context
 
         try:
@@ -65,17 +84,35 @@ class ChatChannel(Channel):
 
             binding = ChannelBindingService().resolve_binding_for_channel(
                 channel_type=context.get("channel_type", "") or self.channel_type,
-                channel_config_id=str(context.get("channel_config_id", "") or ""),
+                channel_config_id=channel_config_id,
                 external_app_id=external_app_id,
                 external_chat_id=external_chat_id,
                 external_user_id=external_user_id,
             )
         except Exception as e:
             logger.warning(f"[chat_channel] binding resolution failed: {e}")
+            if tenant_managed:
+                return None
             return context
 
         if binding is None:
+            if tenant_managed:
+                logger.warning(
+                    "[chat_channel] no tenant binding matched for managed channel: "
+                    f"tenant={source_tenant_id}, channel_config_id={channel_config_id}, "
+                    f"channel_type={context.get('channel_type', '') or self.channel_type}, "
+                    f"app={external_app_id}, chat={external_chat_id}, user={external_user_id}"
+                )
+                return None
             return context
+
+        if source_tenant_id and binding.tenant_id != source_tenant_id:
+            logger.error(
+                "[chat_channel] tenant binding mismatch for managed channel: "
+                f"source_tenant={source_tenant_id}, binding_tenant={binding.tenant_id}, "
+                f"binding_id={binding.binding_id}, channel_config_id={channel_config_id}"
+            )
+            return None
 
         context["binding_id"] = binding.binding_id
         context["tenant_id"] = binding.tenant_id
@@ -171,6 +208,8 @@ class ChatChannel(Channel):
                 logger.debug("[chat_channel]self message skipped")
                 return None
             context = self._apply_platform_runtime_target(context)
+            if context is None:
+                return None
 
         # 消息内容匹配过程，并处理content
         if ctype == ContextType.TEXT:

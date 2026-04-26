@@ -7,7 +7,7 @@ from typing import Dict, Any
 from pathlib import Path
 
 from agent.tools.base_tool import BaseTool, ToolResult
-from common.utils import expand_path
+from agent.tools.utils.workspace import WorkspaceAccessError, resolve_workspace_path
 
 
 class Send(BaseTool):
@@ -21,7 +21,7 @@ class Send(BaseTool):
         "properties": {
             "path": {
                 "type": "string",
-                "description": "Local file path to send. Must be an absolute path or relative to workspace. Do NOT pass URLs here."
+                "description": "Local file path to send. Relative paths are based on the current workspace. Paths outside the workspace are not allowed. Do NOT pass URLs here."
             },
             "message": {
                 "type": "string",
@@ -54,8 +54,10 @@ class Send(BaseTool):
         if not path:
             return ToolResult.fail("Error: path parameter is required")
         
-        # Resolve path
-        absolute_path = self._resolve_path(path)
+        try:
+            absolute_path = self._resolve_path(path)
+        except WorkspaceAccessError as e:
+            return ToolResult.fail(str(e))
         
         # Check if file exists
         if not os.path.exists(absolute_path):
@@ -114,10 +116,7 @@ class Send(BaseTool):
     
     def _resolve_path(self, path: str) -> str:
         """Resolve path to absolute path"""
-        path = expand_path(path)
-        if os.path.isabs(path):
-            return path
-        return os.path.abspath(os.path.join(self.cwd, path))
+        return resolve_workspace_path(self.cwd, path)
     
     def _get_image_mime_type(self, ext: str) -> str:
         """Get MIME type for image"""

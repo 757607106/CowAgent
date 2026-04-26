@@ -130,3 +130,64 @@ def test_unbound_agent_does_not_inherit_tenant_mcp_catalog(tmp_path: Path) -> No
     runtime_agent = service.resolve_agent(tenant_id="tenant-a", agent_id="agent-1", resolve_mcp=True)
 
     assert dict(runtime_agent.mcp_servers) == {}
+
+
+def test_default_agent_inherits_enabled_tenant_mcp_catalog(tmp_path: Path) -> None:
+    tenant_service = _tenant_service()
+    mcp_service = TenantMcpServerService(
+        repository=InMemoryTenantMcpServerRepository(),
+        tenant_service=tenant_service,
+    )
+    mcp_service.save_server(
+        tenant_id="tenant-a",
+        name="filesystem",
+        command="npx",
+        args=["-y", "@modelcontextprotocol/server-filesystem", "/tmp/a"],
+        env={"TOKEN": "a"},
+    )
+    mcp_service.save_server(
+        tenant_id="tenant-a",
+        name="disabled",
+        command="node",
+        enabled=False,
+    )
+    mcp_service.save_server(
+        tenant_id="tenant-b",
+        name="filesystem",
+        command="uvx",
+        args=["mcp-server-filesystem", "/tmp/b"],
+        env={"TOKEN": "b"},
+    )
+
+    agent_repo = InMemoryAgentRepository(tmp_path / "legacy")
+    agent_repo.create_agent(
+        tenant_id="tenant-a",
+        agent_id="default",
+        name="Default",
+        mcp_servers={},
+    )
+    agent_repo.create_agent(
+        tenant_id="tenant-b",
+        agent_id="default",
+        name="Default",
+        mcp_servers={},
+    )
+    service = AgentService(
+        repository=agent_repo,
+        tenant_service=tenant_service,
+        mcp_server_service=mcp_service,
+    )
+
+    runtime_agent_a = service.resolve_agent(tenant_id="tenant-a", agent_id="default", resolve_mcp=True)
+    runtime_agent_b = service.resolve_agent(tenant_id="tenant-b", agent_id="default", resolve_mcp=True)
+
+    assert runtime_agent_a.mcp_servers == {
+        "filesystem": {
+            "command": "npx",
+            "args": ["-y", "@modelcontextprotocol/server-filesystem", "/tmp/a"],
+            "env": {"TOKEN": "a"},
+            "enabled": True,
+        }
+    }
+    assert runtime_agent_b.mcp_servers["filesystem"]["command"] == "uvx"
+    assert "disabled" not in runtime_agent_a.mcp_servers

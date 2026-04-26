@@ -21,6 +21,17 @@ interface BindingsPageProps {
   embedded?: boolean;
 }
 
+const TENANT_CHANNEL_TYPES = new Set([
+  'weixin',
+  'feishu',
+  'dingtalk',
+  'wecom_bot',
+  'qq',
+  'wechatcom_app',
+  'wechatmp',
+  'wechatmp_service',
+]);
+
 export default function BindingsPage({ embedded = false }: BindingsPageProps) {
   const { tenantId: currentTenantId } = useRuntimeScope();
   const [loading, setLoading] = useState(false);
@@ -33,6 +44,7 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
   const [editing, setEditing] = useState<BindingItem | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<BindingFormValues>();
+  const selectedChannelType = Form.useWatch('channel_type', form);
 
   const tenantAgentOptions = useMemo(() => agents.map((agent) => ({
     label: agent.name,
@@ -49,6 +61,15 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
   const channelConfigById = useMemo(
     () => new Map(channelConfigs.map((config) => [config.channel_config_id, config])),
     [channelConfigs],
+  );
+  const channelConfigOptions = useMemo(
+    () => channelConfigs
+      .filter((config) => !selectedChannelType || config.channel_type === selectedChannelType)
+      .map((config) => ({
+        label: `${config.name} (${config.channel_type})`,
+        value: config.channel_config_id,
+      })),
+    [channelConfigs, selectedChannelType],
   );
 
   const loadBase = async (tenant = tenantId) => {
@@ -247,6 +268,14 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
             <Select
               showSearch
               aria-label="渠道类型"
+              onChange={(value) => {
+                const selected = channelConfigs.find(
+                  (config) => config.channel_config_id === form.getFieldValue('channel_config_id'),
+                );
+                if (selected && selected.channel_type !== value) {
+                  form.setFieldValue('channel_config_id', '');
+                }
+              }}
               options={[
                 { label: 'Web', value: 'web' },
                 { label: '微信', value: 'weixin' },
@@ -261,15 +290,26 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
               placeholder="选择渠道类型"
             />
           </Form.Item>
-          <Form.Item name="channel_config_id" label="渠道配置">
+          <Form.Item
+            name="channel_config_id"
+            label="渠道配置"
+            rules={[
+              () => ({
+                validator(_, value) {
+                  const channelType = form.getFieldValue('channel_type');
+                  if (TENANT_CHANNEL_TYPES.has(channelType) && !value) {
+                    return Promise.reject(new Error('租户级渠道绑定必须选择渠道配置'));
+                  }
+                  return Promise.resolve();
+                },
+              }),
+            ]}
+          >
             <Select
               allowClear
               showSearch
               aria-label="渠道配置"
-              options={channelConfigs.map((config) => ({
-                label: `${config.name} (${config.channel_type})`,
-                value: config.channel_config_id,
-              }))}
+              options={channelConfigOptions}
               onChange={(value) => {
                 const selected = channelConfigs.find((config) => config.channel_config_id === value);
                 if (selected) {

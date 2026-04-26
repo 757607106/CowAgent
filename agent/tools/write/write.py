@@ -5,10 +5,9 @@ Creates or overwrites files, automatically creates parent directories
 
 import os
 from typing import Dict, Any
-from pathlib import Path
 
 from agent.tools.base_tool import BaseTool, ToolResult
-from common.utils import expand_path
+from agent.tools.utils.workspace import WorkspaceAccessError, resolve_workspace_path
 
 
 class Write(BaseTool):
@@ -22,7 +21,7 @@ class Write(BaseTool):
         "properties": {
             "path": {
                 "type": "string",
-                "description": "Path to the file to write (relative or absolute)"
+                "description": "Path to the file to write. Relative paths are based on the current workspace. Paths outside the workspace are not allowed."
             },
             "content": {
                 "type": "string",
@@ -50,8 +49,10 @@ class Write(BaseTool):
         if not path:
             return ToolResult.fail("Error: path parameter is required")
         
-        # Resolve path
-        absolute_path = self._resolve_path(path)
+        try:
+            absolute_path = self._resolve_path(path)
+        except WorkspaceAccessError as e:
+            return ToolResult.fail(str(e))
         
         try:
             # Create parent directory (if needed)
@@ -90,8 +91,4 @@ class Write(BaseTool):
         :param path: Relative or absolute path
         :return: Absolute path
         """
-        # Expand ~ to user home directory
-        path = expand_path(path)
-        if os.path.isabs(path):
-            return path
-        return os.path.abspath(os.path.join(self.cwd, path))
+        return resolve_workspace_path(self.cwd, path)

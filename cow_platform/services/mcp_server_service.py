@@ -102,6 +102,21 @@ class TenantMcpServerService:
 
         return resolved
 
+    def resolve_default_servers(self, tenant_id: str) -> dict[str, dict[str, Any]]:
+        """Resolve all enabled tenant MCP servers for the tenant default Agent."""
+        self.tenant_service.resolve_tenant(tenant_id)
+        resolved: dict[str, dict[str, Any]] = {}
+        for server in self.repository.list_servers(tenant_id):
+            if not server.enabled:
+                continue
+            resolved[server.name] = {
+                "command": server.command,
+                "args": list(server.args),
+                "env": dict(server.env),
+                "enabled": True,
+            }
+        return resolved
+
     @staticmethod
     def serialize_server(definition: TenantMcpServerDefinition) -> dict[str, Any]:
         return {

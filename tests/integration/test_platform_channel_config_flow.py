@@ -148,6 +148,19 @@ def test_tenant_channel_configs_are_database_backed_masked_and_bindable(tmp_path
         is None
     )
 
+    missing_channel_config_binding = client.post(
+        "/api/platform/bindings",
+        headers=headers_a,
+        json={
+            "tenant_id": tenant_a,
+            "binding_id": "tenant-a-unscoped-weixin",
+            "name": "Invalid Unscoped Weixin Binding",
+            "channel_type": "weixin",
+            "agent_id": "support",
+        },
+    )
+    assert missing_channel_config_binding.status_code == 400
+
     cross_tenant_binding = client.post(
         "/api/platform/bindings",
         headers=headers_b,

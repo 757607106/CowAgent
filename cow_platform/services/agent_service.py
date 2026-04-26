@@ -220,8 +220,12 @@ class AgentService:
         )
 
     def _with_resolved_mcp_servers(self, definition: AgentDefinition) -> AgentDefinition:
-        resolved_servers = self.mcp_server_service.resolve_bound_servers(
-            definition.tenant_id,
-            dict(definition.mcp_servers or {}),
-        )
+        bindings = dict(definition.mcp_servers or {})
+        if definition.agent_id == DEFAULT_AGENT_ID and not bindings:
+            resolved_servers = self.mcp_server_service.resolve_default_servers(definition.tenant_id)
+        else:
+            resolved_servers = self.mcp_server_service.resolve_bound_servers(
+                definition.tenant_id,
+                bindings,
+            )
         return replace(definition, mcp_servers=resolved_servers)

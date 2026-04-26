@@ -9,6 +9,7 @@ from pathlib import Path
 
 from agent.tools.base_tool import BaseTool, ToolResult
 from agent.tools.utils.truncate import truncate_head, format_size, DEFAULT_MAX_LINES, DEFAULT_MAX_BYTES
+from agent.tools.utils.workspace import WorkspaceAccessError, resolve_workspace_path
 from common.utils import expand_path
 
 
@@ -23,7 +24,7 @@ class Read(BaseTool):
         "properties": {
             "path": {
                 "type": "string",
-                "description": "Path to the file to read. IMPORTANT: Relative paths are based on workspace directory. To access files outside workspace, use absolute paths starting with ~ or /."
+                "description": "Path to the file to read. Relative paths are based on the current workspace. Paths outside the workspace are not allowed."
             },
             "offset": {
                 "type": "integer",
@@ -76,8 +77,10 @@ class Read(BaseTool):
         if not path:
             return ToolResult.fail("Error: path parameter is required")
         
-        # Resolve path
-        absolute_path = self._resolve_path(path)
+        try:
+            absolute_path = self._resolve_path(path)
+        except WorkspaceAccessError as e:
+            return ToolResult.fail(str(e))
         
         # Security check: Prevent reading sensitive config files
         env_config_path = expand_path("~/.cow/.env")
@@ -93,7 +96,7 @@ class Read(BaseTool):
                 return ToolResult.fail(
                     f"Error: File not found: {path}\n"
                     f"Resolved to: {absolute_path}\n"
-                    f"Hint: Relative paths are based on workspace ({self.cwd}). For files outside workspace, use absolute paths."
+                    f"Hint: Relative paths are based on workspace ({self.cwd})."
                 )
             return ToolResult.fail(f"Error: File not found: {path}")
         
@@ -135,11 +138,7 @@ class Read(BaseTool):
         :param path: Relative or absolute path
         :return: Absolute path
         """
-        # Expand ~ to user home directory
-        path = expand_path(path)
-        if os.path.isabs(path):
-            return path
-        return os.path.abspath(os.path.join(self.cwd, path))
+        return resolve_workspace_path(self.cwd, path)
     
     def _return_file_metadata(self, absolute_path: str, file_type: str, file_size: int) -> ToolResult:
         """

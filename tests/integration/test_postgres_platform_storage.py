@@ -19,6 +19,7 @@ from cow_platform.services.pricing_service import PricingService
 from cow_platform.services.quota_service import QuotaService
 from cow_platform.services.tenant_service import TenantService
 from cow_platform.services.tenant_user_service import TenantUserService
+from tests.conftest import _platform_postgres_reset_skip_reason
 from cow_platform.services.usage_service import UsageService
 
 
@@ -36,6 +37,9 @@ def _require_postgres() -> None:
 
 
 def _reset_platform_tables() -> None:
+    reset_skip_reason = _platform_postgres_reset_skip_reason()
+    if reset_skip_reason:
+        pytest.skip(reset_skip_reason)
     with connect() as conn:
         conn.execute(
             """

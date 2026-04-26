@@ -7,6 +7,7 @@ from typing import Dict, Any
 
 from agent.tools.base_tool import BaseTool, ToolResult
 from agent.tools.utils.truncate import truncate_head, format_size, DEFAULT_MAX_BYTES
+from agent.tools.utils.workspace import WorkspaceAccessError, resolve_workspace_path
 from common.utils import expand_path
 
 
@@ -24,7 +25,7 @@ class Ls(BaseTool):
         "properties": {
             "path": {
                 "type": "string",
-                "description": "Directory to list. IMPORTANT: Relative paths are based on workspace directory. To access directories outside workspace, use absolute paths starting with ~ or /."
+                "description": "Directory to list. Relative paths are based on the current workspace. Paths outside the workspace are not allowed."
             },
             "limit": {
                 "type": "integer",
@@ -48,8 +49,10 @@ class Ls(BaseTool):
         path = args.get("path", ".").strip()
         limit = args.get("limit", DEFAULT_LIMIT)
         
-        # Resolve path
-        absolute_path = self._resolve_path(path)
+        try:
+            absolute_path = self._resolve_path(path)
+        except WorkspaceAccessError as e:
+            return ToolResult.fail(str(e))
         
         # Security check: Prevent accessing sensitive config directory
         env_config_dir = expand_path("~/.cow")
@@ -64,7 +67,7 @@ class Ls(BaseTool):
                 return ToolResult.fail(
                     f"Error: Path not found: {path}\n"
                     f"Resolved to: {absolute_path}\n"
-                    f"Hint: Relative paths are based on workspace ({self.cwd}). For files outside workspace, use absolute paths."
+                    f"Hint: Relative paths are based on workspace ({self.cwd})."
                 )
             return ToolResult.fail(f"Error: Path not found: {path}")
         
@@ -133,8 +136,4 @@ class Ls(BaseTool):
     
     def _resolve_path(self, path: str) -> str:
         """Resolve path to absolute path"""
-        # Expand ~ to user home directory
-        path = expand_path(path)
-        if os.path.isabs(path):
-            return path
-        return os.path.abspath(os.path.join(self.cwd, path))
+        return resolve_workspace_path(self.cwd, path)

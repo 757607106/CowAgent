@@ -7,7 +7,7 @@ from common.log import logger
 from cow_platform.domain.models import ChannelBindingDefinition
 from cow_platform.repositories.binding_repository import ChannelBindingRepository
 from cow_platform.services.agent_service import AgentService
-from cow_platform.services.channel_config_service import ChannelConfigService
+from cow_platform.services.channel_config_service import CHANNEL_TYPE_DEFS, ChannelConfigService
 from cow_platform.services.tenant_service import TenantService
 
 
@@ -244,6 +244,8 @@ class ChannelBindingService:
         resolved_channel_type = (channel_type or "").strip()
         resolved_channel_config_id = (channel_config_id or "").strip()
         if not resolved_channel_config_id:
+            if self._requires_channel_config(resolved_channel_type):
+                raise ValueError("channel_config_id is required for tenant channel bindings")
             return resolved_channel_type, ""
         channel_config = self.channel_config_service.resolve_channel_config(
             tenant_id=tenant_id,
@@ -252,3 +254,7 @@ class ChannelBindingService:
         if resolved_channel_type and channel_config.channel_type != resolved_channel_type:
             raise ValueError("channel_config_id does not match channel_type")
         return channel_config.channel_type, channel_config.channel_config_id
+
+    @staticmethod
+    def _requires_channel_config(channel_type: str) -> bool:
+        return channel_type in CHANNEL_TYPE_DEFS

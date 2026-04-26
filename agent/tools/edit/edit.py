@@ -7,7 +7,7 @@ import os
 from typing import Dict, Any
 
 from agent.tools.base_tool import BaseTool, ToolResult
-from common.utils import expand_path
+from agent.tools.utils.workspace import WorkspaceAccessError, resolve_workspace_path
 from agent.tools.utils.diff import (
     strip_bom,
     detect_line_ending,
@@ -30,7 +30,7 @@ class Edit(BaseTool):
         "properties": {
             "path": {
                 "type": "string",
-                "description": "Path to the file to edit (relative or absolute)"
+                "description": "Path to the file to edit. Relative paths are based on the current workspace. Paths outside the workspace are not allowed."
             },
             "oldText": {
                 "type": "string",
@@ -63,8 +63,10 @@ class Edit(BaseTool):
         if not path:
             return ToolResult.fail("Error: path parameter is required")
         
-        # Resolve path
-        absolute_path = self._resolve_path(path)
+        try:
+            absolute_path = self._resolve_path(path)
+        except WorkspaceAccessError as e:
+            return ToolResult.fail(str(e))
         
         # Check if file exists
         if not os.path.exists(absolute_path):
@@ -178,8 +180,4 @@ class Edit(BaseTool):
         :param path: Relative or absolute path
         :return: Absolute path
         """
-        # Expand ~ to user home directory
-        path = expand_path(path)
-        if os.path.isabs(path):
-            return path
-        return os.path.abspath(os.path.join(self.cwd, path))
+        return resolve_workspace_path(self.cwd, path)

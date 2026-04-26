@@ -6,6 +6,7 @@ import socket
 import subprocess
 import time
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 import requests
@@ -34,9 +35,49 @@ POSTGRES_BACKED_TESTS = {
     "tests/integration/test_platform_tenant_binding_api.py",
     "tests/integration/test_platform_tenant_user_api.py",
     "tests/integration/test_platform_usage_quota_api.py",
+    "tests/integration/test_postgres_platform_storage.py",
     "tests/integration/test_runtime_agent_isolation.py",
     "tests/integration/test_web_tenant_auth_isolation.py",
 }
+
+PLATFORM_TEST_RESET_DATABASE_ENV = "COW_PLATFORM_TEST_RESET_DATABASE"
+
+
+def _truthy_env(name: str) -> bool:
+    return str(os.getenv(name, "")).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _platform_database_url() -> str:
+    from cow_platform.db import get_database_url
+
+    return get_database_url()
+
+
+def _platform_database_name(database_url: str) -> str:
+    parsed = urlparse(database_url)
+    return parsed.path.rsplit("/", 1)[-1].strip()
+
+
+def _is_safe_platform_test_database_url(database_url: str) -> bool:
+    database_name = _platform_database_name(database_url).lower()
+    return bool(database_name and "test" in database_name)
+
+
+def _platform_postgres_test_database_skip_reason() -> str:
+    database_url = _platform_database_url()
+    if _is_safe_platform_test_database_url(database_url):
+        return ""
+    database_name = _platform_database_name(database_url) or "<unknown>"
+    return (
+        "PostgreSQL platform tests require a dedicated test database whose name contains "
+        f"'test'; current database is '{database_name}'. Refusing to run against a live database."
+    )
+
+
+def _platform_postgres_reset_skip_reason() -> str:
+    if not _truthy_env(PLATFORM_TEST_RESET_DATABASE_ENV):
+        return f"{PLATFORM_TEST_RESET_DATABASE_ENV}=1 is required before tests may truncate platform tables"
+    return _platform_postgres_test_database_skip_reason()
 
 
 @lru_cache(maxsize=1)
@@ -59,6 +100,12 @@ def pytest_collection_modifyitems(config, items):
             postgres_items.append(item)
     if not postgres_items:
         return
+    unsafe_reason = _platform_postgres_test_database_skip_reason()
+    if unsafe_reason:
+        skip = pytest.mark.skip(reason=unsafe_reason)
+        for item in postgres_items:
+            item.add_marker(skip)
+        return
     available, error = _platform_postgres_available()
     if available:
         return
@@ -68,7 +115,10 @@ def pytest_collection_modifyitems(config, items):
 
 
 def _reset_platform_postgres_if_configured() -> None:
-    if not os.getenv("COW_PLATFORM_DATABASE_URL"):
+    reset_skip_reason = _platform_postgres_reset_skip_reason()
+    if reset_skip_reason:
+        if _truthy_env(PLATFORM_TEST_RESET_DATABASE_ENV):
+            raise RuntimeError(reset_skip_reason)
         return
     try:
         from cow_platform.db import connect

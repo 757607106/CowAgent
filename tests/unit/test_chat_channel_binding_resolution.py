@@ -1,4 +1,4 @@
-from bridge.context import ContextType
+from bridge.context import Context, ContextType
 from channel.terminal.terminal_channel import TerminalChannel, TerminalMessage
 from config import conf
 from cow_platform.services.agent_service import AgentService
@@ -98,3 +98,57 @@ def test_chat_channel_injects_platform_binding_target(tmp_path, monkeypatch) -> 
     assert context["tenant_user_id"] == "alice"
     assert context["tenant_user_role"] == "owner"
     assert context["tenant_user_status"] == "active"
+
+
+def test_context_kwargs_are_not_shared_between_messages() -> None:
+    first = Context(ContextType.TEXT, "first")
+    first["tenant_id"] = "psl-tenant"
+    first["agent_id"] = "agt_17f2b502"
+    first["binding_id"] = "bind_c49323e4"
+
+    second = Context(ContextType.TEXT, "second")
+
+    assert first.kwargs is not second.kwargs
+    assert second.get("tenant_id") is None
+    assert second.get("agent_id") is None
+    assert second.get("binding_id") is None
+
+
+def test_managed_channel_without_binding_fails_closed(tmp_path, monkeypatch) -> None:
+    monkeypatch.setitem(conf(), "agent", True)
+    monkeypatch.setitem(conf(), "single_chat_prefix", [""])
+    monkeypatch.setitem(conf(), "image_create_prefix", [])
+
+    binding_service = ChannelBindingService(
+        repository=InMemoryBindingRepository(),
+        tenant_service=TenantService(repository=InMemoryTenantRepository()),
+        agent_service=AgentService(repository=InMemoryAgentRepository(tmp_path / "legacy")),
+    )
+    monkeypatch.setattr(
+        "cow_platform.services.binding_service.ChannelBindingService",
+        lambda: binding_service,
+    )
+
+    channel = TerminalChannel()
+    channel.channel_type = "weixin"
+    channel.channel_config_id = "tenant-a-weixin"
+    channel.tenant_id = "tenant-a"
+    msg = TerminalMessage(
+        1,
+        "hello",
+        from_user_id="user-42",
+        to_user_id="weixin-bot",
+        other_user_id="user-42",
+    )
+
+    context = channel._compose_context(
+        ContextType.TEXT,
+        "hello",
+        msg=msg,
+        isgroup=False,
+        tenant_id="stale-tenant",
+        agent_id="stale-agent",
+        binding_id="stale-binding",
+    )
+
+    assert context is None

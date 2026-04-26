@@ -44,6 +44,15 @@
 
 - 如果上游重构长期记忆索引路径，需要重新确认租户/Agent 工作区不会串用
 
+### `agent/tools/*`
+
+- 文件类工具统一限制在当前 Agent 工作区内访问，绝对路径、`~` 路径或 `..` 越界路径不能读取/写入其他租户工作区
+- `bash` 工具运行目录仍是当前 Agent 工作区，并在执行前拦截明显的跨工作区路径访问；大输出临时文件也保存到当前工作区 `tmp/`
+
+升级关注点：
+
+- 如果上游调整 `read/write/edit/ls/send/bash` 或新增文件访问类工具，需要重新接入工作区边界校验，避免租户间通过绝对路径串读文件
+
 ### `agent/protocol/agent_stream.py`
 
 - 思考输出开关会读取当前平台 runtime context
@@ -57,6 +66,7 @@
 - 平台模式下按当前运行时作用域切换工作区
 - 合并 Agent 自定义 `system_prompt`
 - 从 Agent 独立工作区恢复会话历史
+- 仅平台默认 Agent 在 tools/skills 为空时继承默认能力；自定义 Agent 空 allowlist 表示不启用对应能力
 
 升级关注点：
 
@@ -71,6 +81,32 @@
 升级关注点：
 
 - 如果上游重构 `agent_reply()` 或消息持久化逻辑，需要重新验证 usage 与 quota 的接入点
+
+### `bridge/context.py`
+
+- `Context` 默认 kwargs 必须是每个消息独立字典，避免跨消息残留 `tenant_id` / `agent_id` / `binding_id`
+
+升级关注点：
+
+- 如果上游调整消息上下文对象，需要重新确认 context 状态不会跨租户消息共享
+
+### `cow_platform/services/binding_service.py`
+
+- 租户级外部渠道绑定必须关联本租户 `channel_config_id`
+- `web` 与非平台托管入口仍保留无 `channel_config_id` 的历史绑定能力
+
+升级关注点：
+
+- 如果上游新增渠道类型，需要确认该渠道是否应纳入租户级 `channel_config_id` 强约束
+
+### `cow_platform/services/agent_service.py`
+
+- 默认 Agent 在未配置 MCP allowlist 时继承本租户已启用的 MCP catalog
+- 自定义 Agent 不继承租户 MCP catalog，只有显式绑定的 MCP server 才会进入运行时
+
+升级关注点：
+
+- 如果上游调整 AgentDefinition 或 MCP 解析逻辑，需要重新确认 default/custom Agent 的能力继承边界
 
 ### `channel/web/web_channel.py`
 
@@ -110,6 +146,7 @@
 
 - ChatChannel 支持按 `binding_id` 或渠道身份解析目标 Agent
 - 消息 context 会注入 `binding_id`、`tenant_id`、`agent_id`、租户用户身份和 config overrides
+- 对带 `channel_config_id` / `source_tenant_id` 的托管渠道强制重新解析绑定；解析不到或租户不一致时 fail-closed，禁止落回 legacy/global Agent
 
 升级关注点：
 
@@ -147,6 +184,23 @@
 
 - 如果上游调整飞书消息构造流程，需要重新挂回租户渠道上下文
 
+### `channel/dingtalk/dingtalk_channel.py`
+
+- 群消息在租户绑定解析失败返回空 context 时必须停止后续处理，避免重新落回异常路径
+
+升级关注点：
+
+- 如果上游调整钉钉群消息处理流程，需要重新确认空 context 不会继续访问
+
+### `tests/conftest.py`
+
+- PostgreSQL 集成测试默认禁止清空平台表
+- 只有显式设置 `COW_PLATFORM_TEST_RESET_DATABASE=1` 且数据库名包含 `test` 时，才允许测试清理专用测试库
+
+升级关注点：
+
+- 如果上游调整测试夹具，必须保留“真实平台库不可被测试清空”的保护
+
 ### `channel/web/frontend/legacy/chat.html`
 
 - 新增 Agent 选择器
@@ -172,10 +226,12 @@
 - 平台 Web 控制台的 React + TypeScript + Vite 前端源码
 - `/chat` 由 `channel/web/frontend_layout.py` 固定渲染 `frontend/modern/dist/index.html`
 - `/assets/*` 仅从 `frontend/modern/dist/` 解析构建产物
+- 外部渠道 binding 表单按租户渠道配置过滤，并要求非 Web 绑定选择 `channel_config_id`
 
 升级关注点：
 
 - 如果上游调整 Web 控制台入口，需要重新确认 modern 前端构建目录和 `/assets/*` 路由仍一致
+- 如果上游重构渠道接入页面，需要重新验证外部渠道绑定不能保存为空 `channel_config_id`
 
 ### `pyproject.toml`
 

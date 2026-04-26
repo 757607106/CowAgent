@@ -716,8 +716,8 @@ class DingTalkChanel(ChatChannel, dingtalk_stream.ChatbotHandler):
                 file_cache.clear(session_id)
         
         context = self._compose_context(cmsg.ctype, cmsg.content, isgroup=True, msg=cmsg)
-        context['no_need_at'] = True
         if context:
+            context['no_need_at'] = True
             self.produce(context)
 
 

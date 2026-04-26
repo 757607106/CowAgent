@@ -6,11 +6,11 @@ import os
 import re
 import sys
 import subprocess
-import tempfile
 from typing import Dict, Any
 
 from agent.tools.base_tool import BaseTool, ToolResult
 from agent.tools.utils.truncate import truncate_tail, format_size, DEFAULT_MAX_LINES, DEFAULT_MAX_BYTES
+from agent.tools.utils.workspace import WorkspaceAccessError, validate_shell_command_paths
 from common.log import logger
 from common.utils import expand_path
 
@@ -29,7 +29,7 @@ ENVIRONMENT: All API keys from env_config are auto-injected. Use $VAR_NAME direc
 
 SAFETY:
 - Freely create/modify/delete files within the workspace
-- For destructive and out-of-workspace commands, explain and confirm first"""
+- Paths outside the workspace are not allowed"""
 
     params: dict = {
         "type": "object",
@@ -81,6 +81,11 @@ SAFETY:
             if warning:
                 return ToolResult.fail(
                     f"Safety Warning: {warning}\n\nIf you believe this command is safe and necessary, please ask the user for confirmation first, explaining what the command does and why it's needed.")
+
+        try:
+            validate_shell_command_paths(self.cwd, command)
+        except WorkspaceAccessError as e:
+            return ToolResult.fail(str(e))
 
         try:
             # Prepare environment with .env file variables
@@ -180,9 +185,9 @@ SAFETY:
 
             if total_bytes > DEFAULT_MAX_BYTES:
                 # Save full output to temp file
-                with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.log', prefix='bash-') as f:
+                temp_file_path = self._make_workspace_temp_path()
+                with open(temp_file_path, 'w', encoding='utf-8') as f:
                     f.write(output)
-                    temp_file_path = f.name
 
             # Apply tail truncation
             truncation = truncate_tail(output)
@@ -274,6 +279,13 @@ SAFETY:
                     return "This command will recursively delete system directories"
 
         return ""  # No warning needed
+
+    def _make_workspace_temp_path(self) -> str:
+        tmp_dir = os.path.join(self.cwd, "tmp")
+        os.makedirs(tmp_dir, exist_ok=True)
+        import uuid
+
+        return os.path.join(tmp_dir, f"bash-{uuid.uuid4().hex[:12]}.log")
 
     @staticmethod
     def _convert_env_vars_for_windows(command: str, dotenv_vars: dict) -> str:
