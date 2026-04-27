@@ -59,34 +59,44 @@ function SidebarContent({
   onMenuClick: (key: string) => void;
   onLogout: () => Promise<void>;
 }) {
+  const isPlatformAdmin = authUser?.principal_type === 'platform';
+  const teamLabel = isPlatformAdmin ? '平台管理' : authUser?.tenant_name || '当前团队';
+  const accountLabel = authUser?.account || authUser?.user_name || '已登录';
+
   return (
     <>
       <div className="app-logo">CowAgent 2.0.6</div>
       {authUser && (
         <div className="app-tenant-session">
           <div className="app-tenant-session-meta">
-            <Tag color={authUser.principal_type === 'platform' ? 'purple' : 'blue'}>
-              {authUser.principal_type === 'platform' ? '平台超管' : authUser.tenant_name || '当前团队'}
-            </Tag>
-            <Typography.Text className="app-tenant-user">
-              {authUser.user_name || authUser.account || '已登录'}
+            <Typography.Text className="app-tenant-name" title={teamLabel}>
+              {teamLabel}
+            </Typography.Text>
+            <Typography.Text className="app-tenant-user" title={accountLabel}>
+              {accountLabel}
             </Typography.Text>
           </div>
-          <Button
-            size="small"
-            icon={<LogoutOutlined />}
-            onClick={() => void onLogout()}
-            title="退出登录"
-          />
         </div>
       )}
       <Menu
         mode="inline"
         selectedKeys={selectedMenu}
-        items={getMenuItemsForRole(authUser?.principal_type === 'platform')}
+        items={getMenuItemsForRole(isPlatformAdmin)}
         onClick={({ key }) => onMenuClick(String(key))}
         className="app-nav-menu"
       />
+      {authUser && (
+        <div className="app-sidebar-footer">
+          <Button
+            block
+            size="middle"
+            icon={<LogoutOutlined />}
+            onClick={() => void onLogout()}
+          >
+            退出登录
+          </Button>
+        </div>
+      )}
     </>
   );
 }
@@ -364,6 +374,7 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
               <Route path="/" element={<Navigate to={isPlatformAdmin ? '/platform/models' : '/chat'} replace />} />
               <Route path="/platform/models" element={isPlatformAdmin ? <PlatformModelsPage /> : <Navigate to="/chat" replace />} />
               <Route path="/platform/tenants" element={isPlatformAdmin ? <PlatformTenantsPage /> : <Navigate to="/chat" replace />} />
+              <Route path="/platform/logs" element={isPlatformAdmin ? <LogsPage /> : <Navigate to="/chat" replace />} />
               <Route path="/chat" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <ChatPage />} />
               <Route path="/config" element={<Navigate to={isPlatformAdmin ? '/platform/models' : '/tenant-models'} replace />} />
               <Route path="/tenant-models" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <TenantModelsPage />} />
@@ -379,7 +390,7 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
               <Route path="/tenants" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <TenantsPage />} />
               <Route path="/tenant-users" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <TenantUsersPage />} />
               <Route path="/tasks" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <TasksPage />} />
-              <Route path="/logs" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <LogsPage />} />
+              <Route path="/logs" element={<Navigate to={isPlatformAdmin ? '/platform/logs' : '/chat'} replace />} />
               <Route path="*" element={<Navigate to={isPlatformAdmin ? '/platform/models' : '/chat'} replace />} />
             </Routes>
           </Content>

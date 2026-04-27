@@ -69,7 +69,6 @@ const SLASH_COMMANDS = [
   { cmd: '/knowledge on', desc: '开启知识库' },
   { cmd: '/knowledge off', desc: '关闭知识库' },
   { cmd: '/config', desc: '查看当前配置' },
-  { cmd: '/logs', desc: '查看最近日志' },
   { cmd: '/version', desc: '查看版本' },
 ] as const;
 

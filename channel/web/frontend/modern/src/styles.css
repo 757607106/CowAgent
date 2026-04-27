@@ -210,31 +210,47 @@ body,
 
 /* Tenant session info */
 .app-tenant-session {
-  min-height: 3.5rem;
+  min-height: 3.75rem;
   border-bottom: 1px solid var(--border-light);
-  padding: var(--space-3);
+  padding: var(--spacing-xs);
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--space-2);
   flex-shrink: 0;
 }
 
 .app-tenant-session-meta {
   min-width: 0;
+  width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--spacing-3xs);
+}
+
+.app-tenant-name {
+  max-width: 100%;
+  color: var(--text-primary);
+  display: block;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-semibold);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .app-tenant-user {
-  max-width: 8.625rem;
+  max-width: 100%;
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.app-sidebar-footer {
+  border-top: 1px solid var(--border-light);
+  flex-shrink: 0;
+  padding: var(--spacing-xs);
 }
 
 /* Navigation menu */
@@ -664,18 +680,19 @@ body,
 
 /* Attachment panel */
 .chat-attachment-panel {
-  padding-top: var(--space-1);
+  padding-top: 0;
 }
 
 .chat-sender-header {
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-lg);
   background: var(--bg-subtle);
   border: 1px solid var(--border-light);
-  padding: var(--space-2) var(--space-3) var(--space-3);
+  padding: var(--spacing-2xs);
 }
 
 .chat-sender-header .ant-sender-header-header {
-  padding: 0 0 var(--space-2);
+  min-height: 1.375rem;
+  padding: 0;
 }
 
 .chat-sender-header .ant-sender-header-title {
@@ -689,6 +706,13 @@ body,
 }
 
 .chat-sender-header-content {
+  max-height: clamp(6.5rem, 16vh, 8.5rem);
+  overflow: hidden;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.chat-sender-header .chat-sender-header-content {
   padding: 0;
 }
 
@@ -696,7 +720,69 @@ body,
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
   border: 1px dashed var(--border-default);
-  padding: var(--space-3);
+  padding: var(--spacing-3xs);
+}
+
+.chat-attachments.ant-attachment {
+  padding: var(--spacing-3xs);
+}
+
+.chat-attachments .ant-attachments-placeholder {
+  height: clamp(4rem, 8vh, 5rem);
+  min-height: 0 !important;
+  padding: var(--spacing-2xs) !important;
+}
+
+.chat-attachments .ant-attachment-placeholder {
+  height: clamp(4rem, 8vh, 5rem);
+  min-height: 0 !important;
+  padding: var(--spacing-2xs) !important;
+}
+
+.chat-sender-header-content [class*="attachments-placeholder"] {
+  height: clamp(4rem, 8vh, 5rem);
+  min-height: 0 !important;
+  padding: var(--spacing-2xs) !important;
+}
+
+.chat-sender-header-content [class*="attachment-placeholder"] {
+  height: clamp(4rem, 8vh, 5rem);
+  min-height: 0 !important;
+  padding: var(--spacing-2xs) !important;
+}
+
+.chat-attachments .ant-attachments-placeholder-inner {
+  gap: var(--spacing-3xs);
+}
+
+.chat-attachments .ant-attachment-placeholder-inner {
+  gap: var(--spacing-3xs);
+}
+
+.chat-attachments .ant-attachments-placeholder-icon {
+  font-size: 1.25rem;
+}
+
+.chat-attachments .ant-attachment-placeholder-icon {
+  font-size: 1.25rem;
+}
+
+.chat-attachments .ant-attachments-placeholder-title.ant-typography {
+  font-size: var(--font-size-sm);
+  line-height: 1.3;
+}
+
+.chat-attachments .ant-attachment-placeholder-title.ant-typography {
+  font-size: var(--font-size-sm);
+  line-height: 1.3;
+}
+
+.chat-attachments .ant-attachments-placeholder-description {
+  font-size: var(--font-size-sm);
+}
+
+.chat-attachments .ant-attachment-placeholder-description {
+  font-size: var(--font-size-sm);
 }
 
 /* Sender footer */
@@ -1310,14 +1396,90 @@ body,
 /* ── Page Layouts ─────────────────────────────────────────────── */
 .skills-page,
 .agents-page,
-.agent-detail-page,
 .channel-access-page,
 .config-page {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
+  height: calc(100vh - var(--app-content-padding) - var(--app-content-padding));
   max-width: var(--content-max-width);
+  min-height: 0;
+  overflow: hidden;
   width: 100%;
+}
+
+.console-page {
+  height: calc(100vh - var(--app-content-padding) - var(--app-content-padding));
+  min-height: 0;
+  overflow: hidden;
+}
+
+.agents-page > .agent-card-grid,
+.skills-page > .skills-card-grid {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.agents-page > .agent-card-grid,
+.skills-page > .skills-card-grid {
+  align-content: start;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--spacing-xs);
+}
+
+.agents-page > .agent-card-grid > .ant-card,
+.skills-page > .skills-card-grid > .ant-card {
+  align-self: start;
+}
+
+.console-page > :last-child:not(.console-page-header),
+.console-page > .data-table-shell,
+.console-page > .ant-card:last-child,
+.channel-access-page > .channel-access-shell,
+.config-page > .config-shell,
+.agents-page > .agent-empty-card,
+.skills-page > .skills-empty-card {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.console-page > .ant-card:last-child,
+.config-page > .config-shell {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.console-page > .ant-card:last-child > .ant-card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.console-page > .ant-tabs:last-child,
+.console-page > .ant-tabs:last-child .ant-tabs-content-holder,
+.console-page > .ant-tabs:last-child .ant-tabs-content,
+.console-page > .ant-tabs:last-child .ant-tabs-tabpane {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.console-page > .ant-tabs:last-child .data-table-shell {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.config-page > .config-shell > .ant-card-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 /* Overview / summary grids */
@@ -1912,15 +2074,12 @@ body,
   gap: var(--spacing-2xs);
 }
 
-.skill-card-head,
-.skill-table-name {
+.skill-card-head {
   min-width: 0;
   display: flex;
   align-items: flex-start;
   gap: var(--space-3);
 }
-
-.skill-table-name { align-items: center; }
 
 .skill-card-icon {
   width: 2rem;
@@ -1935,21 +2094,18 @@ body,
   border: 1px solid var(--color-primary-border);
 }
 
-.skill-card-title,
-.skill-table-title {
+.skill-card-title {
   min-width: 0;
   display: flex;
   flex-direction: column;
   gap: var(--spacing-3xs);
 }
 
-.skill-table-title .ant-typography,
 .skill-card-title .ant-typography {
   max-width: 100%;
 }
 
-.skill-card-title>.ant-typography,
-.skill-table-title>.ant-typography {
+.skill-card-title>.ant-typography {
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -2012,16 +2168,6 @@ body,
   box-shadow: var(--shadow-sm);
 }
 
-/* Skill table shell */
-.agent-ops-table-shell,
-.skills-table-shell {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  overflow: hidden;
-  box-shadow: var(--shadow-sm);
-}
-
 .skills-empty-card {
   border-color: var(--border-default);
   box-shadow: var(--shadow-sm);
@@ -2046,6 +2192,17 @@ body,
 .channel-access-shell .ant-tabs-content,
 .channel-access-shell .ant-tabs-tabpane {
   min-width: 0;
+}
+
+.channel-access-shell,
+.channel-access-shell .ant-tabs,
+.channel-access-shell .ant-tabs-content-holder,
+.channel-access-shell .ant-tabs-content,
+.channel-access-shell .ant-tabs-tabpane {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .channel-tab-panel {
@@ -2628,7 +2785,9 @@ body,
 
 /* ── Logs Page ────────────────────────────────────────────────── */
 .logs-page {
+  height: calc(100vh - var(--app-content-padding) - var(--app-content-padding));
   min-height: calc(100vh - var(--app-content-padding) - var(--app-content-padding));
+  overflow: hidden;
 }
 
 .logs-page .console-page-header {
@@ -2828,7 +2987,33 @@ body,
   }
 
   .logs-page {
+    height: auto;
     min-height: auto;
+    overflow: visible;
+  }
+
+  .console-page,
+  .skills-page,
+  .agents-page,
+  .agent-detail-page,
+  .channel-access-page,
+  .config-page {
+    height: auto;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .agents-page > .agent-card-grid,
+  .skills-page > .skills-card-grid,
+  .console-page > :last-child:not(.console-page-header),
+  .console-page > .data-table-shell,
+  .console-page > .ant-card:last-child,
+  .console-page > .ant-tabs:last-child,
+  .channel-access-page > .channel-access-shell,
+  .config-page > .config-shell,
+  .agents-page > .agent-empty-card,
+  .skills-page > .skills-empty-card {
+    overflow: visible;
   }
 
   .logs-console {

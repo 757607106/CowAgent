@@ -12,25 +12,21 @@ import {
   Empty,
   Input,
   Popconfirm,
-  Segmented,
   Select,
   Space,
   Statistic,
   Switch,
-  Table,
   Tag,
   Tooltip,
   Typography,
   message,
 } from 'antd';
-import type { ColumnsType } from 'antd/es/table';
 import { useEffect, useMemo, useState } from 'react';
 import { useRuntimeScope } from '../context/runtime';
 import { PageTitle } from '../components/PageTitle';
 import { api } from '../services/api';
 import type { SkillItem } from '../types';
 
-type SkillViewMode = 'cards' | 'table';
 type SkillStatusFilter = 'all' | 'enabled' | 'disabled';
 type SkillSourceFilter = 'all' | 'builtin' | 'custom';
 
@@ -66,7 +62,6 @@ export default function SkillsPage() {
   const [savingName, setSavingName] = useState('');
   const [deletingName, setDeletingName] = useState('');
   const [skills, setSkills] = useState<SkillItem[]>([]);
-  const [viewMode, setViewMode] = useState<SkillViewMode>('cards');
   const [statusFilter, setStatusFilter] = useState<SkillStatusFilter>('all');
   const [sourceFilter, setSourceFilter] = useState<SkillSourceFilter>('all');
   const [keyword, setKeyword] = useState('');
@@ -148,79 +143,6 @@ export default function SkillsPage() {
     void load();
   }, [scope.agentId, scope.bindingId]);
 
-  const columns: ColumnsType<SkillItem> = [
-    {
-      title: '技能',
-      key: 'skill',
-      width: 260,
-      render: (_, row) => (
-        <div className="skill-table-name">
-          <div className="skill-card-icon">
-            {isBuiltinSkill(row) ? <SafetyCertificateOutlined /> : <CodeOutlined />}
-          </div>
-          <div className="skill-table-title">
-            <Typography.Text strong>{displaySkillName(row)}</Typography.Text>
-            <Typography.Text type="secondary">{row.name}</Typography.Text>
-          </div>
-        </div>
-      ),
-    },
-    {
-      title: '来源',
-      key: 'source',
-      width: 130,
-      render: (_, row) => sourceTag(row),
-    },
-    {
-      title: '分类',
-      key: 'category',
-      width: 150,
-      render: (_, row) => <Tag>{skillCategory(row)}</Tag>,
-    },
-    {
-      title: '描述',
-      dataIndex: 'description',
-      ellipsis: true,
-      render: (value: string) => value || <Typography.Text type="secondary">未提供描述</Typography.Text>,
-    },
-    {
-      title: '状态',
-      width: 120,
-      render: (_, row) => (
-        <Badge status={enabledOf(row) ? 'success' : 'default'} text={enabledOf(row) ? '已启用' : '已停用'} />
-      ),
-    },
-    {
-      title: '操作',
-      width: 190,
-      fixed: 'right' as const,
-      render: (_, row) => (
-        <Space size={8}>
-          <Switch
-            checked={enabledOf(row)}
-            loading={savingName === row.name}
-            onChange={(checked) => void toggle(row, checked)}
-          />
-          <Tooltip title={isBuiltinSkill(row) ? '系统内置技能不可删除' : '删除技能'}>
-            <Popconfirm
-              title="确认删除该技能？"
-              onConfirm={() => void deleteSkill(row)}
-              disabled={isBuiltinSkill(row)}
-            >
-              <Button
-                danger
-                size="small"
-                icon={<DeleteOutlined />}
-                disabled={isBuiltinSkill(row)}
-                loading={deletingName === row.name}
-              />
-            </Popconfirm>
-          </Tooltip>
-        </Space>
-      ),
-    },
-  ];
-
   return (
     <div className="skills-page">
       <PageTitle
@@ -228,14 +150,6 @@ export default function SkillsPage() {
         description="管理当前员工可调用的技能能力，控制启用状态与本地技能边界。"
         extra={(
           <Space wrap>
-            <Segmented
-              value={viewMode}
-              onChange={(value) => setViewMode(value as SkillViewMode)}
-              options={[
-                { label: '卡片', value: 'cards' },
-                { label: '表格', value: 'table' },
-              ]}
-            />
             <Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>
           </Space>
         )}
@@ -292,17 +206,6 @@ export default function SkillsPage() {
             </Empty>
           ) : null}
         </Card>
-      ) : viewMode === 'table' ? (
-        <div className="skills-table-shell">
-          <Table<SkillItem>
-            rowKey={(row) => row.name}
-            loading={loading}
-            dataSource={filteredSkills}
-            pagination={{ pageSize: 10, showSizeChanger: false }}
-            columns={columns}
-            scroll={{ x: 980 }}
-          />
-        </div>
       ) : (
         <div className="skills-card-grid">
           {filteredSkills.map((skill) => {

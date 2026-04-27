@@ -18,6 +18,7 @@ from channel.web.handlers.dependencies import (
     _is_knowledge_enabled,
     _parse_bool,
     _require_auth,
+    _require_platform_admin,
     _require_tenant_manage,
     _resolve_runtime_target,
     _scope_tenant_id,
@@ -397,7 +398,7 @@ class HistoryHandler:
 
 class LogsHandler:
     def GET(self):
-        _require_auth()
+        _require_platform_admin()
         web.header('Content-Type', 'text/event-stream; charset=utf-8')
         web.header('Cache-Control', 'no-cache')
         web.header('X-Accel-Buffering', 'no')

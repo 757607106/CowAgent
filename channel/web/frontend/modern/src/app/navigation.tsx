@@ -29,13 +29,13 @@ export const tenantNavItems: ConsoleNavItem[] = [
   { key: '/channels', icon: <ClusterOutlined />, label: '渠道接入' },
   { key: '/usage', icon: <BarChartOutlined />, label: '用量分析' },
   { key: '/tasks', icon: <ScheduleOutlined />, label: '任务调度' },
-  { key: '/logs', icon: <FileTextOutlined />, label: '运行日志' },
   { key: '/tenant-users', icon: <TeamOutlined />, label: '租户成员' },
 ];
 
 export const platformNavItems: ConsoleNavItem[] = [
   { key: '/platform/models', icon: <SettingOutlined />, label: '平台模型' },
   { key: '/platform/tenants', icon: <ApartmentOutlined />, label: '租户管理' },
+  { key: '/platform/logs', icon: <FileTextOutlined />, label: '运行日志' },
 ];
 
 export function getFlatMenuItemsForRole(isPlatformAdmin: boolean): ConsoleNavItem[] {
@@ -55,7 +55,7 @@ export function getMenuItemsForRole(isPlatformAdmin: boolean): MenuProps['items'
     return [
       {
         type: 'group',
-        label: '平台治理',
+        label: '平台管理',
         children: toMenuItems(platformNavItems),
       },
     ];
@@ -85,7 +85,7 @@ export function getMenuItemsForRole(isPlatformAdmin: boolean): MenuProps['items'
     {
       type: 'group',
       label: '运营观测',
-      children: toMenuItems(tenantNavItems.filter((item) => ['/usage', '/tasks', '/logs'].includes(item.key))),
+      children: toMenuItems(tenantNavItems.filter((item) => ['/usage', '/tasks'].includes(item.key))),
     },
     {
       type: 'group',
