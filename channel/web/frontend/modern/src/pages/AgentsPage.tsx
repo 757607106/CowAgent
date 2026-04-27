@@ -266,7 +266,7 @@ interface AgentAvatarTriggerProps {
 function AgentAvatarTrigger({ value, onChange, name = 'AI 员工', size = 'normal' }: AgentAvatarTriggerProps) {
   const [open, setOpen] = useState(false);
   const selectedAvatar = avatarOptionByKey(value);
-  const avatarSize = size === 'large' ? 72 : 64;
+  const avatarSize = 64;
 
   const content = (
     <div className="agent-avatar-popover">

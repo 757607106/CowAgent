@@ -480,7 +480,7 @@ export function KnowledgePanel({
             key: 'docs',
             label: '文档',
             children: (
-              <Space className="knowledge-doc-layout" align="start" size={12}>
+              <div className="knowledge-doc-layout">
                 <Card className="knowledge-tree-card">
                   <Space vertical className="full-width-stack" size={10}>
                     <Typography.Text type="secondary">
@@ -525,7 +525,7 @@ export function KnowledgePanel({
                     <Typography.Text type="secondary">请选择左侧文档查看内容。</Typography.Text>
                   )}
                 </Card>
-              </Space>
+              </div>
             ),
           },
           {

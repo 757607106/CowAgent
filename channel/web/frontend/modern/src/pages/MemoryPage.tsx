@@ -131,7 +131,7 @@ export function MemoryPanel({
         )}
       />
 
-      <Space className="memory-panel-layout" align="start" size={12}>
+      <div className="memory-panel-layout">
         <Card title="文件列表" className="memory-file-list-card memory-file-table-card">
           <Table<MemoryFileItem>
             rowKey={(row) => row.filename}
@@ -170,7 +170,7 @@ export function MemoryPanel({
             <Typography.Text type="secondary">请选择左侧文件查看内容。</Typography.Text>
           )}
         </Card>
-      </Space>
+      </div>
     </Card>
   );
 }
