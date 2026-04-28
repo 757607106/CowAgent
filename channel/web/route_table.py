@@ -46,6 +46,7 @@ def build_web_routes() -> tuple[str, ...]:
         "/api/platform/agents/(.*)", "PlatformAgentDetailHandler",
         "/api/platform/bindings", "PlatformBindingsHandler",
         "/api/platform/bindings/(.*)", "PlatformBindingDetailHandler",
+        "/api/platform/usage/analytics", "PlatformUsageAnalyticsHandler",
         "/api/platform/usage", "PlatformUsageHandler",
         "/api/platform/costs", "PlatformCostsHandler",
         "/api/agents", "AgentsHandler",

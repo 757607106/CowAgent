@@ -879,12 +879,16 @@ class PlatformUsageHandler:
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(tenant_id='', agent_id='', day='', request_id='', limit='100')
+            params = web.input(tenant_id='', agent_id='', bucket='', day='', start='', end='', model='', request_id='', limit='100')
             tenant_id = _scope_optional_tenant_id(params.tenant_id)
             usage = _get_usage_service().list_usage_records(
                 tenant_id=tenant_id,
                 agent_id=(params.agent_id or "").strip(),
+                bucket=(params.bucket or "").strip(),
                 day=(params.day or "").strip(),
+                start=(params.start or "").strip(),
+                end=(params.end or "").strip(),
+                model=(params.model or "").strip(),
                 request_id=(params.request_id or "").strip(),
                 limit=int(params.limit or 100),
             )
@@ -893,17 +897,41 @@ class PlatformUsageHandler:
             logger.error(f"[WebChannel] PlatformUsage GET error: {e}")
             return json.dumps({"status": "error", "message": str(e)})
 
+class PlatformUsageAnalyticsHandler:
+    def GET(self):
+        _require_auth()
+        web.header('Content-Type', 'application/json; charset=utf-8')
+        try:
+            params = web.input(tenant_id='', agent_id='', bucket='day', start='', end='', model='', limit='10')
+            tenant_id = _scope_optional_tenant_id(params.tenant_id)
+            analytics = _get_usage_service().get_usage_analytics(
+                tenant_id=tenant_id,
+                agent_id=(params.agent_id or "").strip(),
+                bucket=(params.bucket or "day").strip(),
+                start=(params.start or "").strip(),
+                end=(params.end or "").strip(),
+                model=(params.model or "").strip(),
+                limit=int(params.limit or 10),
+            )
+            return json.dumps({"status": "success", "analytics": analytics}, ensure_ascii=False)
+        except Exception as e:
+            logger.error(f"[WebChannel] PlatformUsageAnalytics GET error: {e}")
+            return json.dumps({"status": "error", "message": str(e)})
+
 class PlatformCostsHandler:
     def GET(self):
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            params = web.input(tenant_id='', agent_id='', day='')
+            params = web.input(tenant_id='', agent_id='', day='', start='', end='', model='')
             tenant_id = _scope_optional_tenant_id(params.tenant_id)
             summary = _get_usage_service().summarize_usage(
                 tenant_id=tenant_id,
                 agent_id=(params.agent_id or "").strip(),
                 day=(params.day or "").strip(),
+                start=(params.start or "").strip(),
+                end=(params.end or "").strip(),
+                model=(params.model or "").strip(),
             )
             return json.dumps({"status": "success", "summary": summary}, ensure_ascii=False)
         except Exception as e:
@@ -911,4 +939,4 @@ class PlatformCostsHandler:
             return json.dumps({"status": "error", "message": str(e)})
 
 
-__all__ = ["AgentsHandler", "PlatformTenantUserMetaHandler", "PlatformAdminTenantsHandler", "PlatformAdminTenantDetailHandler", "PlatformAdminModelsHandler", "PlatformAdminModelDetailHandler", "PlatformAvailableModelsHandler", "PlatformTenantModelsHandler", "PlatformTenantModelDetailHandler", "PlatformTenantsHandler", "PlatformTenantDetailHandler", "PlatformTenantUsersHandler", "PlatformTenantUserDetailHandler", "PlatformTenantUserIdentitiesHandler", "PlatformTenantUserIdentityDetailHandler", "PlatformChannelConfigsHandler", "PlatformChannelConfigDetailHandler", "PlatformAgentsHandler", "PlatformAgentDetailHandler", "BindingsHandler", "PlatformBindingsHandler", "PlatformBindingDetailHandler", "PlatformUsageHandler", "PlatformCostsHandler"]
+__all__ = ["AgentsHandler", "PlatformTenantUserMetaHandler", "PlatformAdminTenantsHandler", "PlatformAdminTenantDetailHandler", "PlatformAdminModelsHandler", "PlatformAdminModelDetailHandler", "PlatformAvailableModelsHandler", "PlatformTenantModelsHandler", "PlatformTenantModelDetailHandler", "PlatformTenantsHandler", "PlatformTenantDetailHandler", "PlatformTenantUsersHandler", "PlatformTenantUserDetailHandler", "PlatformTenantUserIdentitiesHandler", "PlatformTenantUserIdentityDetailHandler", "PlatformChannelConfigsHandler", "PlatformChannelConfigDetailHandler", "PlatformAgentsHandler", "PlatformAgentDetailHandler", "BindingsHandler", "PlatformBindingsHandler", "PlatformBindingDetailHandler", "PlatformUsageHandler", "PlatformUsageAnalyticsHandler", "PlatformCostsHandler"]

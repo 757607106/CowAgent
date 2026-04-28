@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 from typing import Any
 
@@ -91,16 +91,29 @@ class UsageService:
         *,
         tenant_id: str = "",
         agent_id: str = "",
+        bucket: str = "",
         day: str = "",
+        start: str = "",
+        end: str = "",
+        model: str = "",
         request_id: str = "",
         limit: int = 100,
     ) -> list[dict[str, Any]]:
+        start_at, end_at = self.resolve_time_range(
+            bucket=self.normalize_bucket(bucket),
+            start=start,
+            end=end,
+            with_default=bool(bucket),
+        )
         return [
             self.serialize_usage(item)
             for item in self.repository.list_records(
                 tenant_id=tenant_id,
                 agent_id=agent_id,
                 day=day,
+                start=start_at,
+                end=end_at,
+                model=model,
                 request_id=request_id,
                 limit=limit,
             )
@@ -112,12 +125,129 @@ class UsageService:
         tenant_id: str = "",
         agent_id: str = "",
         day: str = "",
+        start: str = "",
+        end: str = "",
+        model: str = "",
     ) -> dict[str, Any]:
-        summary = self.repository.summarize(tenant_id=tenant_id, agent_id=agent_id, day=day)
+        start_at, end_at = self.resolve_time_range(bucket="day", start=start, end=end, with_default=False)
+        summary = self.repository.summarize(
+            tenant_id=tenant_id,
+            agent_id=agent_id,
+            day=day,
+            start=start_at,
+            end=end_at,
+            model=model,
+        )
         summary["tenant_id"] = tenant_id
         summary["agent_id"] = agent_id
         summary["day"] = day
+        summary["start"] = start_at
+        summary["end"] = end_at
+        summary["model"] = model
         return summary
+
+    def get_usage_analytics(
+        self,
+        *,
+        tenant_id: str = "",
+        agent_id: str = "",
+        bucket: str = "day",
+        start: str = "",
+        end: str = "",
+        model: str = "",
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        resolved_bucket = self.normalize_bucket(bucket)
+        start_at, end_at = self.resolve_time_range(bucket=resolved_bucket, start=start, end=end)
+        analytics = self.repository.analytics(
+            tenant_id=tenant_id,
+            agent_id=agent_id,
+            bucket=resolved_bucket,
+            start=start_at,
+            end=end_at,
+            model=model,
+            limit=limit,
+        )
+        analytics["tenant_id"] = tenant_id
+        analytics["agent_id"] = agent_id
+        analytics["bucket"] = resolved_bucket
+        analytics["start"] = start_at
+        analytics["end"] = end_at
+        analytics["model"] = model
+        return analytics
 
     def serialize_usage(self, definition: UsageRecord) -> dict[str, Any]:
         return self.repository.export_record(definition)
+
+    @staticmethod
+    def normalize_bucket(bucket: str) -> str:
+        normalized = (bucket or "day").strip().lower()
+        return normalized if normalized in {"hour", "day", "week", "month", "year"} else "day"
+
+    @classmethod
+    def resolve_time_range(
+        cls,
+        *,
+        bucket: str,
+        start: str = "",
+        end: str = "",
+        with_default: bool = True,
+    ) -> tuple[str, str]:
+        start_at = cls.normalize_time_boundary(start, is_end=False)
+        end_at = cls.normalize_time_boundary(end, is_end=True)
+        if start_at or end_at or not with_default:
+            return start_at, end_at
+
+        now = datetime.now().replace(microsecond=0)
+        normalized_bucket = cls.normalize_bucket(bucket)
+        if normalized_bucket == "hour":
+            start_dt = now - timedelta(hours=24)
+        elif normalized_bucket == "day":
+            start_dt = now - timedelta(days=29)
+        elif normalized_bucket == "week":
+            start_dt = now - timedelta(weeks=12)
+        elif normalized_bucket == "month":
+            start_dt = cls._add_months(now.replace(day=1, hour=0, minute=0, second=0), -11)
+        else:
+            start_dt = now.replace(month=1, day=1, hour=0, minute=0, second=0)
+            start_dt = start_dt.replace(year=start_dt.year - 4)
+        return start_dt.isoformat(timespec="seconds"), (now + timedelta(seconds=1)).isoformat(timespec="seconds")
+
+    @staticmethod
+    def normalize_time_boundary(value: str, *, is_end: bool) -> str:
+        text = str(value or "").strip()
+        if not text:
+            return ""
+        normalized = text.replace(" ", "T")
+        try:
+            if len(normalized) == 4:
+                dt = datetime.fromisoformat(f"{normalized}-01-01T00:00:00")
+                if is_end:
+                    dt = dt.replace(year=dt.year + 1)
+                return dt.isoformat(timespec="seconds")
+            if len(normalized) == 7:
+                dt = datetime.fromisoformat(f"{normalized}-01T00:00:00")
+                if is_end:
+                    dt = UsageService._add_months(dt, 1)
+                return dt.isoformat(timespec="seconds")
+            if len(normalized) == 10:
+                dt = datetime.fromisoformat(f"{normalized}T00:00:00")
+                if is_end:
+                    dt += timedelta(days=1)
+                return dt.isoformat(timespec="seconds")
+            if len(normalized) == 13:
+                dt = datetime.fromisoformat(f"{normalized}:00:00")
+                if is_end:
+                    dt += timedelta(hours=1)
+                return dt.isoformat(timespec="seconds")
+            dt = datetime.fromisoformat(normalized)
+            return dt.isoformat(timespec="seconds")
+        except ValueError:
+            return ""
+
+    @staticmethod
+    def _add_months(value: datetime, months: int) -> datetime:
+        month_index = value.month - 1 + months
+        year = value.year + month_index // 12
+        month = month_index % 12 + 1
+        return value.replace(year=year, month=month)

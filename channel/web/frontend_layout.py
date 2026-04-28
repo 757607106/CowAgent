@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import mimetypes
+import re
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlsplit
 
 FRONTEND_MODE_MODERN = "modern"
 
@@ -53,7 +55,29 @@ def render_chat_html(
             "Modern frontend dist not found. Expected file: "
             f"{index_file}"
         )
-    return index_file.read_text(encoding="utf-8")
+    html = index_file.read_text(encoding="utf-8")
+    if not cache_bust:
+        return html
+    return _append_asset_versions(layout, html)
+
+
+def _append_asset_versions(layout: FrontendLayout, html: str) -> str:
+    def replace(match: re.Match[str]) -> str:
+        attr = match.group("attr")
+        quote = match.group("quote")
+        url = match.group("url")
+        parsed = urlsplit(url)
+        asset = resolve_asset_file(layout, FRONTEND_MODE_MODERN, parsed.path)
+        if asset is None:
+            return match.group(0)
+        separator = "&" if parsed.query else "?"
+        return f"{attr}{quote}{url}{separator}v={asset.stat().st_mtime_ns}{quote}"
+
+    return re.sub(
+        r"(?P<attr>\b(?:src|href)=)(?P<quote>[\"'])(?P<url>/assets/[^\"']+)(?P=quote)",
+        replace,
+        html,
+    )
 
 
 def _safe_resolve(root: Path, relative_path: str) -> Path | None:
@@ -71,7 +95,7 @@ def resolve_asset_file(
     requested_mode: str | None,
     file_path: str,
 ) -> Path | None:
-    normalized = str(file_path or "").lstrip("/").strip()
+    normalized = urlsplit(str(file_path or "").strip()).path.lstrip("/").strip()
     if not normalized:
         return None
 

@@ -330,10 +330,17 @@ class AgentBridge:
         runtime_context = resolved_runtime.runtime_context
         provider_usage = self._normalize_provider_usage(getattr(agent, "last_usage", None) if agent else None)
         usage_metrics = event_handler.get_usage_metrics() if event_handler else {}
+        skill_names = {
+            str(name): 1
+            for name in getattr(resolved_runtime.agent_definition, "skills", ())
+            if str(name or "").strip()
+        }
         metadata = {
             "status": status,
             "tool_names": usage_metrics.get("tool_names", {}),
         }
+        if skill_names:
+            metadata["skill_names"] = skill_names
         if provider_usage:
             metadata["provider_usage"] = provider_usage
         self.usage_service.record_chat_usage(

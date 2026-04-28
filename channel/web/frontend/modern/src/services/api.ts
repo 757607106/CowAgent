@@ -16,6 +16,8 @@ import type {
   UploadedFileResponse,
   UsageRecordItem,
   UsageSummary,
+  UsageAnalytics,
+  UsageBucket,
   WeixinQrInfo,
   AuthUser,
   ModelConfigItem,
@@ -83,11 +85,14 @@ export const api = {
     body: JSON.stringify(payload),
   }),
   deleteBinding: (tenantId: string, bindingId: string) => requestJson(`/api/platform/bindings/${encodeURIComponent(bindingId)}${buildQuery({ tenant_id: tenantId })}`, { method: 'DELETE' }),
-  listUsage: (tenantId = '', agentId = '', day = '', limit = 100) => requestJson<{ status: string; usage: UsageRecordItem[] }>(
-    `/api/platform/usage${buildQuery({ tenant_id: tenantId, agent_id: agentId, day, limit })}`,
+  listUsage: (tenantId = '', agentId = '', day = '', limit = 100, start = '', end = '', model = '', bucket: UsageBucket | '' = '') => requestJson<{ status: string; usage: UsageRecordItem[] }>(
+    `/api/platform/usage${buildQuery({ tenant_id: tenantId, agent_id: agentId, bucket, day, start, end, model, limit })}`,
   ),
-  getCostSummary: (tenantId = '', agentId = '', day = '') => requestJson<{ status: string; summary: UsageSummary }>(
-    `/api/platform/costs${buildQuery({ tenant_id: tenantId, agent_id: agentId, day })}`,
+  getCostSummary: (tenantId = '', agentId = '', day = '', start = '', end = '', model = '') => requestJson<{ status: string; summary: UsageSummary }>(
+    `/api/platform/costs${buildQuery({ tenant_id: tenantId, agent_id: agentId, day, start, end, model })}`,
+  ),
+  getUsageAnalytics: (tenantId = '', agentId = '', bucket: UsageBucket = 'day', start = '', end = '', model = '', limit = 10) => requestJson<{ status: string; analytics: UsageAnalytics }>(
+    `/api/platform/usage/analytics${buildQuery({ tenant_id: tenantId, agent_id: agentId, bucket, start, end, model, limit })}`,
   ),
 
   listTenants: () => requestJson<{ status: string; tenants: TenantItem[] }>('/api/platform/tenants'),

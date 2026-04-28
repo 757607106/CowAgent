@@ -74,6 +74,50 @@ def test_usage_cost_and_quota_services_work_together(tmp_path, monkeypatch) -> N
     assert summary["tool_execution_time_ms"] == 1250
 
 
+def test_usage_analytics_groups_tokens_models_tools_and_skills(tmp_path, monkeypatch) -> None:
+    monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
+
+    pricing_service = PricingService(repository=InMemoryPricingRepository())
+    usage_service = UsageService(repository=InMemoryUsageRepository(), pricing_service=pricing_service)
+    pricing_service.upsert_pricing(model="qwen-plus", input_price_per_million=2.0, output_price_per_million=8.0)
+
+    usage_service.record_chat_usage(
+        request_id="req-analytics-1",
+        tenant_id="acme",
+        agent_id="writer",
+        model="qwen-plus",
+        prompt_tokens=100,
+        completion_tokens=50,
+        created_at="2026-04-23T10:00:00",
+        metadata={"tool_names": {"read": 1, "mcp_docs_search": 1}, "skill_names": {"xlsx": 1}},
+    )
+    usage_service.record_chat_usage(
+        request_id="req-analytics-2",
+        tenant_id="acme",
+        agent_id="reviewer",
+        model="qwen-max",
+        prompt_tokens=80,
+        completion_tokens=20,
+        created_at="2026-04-24T11:00:00",
+        metadata={"tool_names": {"read": 2}, "skill_names": {"github": 1}},
+    )
+
+    analytics = usage_service.get_usage_analytics(
+        tenant_id="acme",
+        bucket="day",
+        start="2026-04-23",
+        end="2026-04-24",
+    )
+
+    assert analytics["summary"]["total_tokens"] == 250
+    assert [item["key"] for item in analytics["time_series"]] == ["2026-04-23", "2026-04-24"]
+    assert analytics["agents"][0]["key"] == "writer"
+    assert analytics["models"][0]["key"] == "qwen-plus"
+    assert analytics["tools"][0] == {"key": "read", "count": 3}
+    assert analytics["mcp_tools"] == [{"key": "mcp_docs_search", "count": 1}]
+    assert analytics["skills"][0] == {"key": "github", "count": 1}
+
+
 def test_tenant_token_quota_uses_daily_summary(tmp_path, monkeypatch) -> None:
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
 

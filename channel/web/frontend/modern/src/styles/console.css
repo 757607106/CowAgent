@@ -159,8 +159,20 @@
   width: 15rem;
 }
 
+.usage-model-filter {
+  width: 12rem;
+}
+
+.usage-bucket-filter {
+  min-width: 13.5rem;
+}
+
 .usage-day-filter {
   width: 10rem;
+}
+
+.usage-range-filter {
+  width: 17rem;
 }
 
 .usage-agent-name {
@@ -174,6 +186,44 @@
 
 .usage-table-shell .ant-table-body {
   scrollbar-gutter: stable;
+}
+
+.usage-chart-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--spacing-xs);
+  min-width: 0;
+}
+
+.usage-chart-wide {
+  grid-column: span 2;
+}
+
+.echart-card {
+  min-width: 0;
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-card);
+}
+
+.echart-card .ant-card-head {
+  min-height: 2.75rem;
+  padding: 0 var(--space-4);
+  border-bottom-color: var(--border-light);
+}
+
+.echart-card .ant-card-head-title {
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--font-weight-semibold);
+}
+
+.echart-card .ant-card-body {
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.echart-card-canvas {
+  width: 100%;
+  min-width: 0;
 }
 
 .tenant-filter {
@@ -243,9 +293,36 @@
   gap: var(--spacing-xs);
 }
 
+.usage-summary-grid {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+
+.usage-summary-grid .operations-summary-card .ant-card-body {
+  min-height: 5.75rem;
+  padding: var(--space-3) var(--space-4);
+}
+
 @media (max-width: 1366px) {
   .operations-summary-grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container console-page (min-width: 64rem) {
+  .usage-summary-grid {
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+
+@container console-page (max-width: 63.9375rem) {
+  .usage-summary-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@container console-page (max-width: 40rem) {
+  .usage-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -291,6 +368,21 @@
 
   .operations-summary-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usage-chart-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .usage-chart-wide {
+    grid-column: span 1;
+  }
+
+  .usage-agent-filter,
+  .usage-model-filter,
+  .usage-range-filter,
+  .usage-bucket-filter {
+    width: 100%;
   }
 
   .mcp-env-row {

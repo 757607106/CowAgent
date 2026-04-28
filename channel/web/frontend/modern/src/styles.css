@@ -1464,11 +1464,15 @@ body,
 .console-page > .ant-tabs:last-child,
 .console-page > .ant-tabs:last-child .ant-tabs-content-holder,
 .console-page > .ant-tabs:last-child .ant-tabs-content,
-.console-page > .ant-tabs:last-child .ant-tabs-tabpane {
+.console-page > .ant-tabs:last-child .ant-tabs-tabpane-active {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
+}
+
+.console-page > .ant-tabs:last-child .ant-tabs-tabpane:not(.ant-tabs-tabpane-active) {
+  display: none;
 }
 
 .console-page > .ant-tabs:last-child .data-table-shell {

@@ -73,12 +73,23 @@ def test_platform_usage_quota_and_cost_api_supports_phase3_resources(tmp_path, m
         prompt_tokens=1000,
         completion_tokens=500,
         created_at="2026-04-23T12:00:00",
-        metadata={"status": "success"},
+        metadata={"status": "success", "tool_names": {"read": 2, "mcp_docs_search": 1}, "skill_names": {"xlsx": 1}},
     )
 
     list_pricing = client.get("/api/platform/pricing", headers=headers)
     list_quotas = client.get("/api/platform/quotas", headers=headers, params={"tenant_id": tenant_id, "agent_id": "writer"})
     list_usage = client.get("/api/platform/usage", headers=headers, params={"tenant_id": tenant_id, "agent_id": "writer"})
+    analytics = client.get(
+        "/api/platform/usage/analytics",
+        headers=headers,
+        params={
+            "tenant_id": tenant_id,
+            "agent_id": "writer",
+            "bucket": "day",
+            "start": "2026-04-23",
+            "end": "2026-04-23",
+        },
+    )
     cost_summary = client.get("/api/platform/costs", headers=headers, params={"tenant_id": tenant_id, "agent_id": "writer"})
 
     assert pricing_resp.status_code == 200
@@ -95,6 +106,15 @@ def test_platform_usage_quota_and_cost_api_supports_phase3_resources(tmp_path, m
 
     assert list_usage.status_code == 200
     assert list_usage.json()["usage"][0]["request_id"] == "req-api-1"
+
+    assert analytics.status_code == 200
+    analytics_payload = analytics.json()["analytics"]
+    assert analytics_payload["summary"]["total_tokens"] == 1500
+    assert analytics_payload["time_series"][0]["key"] == "2026-04-23"
+    assert analytics_payload["models"][0]["key"] == "qwen-plus"
+    assert analytics_payload["tools"][0] == {"key": "read", "count": 2}
+    assert analytics_payload["mcp_tools"][0] == {"key": "mcp_docs_search", "count": 1}
+    assert analytics_payload["skills"][0] == {"key": "xlsx", "count": 1}
 
     assert cost_summary.status_code == 200
     assert cost_summary.json()["summary"]["request_count"] == 1

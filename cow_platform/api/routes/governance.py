@@ -95,7 +95,11 @@ def register_governance_routes(
         request: Request,
         tenant_id: str = "",
         agent_id: str = "",
+        bucket: str = "",
         day: str = "",
+        start: str = "",
+        end: str = "",
+        model: str = "",
         request_id: str = "",
         limit: int = 100,
     ) -> dict[str, object]:
@@ -106,14 +110,52 @@ def register_governance_routes(
             "usage": usage_service.list_usage_records(
                 tenant_id=tenant_id,
                 agent_id=agent_id,
+                bucket=bucket,
                 day=day,
+                start=start,
+                end=end,
+                model=model,
                 request_id=request_id,
                 limit=limit,
             ),
         }
 
+    @app.get("/api/platform/usage/analytics")
+    def get_usage_analytics(
+        request: Request,
+        tenant_id: str = "",
+        agent_id: str = "",
+        bucket: str = "day",
+        start: str = "",
+        end: str = "",
+        model: str = "",
+        limit: int = 10,
+    ) -> dict[str, object]:
+        session = authorizer.require_session(request)
+        tenant_id = authorizer.scope_tenant_id(session, tenant_id)
+        return {
+            "status": "success",
+            "analytics": usage_service.get_usage_analytics(
+                tenant_id=tenant_id,
+                agent_id=agent_id,
+                bucket=bucket,
+                start=start,
+                end=end,
+                model=model,
+                limit=limit,
+            ),
+        }
+
     @app.get("/api/platform/costs")
-    def get_cost_summary(request: Request, tenant_id: str = "", agent_id: str = "", day: str = "") -> dict[str, object]:
+    def get_cost_summary(
+        request: Request,
+        tenant_id: str = "",
+        agent_id: str = "",
+        day: str = "",
+        start: str = "",
+        end: str = "",
+        model: str = "",
+    ) -> dict[str, object]:
         session = authorizer.require_session(request)
         tenant_id = authorizer.scope_tenant_id(session, tenant_id)
         return {
@@ -122,6 +164,9 @@ def register_governance_routes(
                 tenant_id=tenant_id,
                 agent_id=agent_id,
                 day=day,
+                start=start,
+                end=end,
+                model=model,
             ),
         }
 

@@ -41,6 +41,39 @@ def test_render_chat_html_reads_modern_dist_index(tmp_path: Path) -> None:
     assert html == "<html>modern</html>"
 
 
+def test_render_chat_html_adds_asset_versions(tmp_path: Path) -> None:
+    layout = _build_layout(tmp_path)
+    assets = layout.modern_dist / "assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    (assets / "main.js").write_text("console.log('modern')", encoding="utf-8")
+    (assets / "main.css").write_text("body{}", encoding="utf-8")
+    (layout.modern_dist / "index.html").write_text(
+        '<script type="module" src="/assets/main.js"></script>'
+        '<link rel="stylesheet" href="/assets/main.css">',
+        encoding="utf-8",
+    )
+
+    html = render_chat_html(layout, FRONTEND_MODE_MODERN)
+
+    assert '/assets/main.js?v=' in html
+    assert '/assets/main.css?v=' in html
+
+
+def test_render_chat_html_can_skip_asset_versions(tmp_path: Path) -> None:
+    layout = _build_layout(tmp_path)
+    assets = layout.modern_dist / "assets"
+    assets.mkdir(parents=True, exist_ok=True)
+    (assets / "main.js").write_text("console.log('modern')", encoding="utf-8")
+    (layout.modern_dist / "index.html").write_text(
+        '<script type="module" src="/assets/main.js"></script>',
+        encoding="utf-8",
+    )
+
+    html = render_chat_html(layout, FRONTEND_MODE_MODERN, cache_bust=False)
+
+    assert html == '<script type="module" src="/assets/main.js"></script>'
+
+
 def test_render_chat_html_raises_when_dist_missing(tmp_path: Path) -> None:
     layout = _build_layout(tmp_path)
     with pytest.raises(FileNotFoundError):
@@ -75,3 +108,13 @@ def test_modern_asset_resolution_supports_assets_route_filename(tmp_path: Path) 
 
     # /assets/(.*) route passes "index-abc123.js" (without "assets/" prefix)
     assert resolve_asset_file(layout, FRONTEND_MODE_MODERN, "index-abc123.js") == asset
+
+
+def test_modern_asset_resolution_ignores_query_string(tmp_path: Path) -> None:
+    layout = _build_layout(tmp_path)
+    layout.modern_dist.mkdir(parents=True, exist_ok=True)
+    asset = layout.modern_dist / "assets" / "index-abc123.js"
+    asset.parent.mkdir(parents=True, exist_ok=True)
+    asset.write_text("console.log('modern')", encoding="utf-8")
+
+    assert resolve_asset_file(layout, FRONTEND_MODE_MODERN, "index-abc123.js?v=1") == asset

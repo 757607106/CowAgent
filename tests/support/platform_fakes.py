@@ -583,6 +583,9 @@ class InMemoryUsageRepository:
         tenant_id: str = "",
         agent_id: str = "",
         day: str = "",
+        start: str = "",
+        end: str = "",
+        model: str = "",
         request_id: str = "",
         limit: int = 100,
     ) -> list[UsageRecord]:
@@ -593,12 +596,68 @@ class InMemoryUsageRepository:
             records = [record for record in records if record.agent_id == agent_id]
         if day:
             records = [record for record in records if record.created_at.startswith(day)]
+        if start:
+            records = [record for record in records if record.created_at >= start]
+        if end:
+            records = [record for record in records if record.created_at < end]
+        if model:
+            records = [record for record in records if record.model == model]
         if request_id:
             records = [record for record in records if record.request_id == request_id]
         return sorted(records, key=lambda item: item.created_at, reverse=True)[: max(1, int(limit))]
 
-    def summarize(self, *, tenant_id: str = "", agent_id: str = "", day: str = "") -> dict[str, Any]:
-        records = self.list_records(tenant_id=tenant_id, agent_id=agent_id, day=day, limit=10_000)
+    def summarize(
+        self,
+        *,
+        tenant_id: str = "",
+        agent_id: str = "",
+        day: str = "",
+        start: str = "",
+        end: str = "",
+        model: str = "",
+    ) -> dict[str, Any]:
+        records = self.list_records(
+            tenant_id=tenant_id,
+            agent_id=agent_id,
+            day=day,
+            start=start,
+            end=end,
+            model=model,
+            limit=10_000,
+        )
+        return self._summarize_records(records)
+
+    def analytics(
+        self,
+        *,
+        tenant_id: str = "",
+        agent_id: str = "",
+        bucket: str = "day",
+        start: str = "",
+        end: str = "",
+        model: str = "",
+        limit: int = 10,
+    ) -> dict[str, Any]:
+        records = self.list_records(
+            tenant_id=tenant_id,
+            agent_id=agent_id,
+            start=start,
+            end=end,
+            model=model,
+            limit=10_000,
+        )
+        return {
+            "summary": self._summarize_records(records),
+            "time_series": self._group_records(records, self._bucket_key(bucket)),
+            "agents": self._group_records(records, lambda record: record.agent_id, limit=limit),
+            "models": self._group_records(records, lambda record: record.model or "unknown", limit=limit),
+            "tools": self._metadata_counts(records, "tool_names", limit=limit),
+            "mcp_tools": self._metadata_counts(records, "tool_names", prefix="mcp_", limit=limit),
+            "skills": self._metadata_counts(records, "skill_names", limit=limit),
+        }
+
+    @staticmethod
+    def _summarize_records(records: list[UsageRecord]) -> dict[str, Any]:
         return {
             "request_count": sum(record.request_count for record in records),
             "prompt_tokens": sum(record.prompt_tokens for record in records),
@@ -616,6 +675,61 @@ class InMemoryUsageRepository:
             "tool_execution_time_ms": sum(record.tool_execution_time_ms for record in records),
             "estimated_cost": round(sum(record.estimated_cost for record in records), 6),
         }
+
+    @classmethod
+    def _group_records(
+        cls,
+        records: list[UsageRecord],
+        key_func,
+        *,
+        limit: int | None = None,
+    ) -> list[dict[str, Any]]:
+        groups: dict[str, list[UsageRecord]] = {}
+        for record in records:
+            key = str(key_func(record) or "unknown")
+            groups.setdefault(key, []).append(record)
+        items = []
+        for key, grouped_records in groups.items():
+            item = cls._summarize_records(grouped_records)
+            item["key"] = key
+            items.append(item)
+        items.sort(key=lambda item: (-int(item["total_tokens"]), -int(item["request_count"]), str(item["key"])))
+        if limit is None:
+            return sorted(items, key=lambda item: str(item["key"]))
+        return items[: max(1, int(limit))]
+
+    @staticmethod
+    def _metadata_counts(
+        records: list[UsageRecord],
+        metadata_key: str,
+        *,
+        prefix: str = "",
+        limit: int = 10,
+    ) -> list[dict[str, Any]]:
+        counts: dict[str, int] = {}
+        for record in records:
+            values = dict((record.metadata or {}).get(metadata_key, {}) or {})
+            for key, value in values.items():
+                name = str(key or "").strip()
+                if not name or (prefix and not name.startswith(prefix)):
+                    continue
+                counts[name] = counts.get(name, 0) + int(value or 0)
+        items = [{"key": key, "count": count} for key, count in counts.items()]
+        items.sort(key=lambda item: (-item["count"], item["key"]))
+        return items[: max(1, int(limit))]
+
+    @staticmethod
+    def _bucket_key(bucket: str):
+        normalized = bucket if bucket in {"hour", "day", "week", "month", "year"} else "day"
+        if normalized == "hour":
+            return lambda record: record.created_at[:13]
+        if normalized == "day":
+            return lambda record: record.created_at[:10]
+        if normalized == "month":
+            return lambda record: record.created_at[:7]
+        if normalized == "year":
+            return lambda record: record.created_at[:4]
+        return lambda record: record.created_at[:10]
 
     @staticmethod
     def export_record(definition: UsageRecord) -> dict[str, Any]:

@@ -258,6 +258,9 @@ export interface UsageSummary {
   tenant_id?: string;
   agent_id?: string;
   day?: string;
+  start?: string;
+  end?: string;
+  model?: string;
   request_count: number;
   prompt_tokens: number;
   completion_tokens: number;
@@ -269,4 +272,31 @@ export interface UsageSummary {
   tool_error_count: number;
   tool_execution_time_ms: number;
   estimated_cost: number;
+}
+
+export type UsageBucket = 'hour' | 'day' | 'week' | 'month' | 'year';
+
+export interface UsageDimensionSummary extends UsageSummary {
+  key: string;
+}
+
+export interface UsageCountItem {
+  key: string;
+  count: number;
+}
+
+export interface UsageAnalytics {
+  tenant_id?: string;
+  agent_id?: string;
+  bucket: UsageBucket;
+  start: string;
+  end: string;
+  model?: string;
+  summary: UsageSummary;
+  time_series: UsageDimensionSummary[];
+  agents: UsageDimensionSummary[];
+  models: UsageDimensionSummary[];
+  tools: UsageCountItem[];
+  mcp_tools: UsageCountItem[];
+  skills: UsageCountItem[];
 }

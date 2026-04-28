@@ -1002,7 +1002,7 @@ class WebChannel(ChatChannel):
 
     def chat_page(self):
         """Serve the chat HTML page."""
-        return render_chat_html(_FRONTEND_LAYOUT, _frontend_mode(), cache_bust=False)
+        return render_chat_html(_FRONTEND_LAYOUT, _frontend_mode(), cache_bust=True)
 
     def startup(self):
         port = conf().get("web_port", 9899)
@@ -1134,6 +1134,7 @@ from channel.web.handlers.platform import (
     PlatformTenantUserMetaHandler,
     PlatformTenantUsersHandler,
     PlatformTenantsHandler,
+    PlatformUsageAnalyticsHandler,
     PlatformUsageHandler,
 )
 from channel.web.handlers.workspace import (

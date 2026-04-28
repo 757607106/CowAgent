@@ -245,6 +245,8 @@ _SCHEMA = [
     )
     """,
     "CREATE INDEX IF NOT EXISTS idx_platform_usage_scope ON platform_usage_records (tenant_id, agent_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_platform_usage_tenant_time ON platform_usage_records (tenant_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_platform_usage_model_time ON platform_usage_records (tenant_id, model, created_at)",
     """
     CREATE TABLE IF NOT EXISTS platform_jobs (
         job_id TEXT PRIMARY KEY,

@@ -1,6 +1,6 @@
 import { Button, Drawer, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
-import { AdvancedJsonPanel, ConsolePage, DataTableShell, PageToolbar, StatusTag } from '../components/console';
+import { ConsolePage, DataTableShell, PageToolbar, StatusTag } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type { TenantItem, TenantUserItem } from '../types';
@@ -13,12 +13,36 @@ interface UserFormValues {
   role: string;
   status: string;
   password?: string;
-  metadata: string;
 }
 
 interface IdentityFormValues {
   channel_type: string;
   external_user_id: string;
+}
+
+const ROLE_LABELS: Record<string, string> = {
+  owner: '所有者',
+  admin: '管理员',
+  member: '成员',
+  viewer: '观察者',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  active: '启用',
+  disabled: '停用',
+  invited: '待邀请',
+};
+
+function roleLabel(role: string) {
+  return ROLE_LABELS[role] || role;
+}
+
+function statusLabel(status: string) {
+  return STATUS_LABELS[status] || status;
+}
+
+function loginEnabled(row: TenantUserItem) {
+  return Boolean(row.metadata?.auth_enabled);
 }
 
 export default function TenantUsersPage() {
@@ -48,6 +72,16 @@ export default function TenantUsersPage() {
     () => new Map(tenants.map((tenant) => [tenant.tenant_id, tenant.name])),
     [tenants],
   );
+  const roleOptions = useMemo(
+    () => roles.map((role) => ({ label: roleLabel(role), value: role })),
+    [roles],
+  );
+  const statusOptions = useMemo(
+    () => statuses.map((status) => ({ label: statusLabel(status), value: status })),
+    [statuses],
+  );
+  const defaultRole = roles.includes('member') ? 'member' : (roles[0] || 'member');
+  const defaultStatus = statuses.includes('active') ? 'active' : (statuses[0] || 'active');
 
   const loadMeta = async () => {
     const [metaData, tenantData] = await Promise.all([api.getTenantUserMeta(), api.listTenants()]);
@@ -72,10 +106,9 @@ export default function TenantUsersPage() {
       tenant_id: tenantId || currentTenantId,
       account: '',
       name: '',
-      role: roles[0] || 'member',
-      status: statuses[0] || 'active',
+      role: defaultRole,
+      status: defaultStatus,
       password: '',
-      metadata: '{}',
     });
     setOpen(true);
   };
@@ -87,7 +120,6 @@ export default function TenantUsersPage() {
       name: row.name,
       role: row.role,
       status: row.status,
-      metadata: JSON.stringify(row.metadata || {}, null, 2),
     });
     setOpen(true);
   };
@@ -95,13 +127,6 @@ export default function TenantUsersPage() {
   const submit = async () => {
     const values = await form.validateFields();
     const effectiveTenantId = values.tenant_id || tenantId || currentTenantId;
-    let metadata = {};
-    try {
-      metadata = values.metadata ? JSON.parse(values.metadata) : {};
-    } catch {
-      message.error('metadata 必须是合法 JSON');
-      return;
-    }
 
     setSubmitting(true);
     try {
@@ -110,7 +135,6 @@ export default function TenantUsersPage() {
           name: values.name,
           role: values.role,
           status: values.status,
-          metadata,
         });
         message.success('租户成员已更新');
       } else {
@@ -123,7 +147,6 @@ export default function TenantUsersPage() {
           role: values.role,
           status: values.status,
           password: password || undefined,
-          metadata,
         });
         message.success(password && !account
           ? `租户成员已创建，登录账号：${data.tenant_user?.user_id || ''}`
@@ -215,21 +238,40 @@ export default function TenantUsersPage() {
         dataSource={users}
         pagination={{ pageSize: 20 }}
         columns={[
-          { title: '租户', dataIndex: 'tenant_id', render: (value: string) => tenantNameById.get(value) || value },
           {
-            title: '成员',
-            dataIndex: 'name',
-            render: (value: string, row) => (
+            title: '租户',
+            dataIndex: 'tenant_id',
+            width: 220,
+            render: (value: string) => (
               <span className="entity-title-cell">
-                <span className="entity-title-cell-main">{value}</span>
-                <span className="entity-title-cell-meta">{row.user_id}</span>
+                <span className="entity-title-cell-main">{tenantNameById.get(value) || value}</span>
+                <span className="entity-title-cell-meta">{value}</span>
               </span>
             ),
           },
-          { title: '角色', dataIndex: 'role', render: (v: string) => <Tag color="blue">{v}</Tag> },
-          { title: '状态', dataIndex: 'status', render: (value: string) => <StatusTag status={value}>{value}</StatusTag> },
+          {
+            title: '成员',
+            dataIndex: 'name',
+            width: 240,
+            render: (value: string, row) => (
+              <span className="entity-title-cell">
+                <span className="entity-title-cell-main">{value}</span>
+                <span className="entity-title-cell-meta">成员ID：{row.user_id}</span>
+              </span>
+            ),
+          },
+          { title: '角色', dataIndex: 'role', width: 120, render: (value: string) => <Tag color="blue">{roleLabel(value)}</Tag> },
+          { title: '状态', dataIndex: 'status', width: 120, render: (value: string) => <StatusTag status={value}>{statusLabel(value)}</StatusTag> },
+          {
+            title: '账号登录',
+            width: 120,
+            render: (_, row) => (
+              <StatusTag status={loginEnabled(row)}>{loginEnabled(row) ? '已启用' : '未启用'}</StatusTag>
+            ),
+          },
           {
             title: '操作',
+            width: 260,
             render: (_, row) => (
               <Space>
                 <Button size="small" onClick={() => openEdit(row)}>编辑</Button>
@@ -241,7 +283,6 @@ export default function TenantUsersPage() {
             ),
           },
         ]}
-        expandable={{ expandedRowRender: (row) => <AdvancedJsonPanel title="成员 metadata" value={row.metadata || {}} defaultOpen /> }}
       />
 
       <Modal
@@ -253,7 +294,7 @@ export default function TenantUsersPage() {
       >
         <Form form={form} layout="vertical">
           {!editing && (
-            <Form.Item name="account" label="登录账号" extra="可留空，系统将自动生成。">
+            <Form.Item name="account" label="登录账号">
               <Input autoComplete="off" placeholder="用于登录的唯一标识" aria-label="登录账号" />
             </Form.Item>
           )}
@@ -261,13 +302,10 @@ export default function TenantUsersPage() {
             <Input aria-label="姓名" />
           </Form.Item>
           <Form.Item name="role" label="角色" rules={[{ required: true }]}>
-            <Select aria-label="角色" options={roles.map((role) => ({ label: role, value: role }))} />
+            <Select aria-label="角色" optionLabelProp="label" options={roleOptions} />
           </Form.Item>
           <Form.Item name="status" label="状态" rules={[{ required: true }]}>
-            <Select aria-label="状态" options={statuses.map((status) => ({ label: status, value: status }))} />
-          </Form.Item>
-          <Form.Item name="metadata" label="高级配置(JSON)" htmlFor="tenant-user-metadata">
-            <Input.TextArea id="tenant-user-metadata" rows={6} aria-label="高级配置 JSON" />
+            <Select aria-label="状态" optionLabelProp="label" options={statusOptions} />
           </Form.Item>
           {!editing && (
             <Form.Item
@@ -286,7 +324,6 @@ export default function TenantUsersPage() {
                   },
                 }),
               ]}
-              extra="租户鉴权模式下使用；留空则只创建成员，不启用账号登录。"
             >
               <Input.Password id="tenant-user-password" autoComplete="new-password" placeholder="可留空" aria-label="初始密码" />
             </Form.Item>

@@ -1,5 +1,5 @@
 import { Button, Form, Input, Modal, Popconfirm, Space, Switch, Tabs, Tag, message } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ConsolePage, DataTableShell, PageToolbar, StatusTag } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
@@ -30,17 +30,12 @@ export default function TenantModelsPage() {
   const { tenantId, authUser } = useRuntimeScope();
   const canManage = authUser?.role === 'owner' || authUser?.role === 'admin';
   const [loading, setLoading] = useState(false);
-  const [availableModels, setAvailableModels] = useState<ModelConfigItem[]>([]);
+  const [platformModels, setPlatformModels] = useState<ModelConfigItem[]>([]);
   const [tenantModels, setTenantModels] = useState<ModelConfigItem[]>([]);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ModelConfigItem | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<ModelFormValues>();
-
-  const platformModels = useMemo(
-    () => availableModels.filter((model) => model.scope === 'platform'),
-    [availableModels],
-  );
 
   const load = async () => {
     setLoading(true);
@@ -49,7 +44,7 @@ export default function TenantModelsPage() {
         api.listAvailableModels(tenantId),
         api.listTenantModels(tenantId),
       ]);
-      setAvailableModels(availableData.models || []);
+      setPlatformModels((availableData.models || []).filter((model) => model.scope === 'platform'));
       setTenantModels(tenantData.models || []);
     } finally {
       setLoading(false);
@@ -118,28 +113,17 @@ export default function TenantModelsPage() {
   return (
     <ConsolePage
         title="租户模型"
+        className="tenant-models-page"
         actions={(
           <PageToolbar>
             <Button onClick={() => void load()}>刷新</Button>
-            {canManage && <Button type="primary" onClick={openCreate}>新增租户模型</Button>}
+            {canManage && <Button type="primary" onClick={openCreate}>新增自有模型</Button>}
           </PageToolbar>
         )}
       >
       <Tabs
+        destroyOnHidden
         items={[
-          {
-            key: 'available',
-            label: `可用模型 (${availableModels.length})`,
-            children: (
-              <DataTableShell<ModelConfigItem>
-                rowKey="model_config_id"
-                loading={loading}
-                dataSource={availableModels}
-                pagination={{ pageSize: 12 }}
-                columns={columns}
-              />
-            ),
-          },
           {
             key: 'platform',
             label: `平台模型 (${platformModels.length})`,
@@ -149,6 +133,7 @@ export default function TenantModelsPage() {
                 loading={loading}
                 dataSource={platformModels}
                 pagination={{ pageSize: 12 }}
+                locale={{ emptyText: '暂无平台模型' }}
                 columns={columns}
               />
             ),
@@ -162,6 +147,7 @@ export default function TenantModelsPage() {
                 loading={loading}
                 dataSource={tenantModels}
                 pagination={{ pageSize: 12 }}
+                locale={{ emptyText: '暂无自有模型' }}
                 columns={[
                   ...columns,
                   { title: 'API Base', dataIndex: 'api_base', render: (value: string) => value || <Tag>未设置</Tag> },
@@ -185,7 +171,7 @@ export default function TenantModelsPage() {
 
       <Modal
         open={open}
-        title={editing ? '编辑租户模型' : '新增租户模型'}
+        title={editing ? '编辑自有模型' : '新增自有模型'}
         onCancel={() => setOpen(false)}
         onOk={() => void submit()}
         confirmLoading={submitting}
