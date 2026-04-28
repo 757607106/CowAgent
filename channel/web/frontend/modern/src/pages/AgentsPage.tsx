@@ -1086,7 +1086,7 @@ export default function AgentsPage() {
             columns={agentColumns}
             dataSource={filteredAgents}
             pagination={{ pageSize: 8, showSizeChanger: false }}
-            scroll={{ x: 1080 }}
+            scroll={{ x: 'max-content' }}
           />
       ) : (
         <div className="agent-card-grid">

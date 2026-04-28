@@ -346,7 +346,7 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
       }}
     >
       <Layout className="app-layout" hasSider>
-        <Sider width={220} theme="light" className="app-sider">
+        <Sider width="var(--sidebar-width)" theme="light" className="app-sider">
           <SidebarContent
             authUser={authUser}
             selectedMenu={selectedMenu}

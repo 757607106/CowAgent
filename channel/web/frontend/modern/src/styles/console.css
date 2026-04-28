@@ -69,7 +69,7 @@
 .data-table-shell {
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  min-height: var(--table-shell-min-height);
 }
 
 .data-table-shell .ant-card-body {
@@ -94,6 +94,7 @@
 }
 
 .data-table-shell .ant-table-wrapper {
+  min-width: 0;
   padding: 0 var(--space-4) var(--space-4);
 }
 
@@ -156,23 +157,27 @@
 }
 
 .usage-agent-filter {
-  width: 15rem;
+  width: var(--filter-width-lg);
 }
 
 .usage-model-filter {
-  width: 12rem;
+  width: var(--filter-width-md);
+}
+
+.usage-view-filter {
+  min-width: max-content;
 }
 
 .usage-bucket-filter {
-  min-width: 13.5rem;
+  min-width: var(--filter-width-md);
 }
 
 .usage-day-filter {
-  width: 10rem;
+  width: var(--filter-width-sm);
 }
 
 .usage-range-filter {
-  width: 17rem;
+  width: var(--filter-width-lg);
 }
 
 .usage-agent-name {
@@ -188,15 +193,37 @@
   scrollbar-gutter: stable;
 }
 
-.usage-chart-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.usage-page > .usage-report-panel,
+.usage-page > .usage-detail-panel {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.usage-report-panel,
+.usage-detail-panel {
+  display: flex;
+  flex-direction: column;
   gap: var(--spacing-xs);
   min-width: 0;
 }
 
-.usage-chart-wide {
+.usage-report-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(18rem, 0.85fr) minmax(18rem, 0.85fr);
+  gap: var(--spacing-xs);
+  align-items: stretch;
+  min-width: 0;
+}
+
+.usage-chart-trend,
+.usage-chart-agent,
+.usage-chart-tool {
   grid-column: span 2;
+}
+
+.usage-detail-panel .usage-table-shell {
+  flex: 1 1 auto;
+  min-height: max(var(--table-shell-min-height), calc(var(--content-available-height) - 8rem));
 }
 
 .echart-card {
@@ -227,7 +254,17 @@
 }
 
 .tenant-filter {
-  width: 13.75rem;
+  width: var(--filter-width-md);
+}
+
+.tenant-models-switch {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+.tenant-models-table-shell {
+  min-height: max(var(--table-shell-min-height), 44vh);
 }
 
 .identity-table {
@@ -370,18 +407,21 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .usage-chart-grid {
+  .usage-report-grid {
     grid-template-columns: 1fr;
   }
 
-  .usage-chart-wide {
+  .usage-chart-trend,
+  .usage-chart-agent,
+  .usage-chart-tool {
     grid-column: span 1;
   }
 
   .usage-agent-filter,
   .usage-model-filter,
   .usage-range-filter,
-  .usage-bucket-filter {
+  .usage-bucket-filter,
+  .usage-view-filter {
     width: 100%;
   }
 

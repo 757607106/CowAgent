@@ -1,4 +1,4 @@
-import { Button, Form, Input, Modal, Popconfirm, Space, Switch, Tabs, Tag, message } from 'antd';
+import { Button, Form, Input, Modal, Popconfirm, Segmented, Space, Switch, Tag, message } from 'antd';
 import { useEffect, useState } from 'react';
 import { ConsolePage, DataTableShell, PageToolbar, StatusTag } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
@@ -11,6 +11,8 @@ interface ModelFormValues {
   api_key: string;
   enabled: boolean;
 }
+
+type ModelScopeTab = 'platform' | 'tenant';
 
 function modelPayload(values: ModelFormValues, editing: ModelConfigItem | null) {
   const payload: Record<string, unknown> = {
@@ -32,6 +34,7 @@ export default function TenantModelsPage() {
   const [loading, setLoading] = useState(false);
   const [platformModels, setPlatformModels] = useState<ModelConfigItem[]>([]);
   const [tenantModels, setTenantModels] = useState<ModelConfigItem[]>([]);
+  const [activeScope, setActiveScope] = useState<ModelScopeTab>('platform');
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<ModelConfigItem | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -110,6 +113,25 @@ export default function TenantModelsPage() {
     { title: 'API Key', dataIndex: 'api_key_masked', render: (value: string, row: ModelConfigItem) => (row.api_key_set ? value || '已设置' : <Tag>未设置</Tag>) },
   ];
 
+  const tenantColumns = [
+    ...columns,
+    { title: 'API Base', dataIndex: 'api_base', render: (value: string) => value || <Tag>未设置</Tag> },
+    {
+      title: '操作',
+      render: (_: unknown, row: ModelConfigItem) => canManage ? (
+        <Space>
+          <Button size="small" onClick={() => openEdit(row)}>编辑</Button>
+          <Popconfirm title="确认删除该租户模型？" onConfirm={() => void remove(row)}>
+            <Button size="small" danger>删除</Button>
+          </Popconfirm>
+        </Space>
+      ) : null,
+    },
+  ];
+
+  const activeModels = activeScope === 'platform' ? platformModels : tenantModels;
+  const activeColumns = activeScope === 'platform' ? columns : tenantColumns;
+
   return (
     <ConsolePage
         title="租户模型"
@@ -121,52 +143,26 @@ export default function TenantModelsPage() {
           </PageToolbar>
         )}
       >
-      <Tabs
-        destroyOnHidden
-        items={[
-          {
-            key: 'platform',
-            label: `平台模型 (${platformModels.length})`,
-            children: (
-              <DataTableShell<ModelConfigItem>
-                rowKey="model_config_id"
-                loading={loading}
-                dataSource={platformModels}
-                pagination={{ pageSize: 12 }}
-                locale={{ emptyText: '暂无平台模型' }}
-                columns={columns}
-              />
-            ),
-          },
-          {
-            key: 'tenant',
-            label: `自有模型 (${tenantModels.length})`,
-            children: (
-              <DataTableShell<ModelConfigItem>
-                rowKey="model_config_id"
-                loading={loading}
-                dataSource={tenantModels}
-                pagination={{ pageSize: 12 }}
-                locale={{ emptyText: '暂无自有模型' }}
-                columns={[
-                  ...columns,
-                  { title: 'API Base', dataIndex: 'api_base', render: (value: string) => value || <Tag>未设置</Tag> },
-                  {
-                    title: '操作',
-                    render: (_: unknown, row: ModelConfigItem) => canManage ? (
-                      <Space>
-                        <Button size="small" onClick={() => openEdit(row)}>编辑</Button>
-                        <Popconfirm title="确认删除该租户模型？" onConfirm={() => void remove(row)}>
-                          <Button size="small" danger>删除</Button>
-                        </Popconfirm>
-                      </Space>
-                    ) : null,
-                  },
-                ]}
-              />
-            ),
-          },
-        ]}
+      <div className="tenant-models-switch">
+        <Segmented
+          value={activeScope}
+          onChange={(value) => setActiveScope(value as ModelScopeTab)}
+          options={[
+            { label: `平台模型 (${platformModels.length})`, value: 'platform' },
+            { label: `自有模型 (${tenantModels.length})`, value: 'tenant' },
+          ]}
+        />
+      </div>
+
+      <DataTableShell<ModelConfigItem>
+        className="tenant-models-table-shell"
+        rowKey="model_config_id"
+        loading={loading}
+        dataSource={activeModels}
+        pagination={{ pageSize: 12 }}
+        locale={{ emptyText: activeScope === 'platform' ? '暂无平台模型' : '暂无自有模型' }}
+        columns={activeColumns}
+        scroll={{ x: 'max-content' }}
       />
 
       <Modal

@@ -11,11 +11,11 @@ def test_platform_docs_are_grouped_under_platform_design() -> None:
     assert (REPO_ROOT / "docs" / "platform" / "design").is_dir()
 
 
-def test_web_frontend_uses_modern_runtime_and_keeps_legacy_reference() -> None:
+def test_web_frontend_uses_modern_runtime_without_legacy_static_ui() -> None:
     web_root = REPO_ROOT / "channel" / "web"
     assert (web_root / "frontend" / "modern" / "src").is_dir()
     assert (web_root / "frontend" / "modern" / "package.json").is_file()
-    assert (web_root / "frontend" / "legacy" / "chat.html").is_file()
+    assert not (web_root / "frontend" / "legacy").exists()
     assert not (web_root / "ui").exists()
     assert not (web_root / "chat.html").exists()
     assert not (web_root / "static").exists()

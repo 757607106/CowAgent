@@ -20,7 +20,7 @@
 - `channel/web/frontend/modern/src/chat/`：聊天流式消息、Markdown 和 provider 适配。
 - `channel/web/frontend/modern/src/services/`：浏览器端 API 和 HTTP scope 工具。
 - `channel/web/frontend/modern/dist/`：构建产物，运行时 `/chat` 和 `/assets/*` 只读取这里。
-- `channel/web/frontend/legacy/`：旧版静态前端历史 patch 参考，不作为默认运行入口。
+- 旧版静态前端已删除，Web 控制台只保留 modern 前端工程和构建产物。
 
 ## Web 后端
 

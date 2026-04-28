@@ -122,9 +122,17 @@
   --transition-smooth: 0.22s cubic-bezier(0.4, 0, 0.2, 1);
 
   /* Layout */
-  --sidebar-width: 220px;
-  --header-height: 52px;
+  --sidebar-width: 13.75rem;
+  --header-height: 3.25rem;
   --content-max-width: 100%;
+  --content-available-height: 100vh;
+  --page-workspace-min-height: clamp(30rem, 72vh, 56rem);
+  --table-shell-min-height: clamp(18rem, 48vh, 34rem);
+  --chart-card-height: clamp(15rem, 24vh, 18rem);
+  --chart-card-height-lg: clamp(16rem, 28vh, 20rem);
+  --filter-width-sm: clamp(9rem, 12vw, 11rem);
+  --filter-width-md: clamp(11rem, 14vw, 14rem);
+  --filter-width-lg: clamp(13rem, 17vw, 17rem);
 
   color-scheme: light;
   color: var(--text-primary);
@@ -332,6 +340,7 @@ body,
 /* Content area */
 .app-content {
   --app-content-padding: var(--spacing-sm);
+  --content-available-height: calc(100vh - var(--app-content-padding) - var(--app-content-padding));
   padding: var(--app-content-padding);
   overflow: auto;
   min-height: 0;
@@ -369,8 +378,8 @@ body,
   display: grid;
   grid-template-columns: var(--chat-sidebar-width) minmax(0, 1fr);
   gap: var(--spacing-sm);
-  height: calc(100vh - var(--app-content-padding) - var(--app-content-padding));
-  min-height: calc(100vh - var(--app-content-padding) - var(--app-content-padding));
+  height: var(--content-available-height);
+  min-height: var(--content-available-height);
   overflow: hidden;
 }
 
@@ -1046,11 +1055,11 @@ body,
 }
 
 .chat-markdown-video-player {
-  width: min(100%, 560px);
+  width: min(100%, 35rem);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-default);
   box-shadow: var(--shadow-md);
-  background: #000;
+  background: var(--neutral-900);
 }
 
 .chat-markdown-video-link {
@@ -1127,7 +1136,7 @@ body,
   border-radius: var(--radius-md);
   overflow-x: auto;
   margin: 0.8em 0;
-  background: #f1f5f9;
+  background: var(--neutral-50);
   padding: 1em;
 }
 
@@ -1138,7 +1147,7 @@ body,
 
 .msg-content :not(pre)>code {
   background: var(--color-success-light);
-  color: #1c6b3b;
+  color: var(--color-success);
   padding: 2px 6px;
   border-radius: var(--radius-xs);
 }
@@ -1188,7 +1197,7 @@ body,
 }
 
 .msg-content a:hover {
-  color: #228547;
+  color: var(--color-success);
 }
 
 .msg-content hr {
@@ -1200,19 +1209,19 @@ body,
 
 /* User bubble overrides */
 .user-bubble.msg-content a {
-  color: #fff !important;
+  color: var(--neutral-0) !important;
   text-decoration: underline;
   text-decoration-color: rgba(255, 255, 255, 0.6);
 }
 
 .user-bubble.msg-content a:hover {
-  color: #e0f5e8 !important;
-  text-decoration-color: #e0f5e8;
+  color: var(--color-success-light) !important;
+  text-decoration-color: var(--color-success-light);
 }
 
 .user-bubble.msg-content :not(pre)>code {
   background: rgba(255, 255, 255, 0.2);
-  color: #fff;
+  color: var(--neutral-0);
 }
 
 .answer-content {
@@ -1401,24 +1410,22 @@ body,
   display: flex;
   flex-direction: column;
   gap: var(--spacing-sm);
-  height: calc(100vh - var(--app-content-padding) - var(--app-content-padding));
   max-width: var(--content-max-width);
-  min-height: 0;
-  overflow: hidden;
+  min-height: var(--content-available-height);
+  overflow: visible;
   width: 100%;
 }
 
 .console-page {
-  height: calc(100vh - var(--app-content-padding) - var(--app-content-padding));
-  min-height: 0;
-  overflow: hidden;
+  min-height: var(--content-available-height);
+  overflow: visible;
 }
 
 .agents-page > .agent-card-grid,
 .skills-page > .skills-card-grid {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: visible;
 }
 
 .agents-page > .agent-card-grid,
@@ -1427,7 +1434,8 @@ body,
   background: var(--bg-surface);
   border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-xs);
+  min-height: max(18rem, calc(var(--content-available-height) - 4rem));
   padding: var(--spacing-xs);
 }
 
@@ -1443,22 +1451,35 @@ body,
 .config-page > .config-shell,
 .agents-page > .agent-empty-card,
 .skills-page > .skills-empty-card {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: visible;
 }
 
 .console-page > .ant-card:last-child,
 .config-page > .config-shell {
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .console-page > .ant-card:last-child > .ant-card-body {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-height: 0;
-  overflow: auto;
+  overflow: visible;
+}
+
+.console-page > .data-table-shell {
+  flex: 1 1 auto;
+  min-height: max(var(--table-shell-min-height), calc(var(--content-available-height) - 5rem));
+  overflow: hidden;
+}
+
+.console-page > .data-table-shell > .ant-card-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .console-page > .ant-tabs:last-child,
@@ -1466,7 +1487,7 @@ body,
 .console-page > .ant-tabs:last-child .ant-tabs-content,
 .console-page > .ant-tabs:last-child .ant-tabs-tabpane-active {
   display: flex;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   flex-direction: column;
   min-height: 0;
 }
@@ -1476,8 +1497,8 @@ body,
 }
 
 .console-page > .ant-tabs:last-child .data-table-shell {
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 1 auto;
+  min-height: var(--table-shell-min-height);
 }
 
 .config-page > .config-shell > .ant-card-body {
@@ -1524,13 +1545,13 @@ body,
 /* ── Card Grids ───────────────────────────────────────────────── */
 .agent-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(14rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(14rem, 15vw, 17rem)), 1fr));
   gap: var(--spacing-xs);
 }
 
 .skills-card-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(15.5rem, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, clamp(15rem, 16vw, 18rem)), 1fr));
   gap: var(--spacing-xs);
 }
 
@@ -1550,16 +1571,16 @@ body,
 }
 
 .agent-tenant-filter {
-  width: 12.5rem;
+  width: var(--filter-width-md);
 }
 
 .agent-search {
-  width: 13.75rem;
+  width: var(--filter-width-md);
 }
 
 /* AI employee cards */
 .agent-employee-card .ant-card-body {
-  min-height: 14.75rem;
+  min-height: 13.75rem;
   padding: var(--spacing-xs);
   display: flex;
   flex-direction: column;
@@ -1568,7 +1589,7 @@ body,
 
 .agent-employee-cover {
   position: relative;
-  height: 4.75rem;
+  height: 4.25rem;
   border-radius: var(--radius-sm);
   overflow: hidden;
   background:
@@ -1599,32 +1620,32 @@ body,
 }
 
 .agent-cover-tone-0 {
-  --agent-cover-bg: #e9f3ff;
+  --agent-cover-bg: var(--color-primary-light);
   --agent-cover-line: rgba(26, 111, 245, 0.18);
 }
 
 .agent-cover-tone-1 {
-  --agent-cover-bg: #eaf8f0;
+  --agent-cover-bg: var(--color-success-light);
   --agent-cover-line: rgba(16, 185, 129, 0.18);
 }
 
 .agent-cover-tone-2 {
-  --agent-cover-bg: #fff3de;
+  --agent-cover-bg: var(--color-warning-light);
   --agent-cover-line: rgba(245, 158, 11, 0.2);
 }
 
 .agent-cover-tone-3 {
-  --agent-cover-bg: #f0ecff;
+  --agent-cover-bg: var(--brand-100);
   --agent-cover-line: rgba(99, 102, 241, 0.18);
 }
 
 .agent-cover-tone-4 {
-  --agent-cover-bg: #f2f6f8;
+  --agent-cover-bg: var(--neutral-75);
   --agent-cover-line: rgba(75, 83, 98, 0.16);
 }
 
 .agent-cover-tone-5 {
-  --agent-cover-bg: #ffeef1;
+  --agent-cover-bg: var(--color-error-light);
   --agent-cover-line: rgba(239, 68, 68, 0.16);
 }
 
@@ -1633,8 +1654,8 @@ body,
   z-index: 1;
   right: 1rem;
   bottom: -0.25rem;
-  width: 5rem;
-  height: 5rem;
+  width: 4.5rem;
+  height: 4.5rem;
   object-fit: contain;
   filter: drop-shadow(0 0.625rem 0.875rem rgba(31, 36, 48, 0.14));
   transition: transform var(--transition-smooth);
@@ -1754,7 +1775,7 @@ body,
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
-  height: calc(100vh - var(--app-content-padding) - var(--app-content-padding));
+  height: var(--content-available-height);
   max-width: var(--content-max-width);
   min-height: 0;
   overflow: hidden;
@@ -1772,8 +1793,8 @@ body,
   align-items: center;
   justify-content: space-between;
   gap: var(--spacing-sm);
-  min-height: 5rem;
-  padding: var(--spacing-xs) var(--spacing-md);
+  min-height: 4.5rem;
+  padding: var(--spacing-2xs) var(--spacing-md);
 }
 
 .agent-detail-hero-main {
@@ -1872,7 +1893,7 @@ body,
 
 .agent-command-card textarea.ant-input {
   flex: 1 1 auto;
-  min-height: 18rem;
+  min-height: clamp(16rem, 40vh, 26rem);
   width: 100%;
 }
 
@@ -1896,7 +1917,7 @@ body,
   margin: -4px 0 var(--space-4);
   padding: var(--space-4);
   border-radius: var(--radius-md);
-  background: linear-gradient(135deg, #ffffff, #f6f9ff);
+  background: linear-gradient(135deg, var(--bg-surface), var(--color-primary-light));
   border: 1px solid var(--border-light);
 }
 
@@ -1915,7 +1936,7 @@ body,
   border: 0;
   padding: 0;
   border-radius: 28px;
-  background: #fff7df;
+  background: var(--color-warning-light);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1925,9 +1946,9 @@ body,
 }
 
 .agent-avatar-trigger-large {
-  width: 4.75rem;
-  height: 4.75rem;
-  border-radius: 24px;
+  width: 4.25rem;
+  height: 4.25rem;
+  border-radius: 1.25rem;
 }
 
 .agent-avatar-trigger:hover {
@@ -1993,8 +2014,8 @@ body,
 }
 
 .agent-avatar-option-selected {
-  border-color: #ffd37a;
-  background: #fff7df;
+  border-color: var(--color-warning);
+  background: var(--color-warning-light);
 }
 
 .agent-avatar-option img {
@@ -2186,7 +2207,7 @@ body,
 }
 
 .skill-card .ant-card-body {
-  min-height: 11.5rem;
+  min-height: 10.75rem;
   padding: var(--spacing-xs);
   display: flex;
   flex-direction: column;
@@ -2503,8 +2524,8 @@ body,
 }
 
 .mcp-server-avatar {
-  background: #f3f0ff;
-  color: #7c3aed;
+  background: var(--color-primary-light);
+  color: var(--color-primary);
 }
 
 .mcp-server-title.ant-typography {
@@ -2649,14 +2670,17 @@ body,
   gap: var(--spacing-xs);
   min-height: 0;
   width: 100%;
+  align-items: stretch;
 }
 
 .memory-panel-layout {
-  grid-template-columns: minmax(22rem, 0.46fr) minmax(0, 1fr);
+  grid-template-columns: minmax(22rem, 32%) minmax(0, 1fr);
+  min-height: clamp(22rem, 54vh, 42rem);
 }
 
 .knowledge-doc-layout {
-  grid-template-columns: minmax(18rem, 0.34fr) minmax(0, 1fr);
+  grid-template-columns: minmax(18rem, 30%) minmax(0, 1fr);
+  min-height: clamp(22rem, 54vh, 42rem);
 }
 
 .memory-file-list-card {
@@ -2671,6 +2695,7 @@ body,
   display: flex;
   flex-direction: column;
   min-height: 0;
+  width: 100%;
 }
 
 .memory-file-table-card .ant-card-body {
@@ -2706,7 +2731,6 @@ body,
 
 .knowledge-tree-card {
   min-width: 0;
-  width: auto;
 }
 
 .knowledge-content-card {
@@ -2739,13 +2763,13 @@ body,
 
 .knowledge-graph-legend {
   position: absolute;
-  top: 12px;
-  right: 12px;
+  top: var(--spacing-xs);
+  right: var(--spacing-xs);
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
-  color: #64748b;
-  font-size: 11px;
+  gap: var(--spacing-2xs);
+  color: var(--text-secondary);
+  font-size: var(--font-size-xs);
   z-index: 10;
 }
 
@@ -2990,8 +3014,8 @@ body,
 
 /* ── Logs Page ────────────────────────────────────────────────── */
 .logs-page {
-  height: calc(100vh - var(--app-content-padding) - var(--app-content-padding));
-  min-height: calc(100vh - var(--app-content-padding) - var(--app-content-padding));
+  height: var(--content-available-height);
+  min-height: var(--content-available-height);
   overflow: hidden;
 }
 
@@ -3057,11 +3081,11 @@ body,
   }
 
   .agent-card-grid {
-    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
   }
 
   .skills-card-grid {
-    grid-template-columns: repeat(auto-fill, minmax(20rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
   }
 
   .agent-capability-grid {
@@ -3085,7 +3109,7 @@ body,
 
   .agent-card-grid,
   .skills-card-grid {
-    grid-template-columns: repeat(auto-fill, minmax(21.25rem, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(18.5rem, 1fr));
   }
 
   .agent-capability-grid {

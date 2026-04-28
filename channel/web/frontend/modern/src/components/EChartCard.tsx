@@ -37,7 +37,7 @@ function loadECharts() {
   return echartsLoader;
 }
 
-export function EChartCard({ title, option, empty, loading, className, height = '18rem' }: EChartCardProps) {
+export function EChartCard({ title, option, empty, loading, className, height = 'var(--chart-card-height)' }: EChartCardProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const chartRef = useRef<EChartsType | null>(null);
   const optionRef = useRef<EChartsCoreOption>(option);

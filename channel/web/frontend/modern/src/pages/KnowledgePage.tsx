@@ -3,6 +3,7 @@ import * as d3 from 'd3';
 import { Button, Card, Empty, Input, Space, Spin, Tabs, Tree, Typography } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DataNode } from 'antd/es/tree';
+import { consoleThemeTokens } from '../app/theme';
 import { useRuntimeScope } from '../context/runtime';
 import { PageTitle } from '../components/PageTitle';
 import { api } from '../services/api';
@@ -51,6 +52,12 @@ interface KnowledgeGraphSimulationLink extends d3.SimulationLinkDatum<KnowledgeG
   target: string | KnowledgeGraphSimulationNode;
   label?: string;
 }
+
+const GRAPH_THEME = {
+  link: consoleThemeTokens.palette.neutral[300],
+  nodeStroke: consoleThemeTokens.palette.neutral[0],
+  label: consoleThemeTokens.palette.neutral[500],
+};
 
 function formatBytes(size: number): string {
   if (!Number.isFinite(size) || size <= 0) return '0 B';
@@ -197,7 +204,7 @@ function KnowledgeGraphView({
       .selectAll<SVGLineElement, KnowledgeGraphSimulationLink>('line')
       .data(graphLinks)
       .join('line')
-      .attr('stroke', '#94a3b8')
+      .attr('stroke', GRAPH_THEME.link)
       .attr('stroke-opacity', 0.3)
       .attr('stroke-width', 1);
 
@@ -223,7 +230,7 @@ function KnowledgeGraphView({
       .join('circle')
       .attr('r', (item) => getNodeRadius(item))
       .attr('fill', (item) => colorScale(item.category))
-      .attr('stroke', '#fff')
+      .attr('stroke', GRAPH_THEME.nodeStroke)
       .attr('stroke-width', 1.5)
       .style('cursor', 'pointer')
       .call(drag);
@@ -236,7 +243,7 @@ function KnowledgeGraphView({
       .attr('font-size', 9)
       .attr('dx', (item) => getNodeRadius(item) + 4)
       .attr('dy', 3)
-      .attr('fill', '#64748b')
+      .attr('fill', GRAPH_THEME.label)
       .style('pointer-events', 'none');
 
     const tooltip = document.createElement('div');

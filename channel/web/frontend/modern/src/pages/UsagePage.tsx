@@ -1,5 +1,6 @@
 import { Button, Card, DatePicker, Segmented, Select, Statistic, Tag, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
+import { consoleThemeTokens } from '../app/theme';
 import { EChartCard } from '../components/EChartCard';
 import { AdvancedJsonPanel, ConsolePage, DataTableShell, PageToolbar } from '../components/console';
 import { displayAgentName, useRuntimeScope } from '../context/runtime';
@@ -51,14 +52,16 @@ const BUCKET_OPTIONS: Array<{ label: string; value: UsageBucket }> = [
   { label: '年', value: 'year' },
 ];
 
+type UsagePanelKey = 'reports' | 'details';
+
 const CHART_COLORS = {
-  primary: '#1a6ff5',
-  success: '#10b981',
-  warning: '#f59e0b',
-  error: '#ef4444',
-  text: '#4b5362',
-  muted: '#8891a0',
-  border: '#e4e8ee',
+  primary: consoleThemeTokens.palette.brand[500],
+  success: consoleThemeTokens.palette.semantic.success,
+  warning: consoleThemeTokens.palette.semantic.warning,
+  error: consoleThemeTokens.palette.semantic.error,
+  text: consoleThemeTokens.palette.neutral[600],
+  muted: consoleThemeTokens.palette.neutral[400],
+  border: consoleThemeTokens.palette.neutral[100],
 };
 
 function formatNumber(value: number) {
@@ -223,6 +226,7 @@ export default function UsagePage() {
   const [records, setRecords] = useState<UsageRecordItem[]>([]);
   const [agentsLoaded, setAgentsLoaded] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [panelKey, setPanelKey] = useState<UsagePanelKey>('reports');
 
   const agentNameById = useMemo(
     () => new Map(agents.map((agent) => [agent.agent_id, displayAgentName(agent.agent_id, agent.name)])),
@@ -310,22 +314,33 @@ export default function UsagePage() {
 
   return (
     <ConsolePage
+      className="usage-page"
       title="用量统计"
       actions={(
         <PageToolbar>
           <Segmented
-            className="usage-bucket-filter"
-            value={bucket}
-            options={BUCKET_OPTIONS}
-            onChange={(value) => setBucket(value as UsageBucket)}
+            className="usage-view-filter"
+            value={panelKey}
+            options={[
+              { label: '统计报表', value: 'reports' },
+              { label: '用量明细', value: 'details' },
+            ]}
+            onChange={(value) => setPanelKey(value as UsagePanelKey)}
           />
+          {panelKey === 'reports' ? (
+            <Segmented
+              className="usage-bucket-filter"
+              value={bucket}
+              options={BUCKET_OPTIONS}
+              onChange={(value) => setBucket(value as UsageBucket)}
+            />
+          ) : null}
           <Select
             allowClear
             showSearch
             className="usage-agent-filter"
             value={agentId || undefined}
             placeholder="全部 AI 员工"
-            optionFilterProp="label"
             labelRender={(item) => formatAgentName(String(item.value || ''))}
             onChange={(value) => setAgentId(value || '')}
             options={agentOptions}
@@ -336,7 +351,6 @@ export default function UsagePage() {
             className="usage-model-filter"
             value={model || undefined}
             placeholder="全部模型"
-            optionFilterProp="label"
             onChange={(value) => setModel(value || '')}
             options={modelOptions}
           />
@@ -351,92 +365,100 @@ export default function UsagePage() {
         </PageToolbar>
       )}
     >
-      <div className="operations-summary-grid usage-summary-grid">
-        <Card className="operations-summary-card">
-          <Statistic title="租户总 Token" value={tenantSummary.total_tokens} formatter={(value) => formatNumber(Number(value))} loading={loading} />
-        </Card>
-        <Card className="operations-summary-card">
-          <Statistic title="租户总费用" value={tenantSummary.estimated_cost} precision={6} loading={loading} />
-        </Card>
-        <Card className="operations-summary-card">
-          <Statistic title={agentId ? 'AI 员工 Token' : '筛选 Token'} value={scopeSummary.total_tokens} formatter={(value) => formatNumber(Number(value))} loading={loading} />
-        </Card>
-        <Card className="operations-summary-card">
-          <Statistic title="请求数" value={scopeSummary.request_count} formatter={(value) => formatNumber(Number(value))} loading={loading} />
-        </Card>
-        <Card className="operations-summary-card">
-          <Statistic title="工具调用" value={scopeSummary.tool_call_count} formatter={(value) => formatNumber(Number(value))} loading={loading} />
-        </Card>
-        <Card className="operations-summary-card">
-          <Statistic title="MCP 调用" value={scopeSummary.mcp_call_count} formatter={(value) => formatNumber(Number(value))} loading={loading} />
-        </Card>
-      </div>
+      {panelKey === 'reports' ? (
+        <section className="usage-report-panel">
+          <div className="operations-summary-grid usage-summary-grid">
+            <Card className="operations-summary-card">
+              <Statistic title="租户总 Token" value={tenantSummary.total_tokens} formatter={(value) => formatNumber(Number(value))} loading={loading} />
+            </Card>
+            <Card className="operations-summary-card">
+              <Statistic title="租户总费用" value={tenantSummary.estimated_cost} precision={6} loading={loading} />
+            </Card>
+            <Card className="operations-summary-card">
+              <Statistic title={agentId ? 'AI 员工 Token' : '筛选 Token'} value={scopeSummary.total_tokens} formatter={(value) => formatNumber(Number(value))} loading={loading} />
+            </Card>
+            <Card className="operations-summary-card">
+              <Statistic title="请求数" value={scopeSummary.request_count} formatter={(value) => formatNumber(Number(value))} loading={loading} />
+            </Card>
+            <Card className="operations-summary-card">
+              <Statistic title="工具调用" value={scopeSummary.tool_call_count} formatter={(value) => formatNumber(Number(value))} loading={loading} />
+            </Card>
+            <Card className="operations-summary-card">
+              <Statistic title="MCP 调用" value={scopeSummary.mcp_call_count} formatter={(value) => formatNumber(Number(value))} loading={loading} />
+            </Card>
+          </div>
 
-      <section className="usage-chart-grid">
-        <EChartCard
-          title="Token 趋势"
-          className="usage-chart-wide"
-          option={trendOption}
-          empty={!analytics.time_series.length}
-          loading={loading}
-          height="20rem"
-        />
-        <EChartCard
-          title="AI 员工 Token 排行"
-          option={agentOption}
-          empty={!analytics.agents.length}
-          loading={loading || !agentsLoaded}
-        />
-        <EChartCard
-          title="模型 Token 排行"
-          option={modelOption}
-          empty={!analytics.models.length}
-          loading={loading}
-        />
-        <EChartCard
-          title="工具调用排行"
-          option={toolOption}
-          empty={!analytics.tools.length}
-          loading={loading}
-        />
-        <EChartCard
-          title="MCP 工具排行"
-          option={mcpOption}
-          empty={!analytics.mcp_tools.length}
-          loading={loading}
-        />
-        <EChartCard
-          title="Skill 使用排行"
-          option={skillOption}
-          empty={!analytics.skills.length}
-          loading={loading}
-        />
-      </section>
-
-      <DataTableShell<UsageRecordItem>
-        className="usage-table-shell"
-        title="用量明细"
-        rowKey="event_id"
-        loading={loading || !agentsLoaded}
-        dataSource={records}
-        pagination={{ pageSize: 20, showSizeChanger: false }}
-        scroll={{ x: 1180, y: 'max(320px, calc(100vh - 560px))' }}
-        columns={[
-          { title: '时间', dataIndex: 'created_at', width: 170 },
-          { title: 'AI 员工', dataIndex: 'agent_id', width: 140, render: renderAgentName },
-          { title: '模型', dataIndex: 'model', width: 150, render: (value: string) => (value ? <Tag color="blue">{value}</Tag> : '-') },
-          { title: '总 Token', dataIndex: 'total_tokens', width: 110, render: (value: number) => formatNumber(value) },
-          { title: '输入', dataIndex: 'prompt_tokens', width: 100, render: (value: number) => formatNumber(value) },
-          { title: '输出', dataIndex: 'completion_tokens', width: 100, render: (value: number) => formatNumber(value) },
-          { title: '工具', dataIndex: 'tool_call_count', width: 90 },
-          { title: 'MCP', dataIndex: 'mcp_call_count', width: 90 },
-          { title: '错误', dataIndex: 'tool_error_count', width: 90 },
-          { title: '费用', dataIndex: 'estimated_cost', width: 110, render: (value: number) => formatCost(value) },
-        ]}
-        expandable={{
-          expandedRowRender: (row) => <AdvancedJsonPanel title="诊断信息" value={row} defaultOpen />,
-        }}
-      />
+          <section className="usage-report-grid">
+            <EChartCard
+              title="Token 趋势"
+              className="usage-chart-trend"
+              option={trendOption}
+              empty={!analytics.time_series.length}
+              loading={loading}
+              height="var(--chart-card-height-lg)"
+            />
+            <EChartCard
+              title="模型 Token 排行"
+              option={modelOption}
+              empty={!analytics.models.length}
+              loading={loading}
+            />
+            <EChartCard
+              title="AI 员工 Token 排行"
+              className="usage-chart-agent"
+              option={agentOption}
+              empty={!analytics.agents.length}
+              loading={loading || !agentsLoaded}
+            />
+            <EChartCard
+              title="Skill 使用排行"
+              option={skillOption}
+              empty={!analytics.skills.length}
+              loading={loading}
+            />
+            <EChartCard
+              title="工具调用排行"
+              className="usage-chart-tool"
+              option={toolOption}
+              empty={!analytics.tools.length}
+              loading={loading}
+            />
+            <EChartCard
+              title="MCP 工具排行"
+              option={mcpOption}
+              empty={!analytics.mcp_tools.length}
+              loading={loading}
+            />
+          </section>
+        </section>
+      ) : (
+        <section className="usage-detail-panel">
+          <DataTableShell<UsageRecordItem>
+            className="usage-table-shell"
+            title="用量明细"
+            rowKey="event_id"
+            loading={loading || !agentsLoaded}
+            dataSource={records}
+            pagination={{ pageSize: 20, showSizeChanger: false }}
+            scroll={{ x: 'max-content', y: 'clamp(24rem, calc(100vh - 18rem), 42rem)' }}
+            columns={[
+              { title: '时间', dataIndex: 'created_at', width: 170 },
+              { title: 'AI 员工', dataIndex: 'agent_id', width: 140, render: renderAgentName },
+              { title: '模型', dataIndex: 'model', width: 150, render: (value: string) => (value ? <Tag color="blue">{value}</Tag> : '-') },
+              { title: '总 Token', dataIndex: 'total_tokens', width: 110, render: (value: number) => formatNumber(value) },
+              { title: '输入', dataIndex: 'prompt_tokens', width: 100, render: (value: number) => formatNumber(value) },
+              { title: '输出', dataIndex: 'completion_tokens', width: 100, render: (value: number) => formatNumber(value) },
+              { title: '工具', dataIndex: 'tool_call_count', width: 90 },
+              { title: 'MCP', dataIndex: 'mcp_call_count', width: 90 },
+              { title: '错误', dataIndex: 'tool_error_count', width: 90 },
+              { title: '费用', dataIndex: 'estimated_cost', width: 110, render: (value: number) => formatCost(value) },
+            ]}
+            expandable={{
+              expandedRowRender: (row) => <AdvancedJsonPanel title="诊断信息" value={row} defaultOpen />,
+            }}
+          />
+        </section>
+      )}
     </ConsolePage>
   );
 }

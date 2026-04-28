@@ -237,6 +237,7 @@ export default function TenantUsersPage() {
         loading={loading}
         dataSource={users}
         pagination={{ pageSize: 20 }}
+        scroll={{ x: 'max-content' }}
         columns={[
           {
             title: '租户',

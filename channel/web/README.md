@@ -13,7 +13,7 @@
 
  - `frontend/modern/src/` 是现代前端源码（React + TypeScript + Vite）
  - `frontend/modern/dist/` 是现代前端构建产物，`/chat` 固定返回 `frontend/modern/dist/index.html`
- - `frontend/legacy/` 保留旧版静态页面与资源用于上游对照，运行时不再作为入口
+ - 旧版静态前端已删除，运行时不再保留 legacy 页面入口
  - `/assets/*` 路由仅从 `frontend/modern/dist/` 解析静态资源
  - Web 基础 handler（`auth/chat/assets/version/upload`）已收敛到 `channel/web/handlers/core.py`，`web_channel.py` 仅保留组装与业务 handler
  - Web 路由总表已收敛到 `channel/web/route_table.py`，避免在 `web_channel.py` 中维护超长路由元组

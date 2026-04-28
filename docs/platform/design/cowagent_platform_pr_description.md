@@ -254,8 +254,8 @@
 - `bridge/agent_initializer.py`
 - `bridge/agent_bridge.py`
 - `channel/web/web_channel.py`
-- `channel/web/frontend/legacy/chat.html`
-- `channel/web/frontend/legacy/static/js/console.js`
+- `channel/web/frontend_layout.py`
+- `channel/web/frontend/modern/`
 - `pyproject.toml`
 
 ---

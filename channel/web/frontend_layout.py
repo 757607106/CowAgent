@@ -31,7 +31,7 @@ def build_frontend_layout(web_channel_file: str | Path) -> FrontendLayout:
 
 def normalize_frontend_mode(raw_mode: str | None) -> str:
     _ = raw_mode
-    # 旧静态前端文件保留作上游对照，但平台运行时只允许 modern 构建产物入口。
+    # 平台运行时只允许 modern 构建产物入口。
     return FRONTEND_MODE_MODERN
 
 
