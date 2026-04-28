@@ -65,7 +65,10 @@ function SidebarContent({
 
   return (
     <>
-      <div className="app-logo">CowAgent 2.0.6</div>
+      <div className="app-logo" aria-label="agent">
+        <span className="app-logo-mark">a</span>
+        <span className="app-logo-word">agent</span>
+      </div>
       {authUser && (
         <div className="app-tenant-session">
           <div className="app-tenant-session-meta">
@@ -195,7 +198,7 @@ function LoginScreen({
   return (
     <div className="app-login-wrap">
       <div className="app-login-panel">
-        <Typography.Title level={3} className="app-login-title">CowAgent 控制台</Typography.Title>
+        <Typography.Title level={3} className="app-login-title">agent 控制台</Typography.Title>
         <Tabs
           activeKey={activeKey}
           onChange={setActiveKey}
@@ -364,7 +367,7 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
               onClick={() => setMobileMenuOpen(true)}
             />
             <div className="app-mobile-title">
-              <Typography.Text strong>CowAgent</Typography.Text>
+              <Typography.Text strong>agent</Typography.Text>
               <Typography.Text type="secondary">{currentMenuLabel}</Typography.Text>
             </div>
             {authUser ? <Tag color={isPlatformAdmin ? 'purple' : 'blue'}>{isPlatformAdmin ? '平台超管' : authUser.tenant_name || '当前团队'}</Tag> : null}
@@ -397,7 +400,7 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
         </Layout>
         <Drawer
           className="app-mobile-drawer"
-          title="CowAgent 2.0.6"
+          title="agent"
           placement="left"
           width="17.5rem"
           open={mobileMenuOpen}

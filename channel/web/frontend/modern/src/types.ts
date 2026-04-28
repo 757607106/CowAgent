@@ -62,7 +62,7 @@ export interface AssistantBubbleContent {
 
 export interface AssistantStep {
   key: string;
-  kind: 'reasoning' | 'tool' | 'phase' | 'output' | 'status';
+  kind: 'reasoning' | 'tool' | 'phase' | 'status';
   title: string;
   description?: string;
   status: NonNullable<ThoughtChainItemType['status']>;

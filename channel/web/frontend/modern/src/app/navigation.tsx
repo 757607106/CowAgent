@@ -21,7 +21,7 @@ export interface ConsoleNavItem {
 }
 
 export const tenantNavItems: ConsoleNavItem[] = [
-  { key: '/chat', icon: <MessageOutlined />, label: '对话工作台' },
+  { key: '/chat', icon: <MessageOutlined />, label: '对话' },
   { key: '/agents', icon: <AppstoreOutlined />, label: 'AI 员工' },
   { key: '/tenant-models', icon: <SettingOutlined />, label: '租户模型' },
   { key: '/skills', icon: <BuildOutlined />, label: '技能' },
