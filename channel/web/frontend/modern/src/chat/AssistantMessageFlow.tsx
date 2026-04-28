@@ -3,7 +3,6 @@ import {
   CheckOutlined,
   CopyOutlined,
   LinkOutlined,
-  Loading3QuartersOutlined,
 } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { MarkdownBlock } from './ChatMarkdown';
@@ -252,16 +251,9 @@ export function AssistantMessageFlow({ content, status }: AssistantMessageFlowPr
         </div>
       ) : null}
 
-      {(content.text || isStreaming) ? (
+      {content.text ? (
         <div className={joinClassNames('answer-content', isStreaming && 'sse-streaming')}>
-          {content.text ? (
-            <MarkdownBlock content={content.text} loading={isStreaming} className="msg-content chat-main-markdown" withSources />
-          ) : (
-            <div className="chat-response-loading">
-              <Loading3QuartersOutlined spin />
-              <span>生成中…</span>
-            </div>
-          )}
+          <MarkdownBlock content={content.text} loading={isStreaming} className="msg-content chat-main-markdown" withSources />
         </div>
       ) : null}
 

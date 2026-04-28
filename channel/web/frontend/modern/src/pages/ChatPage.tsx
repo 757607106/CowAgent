@@ -232,13 +232,26 @@ function buildBubbleItems(
   scopeLabel: string,
 ): BubbleItemType[] {
   return messages.map((item) => {
-    const assistantText = item.message.role === 'assistant' ? item.message.content?.text || '' : '';
+    const isAssistant = item.message.role === 'assistant';
+    const assistantContent = isAssistant ? item.message.content : undefined;
+    const assistantText = assistantContent?.text || '';
+    const assistantHasContent = Boolean(
+      assistantText.trim()
+      || assistantContent?.steps.length
+      || assistantContent?.media.length,
+    );
+    const assistantStreaming = Boolean(
+      isAssistant
+      && (item.status === 'loading' || item.status === 'updating' || assistantContent?.streaming),
+    );
 
     return {
       key: item.id,
       role: item.message.role === 'assistant' ? 'assistant' : item.message.role === 'divider' ? 'system' : item.message.role,
       content: item.message,
       status: item.status,
+      loading: isAssistant && assistantStreaming && !assistantHasContent,
+      streaming: assistantStreaming,
       extraInfo: {
         createdAt: item.message.createdAt,
         scopeLabel,
