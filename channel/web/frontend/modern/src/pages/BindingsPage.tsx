@@ -1,7 +1,7 @@
 import { Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Tag, Typography, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { PageTitle } from '../components/PageTitle';
-import { AdvancedJsonPanel, DataTableShell, PageToolbar, StatusTag } from '../components/console';
+import { DataTableShell, PageToolbar, StatusTag } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
 import { api, formatBindingPayload } from '../services/api';
 import type { AgentItem, BindingItem, ChannelConfigItem, TenantItem } from '../types';
@@ -14,7 +14,6 @@ interface BindingFormValues {
   channel_config_id: string;
   agent_id: string;
   enabled: boolean;
-  metadata: string;
 }
 
 interface BindingsPageProps {
@@ -108,7 +107,6 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
       channel_config_id: '',
       agent_id: '',
       enabled: true,
-      metadata: '{}',
     });
     setOpen(true);
   };
@@ -123,7 +121,6 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
       channel_config_id: row.channel_config_id || '',
       agent_id: row.agent_id,
       enabled: Boolean(row.enabled),
-      metadata: JSON.stringify(row.metadata || {}, null, 2),
     });
     setOpen(true);
   };
@@ -131,13 +128,6 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
   const onSubmit = async () => {
     const values = await form.validateFields();
     const effectiveTenantId = values.tenant_id || tenantId || currentTenantId;
-    let metadata = {};
-    try {
-      metadata = values.metadata ? JSON.parse(values.metadata) : {};
-    } catch {
-      message.error('metadata 必须是合法 JSON');
-      return;
-    }
 
     const payload = formatBindingPayload({
       tenant_id: effectiveTenantId,
@@ -147,7 +137,7 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
       channel_config_id: values.channel_config_id,
       agent_id: values.agent_id,
       enabled: values.enabled,
-      metadata,
+      metadata: editing?.metadata || {},
     });
 
     setSubmitting(true);
@@ -277,7 +267,6 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
             ),
           },
         ]}
-        expandable={{ expandedRowRender: (row) => <AdvancedJsonPanel title="绑定 metadata" value={row.metadata || {}} defaultOpen /> }}
       />
 
       <Modal
@@ -358,9 +347,6 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
           </Form.Item>
           <Form.Item name="enabled" label="启用" htmlFor="binding-enabled" valuePropName="checked">
             <Switch id="binding-enabled" aria-label="启用绑定" />
-          </Form.Item>
-          <Form.Item name="metadata" label="高级配置(JSON)" htmlFor="binding-metadata">
-            <Input.TextArea id="binding-metadata" rows={6} aria-label="高级配置 JSON" />
           </Form.Item>
         </Form>
       </Modal>
