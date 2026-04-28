@@ -2,7 +2,6 @@
 MCPTool — wraps a single MCP tool as a BaseTool so the Agent can use it.
 """
 
-import asyncio
 import json
 
 from agent.tools.base_tool import BaseTool, ToolResult
@@ -83,29 +82,13 @@ class MCPTool(BaseTool):
         if cancel_token is not None:
             cancel_event = cancel_token._event
 
-        try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            # We're inside an async context (e.g. the agent loop itself);
-            # schedule the coroutine and block until it completes.
-            import concurrent.futures
-            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(asyncio.run, self.mcp_manager.call_tool(
-                    self.server_name, self.tool_name, arguments,
-                    cancel_event=cancel_event
-                ))
-                return future.result(timeout=120)
-        else:
-            # No running loop — safe to use asyncio.run
-            return asyncio.run(
-                self.mcp_manager.call_tool(
-                    self.server_name, self.tool_name, arguments,
-                    cancel_event=cancel_event
-                )
-            )
+        return self.mcp_manager.call_tool_sync(
+            self.server_name,
+            self.tool_name,
+            arguments,
+            cancel_event=cancel_event,
+            timeout=120,
+        )
 
     def get_json_schema(self) -> dict:
         """Return JSON Schema for tool registration (instance method)."""

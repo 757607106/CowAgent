@@ -546,28 +546,8 @@ class AgentInitializer:
 
             mcp_manager = MCPManager()
 
-            # Start servers (async)
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_closed():
-                    raise RuntimeError("Event loop is closed")
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            if loop.is_running():
-                # We're inside an async context; schedule and wait
-                import concurrent.futures
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                    future = pool.submit(
-                        asyncio.run,
-                        mcp_manager.start_servers(mcp_servers)
-                    )
-                    future.result(timeout=60)
-                    all_tools = asyncio.run(mcp_manager.get_all_tools())
-            else:
-                loop.run_until_complete(mcp_manager.start_servers(mcp_servers))
-                all_tools = loop.run_until_complete(mcp_manager.get_all_tools())
+            mcp_manager.start_servers_sync(mcp_servers, timeout=60)
+            all_tools = mcp_manager.get_all_tools_sync(timeout=30)
 
             # Wrap each MCP tool as a BaseTool
             for tool_info in all_tools:

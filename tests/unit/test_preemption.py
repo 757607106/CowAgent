@@ -379,18 +379,17 @@ class TestMCPToolCancelPropagation:
 
         cancel_token = CancelToken()
 
-        # Mock asyncio.run to capture what's passed to mcp_manager.call_tool
-        with patch("agent.tools.mcp.mcp_tool.asyncio") as mock_asyncio:
-            mock_asyncio.get_running_loop.side_effect = RuntimeError("no loop")
-            mock_asyncio.run.return_value = {"content": [{"type": "text", "text": "ok"}]}
+        manager.call_tool_sync.return_value = {"content": [{"type": "text", "text": "ok"}]}
 
-            tool._run_async({}, cancel_token=cancel_token)
+        tool._run_async({}, cancel_token=cancel_token)
 
-            # Verify asyncio.run was called and the cancel_event passed is the token's _event
-            assert mock_asyncio.run.called
-            call_args = mock_asyncio.run.call_args[0][0]
-            # The coroutine is created by mcp_manager.call_tool, we just verify it was called
-            # The important thing is that cancel_event is set in _run_async
+        manager.call_tool_sync.assert_called_once_with(
+            "server1",
+            "tool1",
+            {},
+            cancel_event=cancel_token._event,
+            timeout=120,
+        )
 
     def test_mcp_tool_cancelled_tool_returns_fail(self):
         """When CancelToken is set during MCP execution, the tool should report failure."""

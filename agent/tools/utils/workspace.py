@@ -14,6 +14,16 @@ ACCESS_DENIED_MESSAGE = "Error: Access denied: path outside workspace"
 
 _URL_RE = re.compile(r"https?://\S+")
 _ABS_OR_HOME_PATH_RE = re.compile(r"(?<![\w.:-])(?:~(?:/[^\s'\";|&<>(){}$`]*)?|/(?:[^\s'\";|&<>(){}$`]*)?)")
+_COMMAND_SEPARATORS = {";", "&&", "||", "|", "|&", "("}
+_SYSTEM_EXECUTABLE_ROOTS = (
+    Path("/bin"),
+    Path("/sbin"),
+    Path("/usr/bin"),
+    Path("/usr/sbin"),
+    Path("/usr/local/bin"),
+    Path("/opt/homebrew/bin"),
+    Path("/Library/Frameworks/Python.framework/Versions"),
+)
 
 
 class WorkspaceAccessError(ValueError):
@@ -66,11 +76,13 @@ def validate_shell_command_paths(cwd: str | os.PathLike[str], command: str) -> N
     except ValueError:
         tokens = command_without_urls.split()
 
-    for token in tokens:
+    for index, token in enumerate(tokens):
         if _contains_parent_reference(token):
             raise WorkspaceAccessError(ACCESS_DENIED_MESSAGE)
         if "$HOME" in token or "${HOME}" in token:
             raise WorkspaceAccessError(ACCESS_DENIED_MESSAGE)
+        if _is_allowed_system_command_token(tokens, index, token):
+            continue
 
         candidates: list[str] = []
         if token.startswith(("~", "/")):
@@ -93,3 +105,34 @@ def _contains_parent_reference(value: str) -> bool:
         or "/../" in normalized
         or normalized.endswith("/..")
     )
+
+
+def _is_allowed_system_command_token(tokens: list[str], index: int, token: str) -> bool:
+    if not token.startswith("/"):
+        return False
+    if not _is_command_position(tokens, index):
+        return False
+
+    command_path = Path(token).resolve(strict=False)
+    return any(
+        command_path == root or command_path.is_relative_to(root)
+        for root in _SYSTEM_EXECUTABLE_ROOTS
+    )
+
+
+def _is_command_position(tokens: list[str], index: int) -> bool:
+    if index == 0:
+        return True
+    previous = tokens[index - 1]
+    if previous in _COMMAND_SEPARATORS:
+        return True
+
+    cursor = index - 1
+    while cursor >= 0 and _is_env_assignment(tokens[cursor]):
+        cursor -= 1
+    return cursor < 0 or tokens[cursor] in _COMMAND_SEPARATORS
+
+
+def _is_env_assignment(token: str) -> bool:
+    name, separator, _value = token.partition("=")
+    return bool(separator and name.replace("_", "").isalnum() and not name[0].isdigit())

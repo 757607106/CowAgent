@@ -61,6 +61,18 @@ def test_file_tools_allow_workspace_relative_paths(tmp_path: Path) -> None:
     assert send_result.result["path"] == str((workspace / "notes" / "a.txt").resolve())
 
 
+def test_read_allows_absolute_paths_inside_workspace(tmp_path: Path) -> None:
+    workspace = tmp_path / "tenant-a" / "default"
+    workspace.mkdir(parents=True)
+    note = workspace / "note.txt"
+    note.write_text("tenant-a", encoding="utf-8")
+
+    result = Read({"cwd": str(workspace)}).execute({"path": str(note)})
+
+    assert result.status == "success"
+    assert "tenant-a" in str(result.result)
+
+
 def test_bash_rejects_paths_outside_workspace(tmp_path: Path) -> None:
     workspace = tmp_path / "tenant-a" / "default"
     other_workspace = tmp_path / "tenant-b" / "default"
@@ -70,6 +82,30 @@ def test_bash_rejects_paths_outside_workspace(tmp_path: Path) -> None:
     secret.write_text("tenant-b secret", encoding="utf-8")
 
     result = Bash({"cwd": str(workspace)}).execute({"command": f"cat {secret}"})
+
+    assert result.status == "error"
+    assert "outside workspace" in str(result.result)
+
+
+def test_bash_allows_system_executable_for_workspace_commands(tmp_path: Path) -> None:
+    workspace = tmp_path / "tenant-a" / "default"
+    workspace.mkdir(parents=True)
+
+    result = Bash({"cwd": str(workspace)}).execute({"command": "/bin/pwd"})
+
+    assert result.status == "success"
+    assert str(workspace) in result.result["output"]
+
+
+def test_bash_system_executable_still_rejects_outside_path_args(tmp_path: Path) -> None:
+    workspace = tmp_path / "tenant-a" / "default"
+    other_workspace = tmp_path / "tenant-b" / "default"
+    workspace.mkdir(parents=True)
+    other_workspace.mkdir(parents=True)
+    secret = other_workspace / "secret.txt"
+    secret.write_text("tenant-b secret", encoding="utf-8")
+
+    result = Bash({"cwd": str(workspace)}).execute({"command": f"/bin/cat {secret}"})
 
     assert result.status == "error"
     assert "outside workspace" in str(result.result)

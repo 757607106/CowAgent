@@ -264,6 +264,44 @@ async def test_mcp_manager_call_tool_missing_server():
         await manager.call_tool("not_found", "tool_x", {})
 
 
+def test_mcp_manager_sync_bridge_keeps_subprocess_on_one_loop():
+    """Long-lived sync bridge starts, lists, and calls tools on one background loop."""
+    init_response = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "result": {
+            "protocolVersion": "2024-11-05",
+            "capabilities": {},
+            "serverInfo": {"name": "chart", "version": "1.0.0"},
+        },
+    }
+    tools_response = {
+        "jsonrpc": "2.0",
+        "id": 2,
+        "result": {
+            "tools": [
+                {"name": "generate_spreadsheet", "description": "chart", "inputSchema": {}},
+            ],
+        },
+    }
+    call_response = {
+        "jsonrpc": "2.0",
+        "id": 3,
+        "result": {"content": [{"type": "text", "text": "chart ok"}]},
+    }
+    fake_proc, _ = _make_fake_process([init_response, tools_response, call_response])
+
+    manager = MCPManager()
+    with patch("asyncio.create_subprocess_exec", return_value=fake_proc):
+        manager.start_servers_sync({"chart": {"command": "npx", "args": ["-y", "@antv/mcp-server-chart"]}})
+        tools = manager.get_all_tools_sync()
+        result = manager.call_tool_sync("chart", "generate_spreadsheet", {"columns": ["排名"]})
+
+    assert tools[0]["tool_name"] == "generate_spreadsheet"
+    assert result["content"][0]["text"] == "chart ok"
+    manager.shutdown_all_sync()
+
+
 @pytest.mark.asyncio
 async def test_mcp_manager_test_connection_success():
     """test_connection returns success dict when the server works."""
@@ -335,8 +373,8 @@ def test_mcp_tool_execute_success():
     """Verify MCPTool.execute returns a success ToolResult."""
     manager = MCPManager()
 
-    # Mock the async call_tool to return MCP-style result
-    with patch.object(manager, "call_tool", new_callable=AsyncMock) as mock_call:
+    # Mock the sync bridge that keeps long-lived MCP subprocesses on one loop.
+    with patch.object(manager, "call_tool_sync") as mock_call:
         mock_call.return_value = {
             "content": [{"type": "text", "text": "file contents here"}],
         }
@@ -359,7 +397,7 @@ def test_mcp_tool_execute_error():
     """Verify MCPTool.execute returns a fail ToolResult on exception."""
     manager = MCPManager()
 
-    with patch.object(manager, "call_tool", new_callable=AsyncMock) as mock_call:
+    with patch.object(manager, "call_tool_sync") as mock_call:
         mock_call.side_effect = RuntimeError("connection lost")
 
         tool = MCPTool(
@@ -374,3 +412,22 @@ def test_mcp_tool_execute_error():
         assert isinstance(result, ToolResult)
         assert result.status == "error"
         assert "connection lost" in result.result
+
+
+def test_mcp_tool_uses_manager_background_loop_bridge():
+    """MCPTool routes calls through MCPManager.call_tool_sync."""
+    manager = MCPManager()
+    with patch.object(manager, "call_tool_sync", return_value={"content": [{"type": "text", "text": "ok"}]}) as mock_call:
+        tool = MCPTool(
+            server_name="chart",
+            tool_name="generate_spreadsheet",
+            description="Generate a spreadsheet chart",
+            input_schema={"type": "object", "properties": {}},
+            mcp_manager=manager,
+        )
+
+        result = tool.execute({"columns": ["排名"], "data": []})
+
+    assert result.status == "success"
+    assert result.result == "ok"
+    mock_call.assert_called_once()
