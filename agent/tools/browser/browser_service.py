@@ -19,8 +19,10 @@ from common.log import logger
 try:
     from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page, Playwright
     _HAS_PLAYWRIGHT = True
-except ImportError:
+    _PLAYWRIGHT_IMPORT_ERROR: Optional[ImportError] = None
+except ImportError as e:
     _HAS_PLAYWRIGHT = False
+    _PLAYWRIGHT_IMPORT_ERROR = e
 
 
 # ---------------------------------------------------------------------------
@@ -295,6 +297,7 @@ class BrowserService:
         self._lock = threading.Lock()
         self._alive = False
         self._ready = threading.Event()
+        self._startup_error: Optional[Exception] = None
 
         # Playwright objects (only accessed on the background thread)
         self._playwright = None
@@ -323,6 +326,7 @@ class BrowserService:
             # Fresh queue to avoid stale sentinels from a previous close()
             self._task_queue = queue.Queue()
             self._alive = True
+            self._startup_error = None
             self._ready = threading.Event()
             self._thread = threading.Thread(target=self._run_loop, daemon=True, name="BrowserThread")
             self._thread.start()
@@ -337,6 +341,7 @@ class BrowserService:
         except Exception as e:
             logger.error(f"[Browser] Failed to launch browser: {e}")
             self._alive = False
+            self._startup_error = e
             self._ready.set()
             self._drain_queue(RuntimeError(f"Browser launch failed: {e}"))
             return
@@ -376,6 +381,15 @@ class BrowserService:
 
     def _launch_browser(self):
         """Launch Chromium on the background thread."""
+        if not _HAS_PLAYWRIGHT:
+            raise RuntimeError(
+                "Playwright is not installed in the current Python environment. "
+                f"Import error: {_PLAYWRIGHT_IMPORT_ERROR}. "
+                "Install browser dependencies with `cow install-browser`, or run "
+                "`pip install -r requirements-optional.txt` and "
+                "`python -m playwright install chromium`."
+            )
+
         if self._headless is None:
             headless_cfg = self._config.get("headless")
             self._headless = headless_cfg if headless_cfg is not None else _should_use_headless()
@@ -436,6 +450,8 @@ class BrowserService:
         self._start_thread()
 
         if not self._alive:
+            if self._startup_error:
+                raise RuntimeError(f"Browser is not available: {self._startup_error}") from self._startup_error
             raise RuntimeError("Browser is not available")
 
         self._reset_idle_timer()

@@ -15,6 +15,9 @@ websocket-client==1.2.0
 # google
 google-generativeai
 
+# browser tool (Chromium binary still needs `cow install-browser` or `python -m playwright install chromium`)
+playwright==1.52.0
+
 # file parsing (web_fetch document support)
 pypdf
 python-docx

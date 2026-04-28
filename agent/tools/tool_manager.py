@@ -88,8 +88,10 @@ class ToolManager:
                                         logger.warning(
                                             f"[ToolManager] Browser tool not loaded - missing dependencies.\n"
                                             f"  To enable browser tool, run:\n"
-                                            f"    pip install playwright\n"
-                                            f"    playwright install chromium"
+                                            f"    cow install-browser\n"
+                                            f"  Or manually:\n"
+                                            f"    pip install -r requirements-optional.txt\n"
+                                            f"    python -m playwright install chromium"
                                         )
                                     elif "markdownify" in error_msg:
                                         logger.warning(
@@ -158,8 +160,10 @@ class ToolManager:
                                     logger.warning(
                                         f"[ToolManager] Browser tool not loaded - missing dependencies.\n"
                                         f"  To enable browser tool, run:\n"
-                                        f"    pip install playwright\n"
-                                        f"    playwright install chromium"
+                                        f"    cow install-browser\n"
+                                        f"  Or manually:\n"
+                                        f"    pip install -r requirements-optional.txt\n"
+                                        f"    python -m playwright install chromium"
                                     )
                                 elif "markdownify" in error_msg:
                                     logger.warning(
@@ -197,8 +201,10 @@ class ToolManager:
                         logger.warning(
                             f"[ToolManager] Browser tool is configured but not loaded.\n"
                             f"  To enable browser tool, run:\n"
-                            f"    pip install playwright\n"
-                            f"    playwright install chromium"
+                            f"    cow install-browser\n"
+                            f"  Or manually:\n"
+                            f"    pip install -r requirements-optional.txt\n"
+                            f"    python -m playwright install chromium"
                         )
                     elif tool_name == "google_search":
                         logger.warning(

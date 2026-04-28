@@ -2338,11 +2338,15 @@ body,
 .channel-access-shell .ant-tabs,
 .channel-access-shell .ant-tabs-content-holder,
 .channel-access-shell .ant-tabs-content,
-.channel-access-shell .ant-tabs-tabpane {
+.channel-access-shell .ant-tabs-tabpane-active {
   display: flex;
   flex: 1 1 auto;
   flex-direction: column;
   min-height: 0;
+}
+
+.channel-access-shell .ant-tabs-tabpane:not(.ant-tabs-tabpane-active) {
+  display: none;
 }
 
 .channel-tab-panel {

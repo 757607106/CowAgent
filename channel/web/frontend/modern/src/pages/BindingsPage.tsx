@@ -209,15 +209,18 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
 
       <DataTableShell<BindingItem>
         compact={embedded}
+        className="channel-table-shell"
         title={embedded ? undefined : '绑定列表'}
         rowKey={(row) => `${row.tenant_id}/${row.binding_id}`}
         loading={loading}
         dataSource={bindings}
         pagination={{ pageSize: 20 }}
+        tableLayout="fixed"
         columns={[
           {
             title: '绑定',
             dataIndex: 'name',
+            width: '18%',
             render: (value: string, row) => (
               <span className="entity-title-cell">
                 <span className="entity-title-cell-main">{value}</span>
@@ -225,22 +228,47 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
               </span>
             ),
           },
-          { title: '租户', dataIndex: 'tenant_id', render: (value: string) => tenantNameById.get(value) || value },
-          { title: '渠道', dataIndex: 'channel_type', render: (value: string) => <Tag color="blue">{value}</Tag> },
+          {
+            title: '租户',
+            dataIndex: 'tenant_id',
+            width: '18%',
+            ellipsis: true,
+            render: (value: string) => tenantNameById.get(value) || value,
+          },
+          {
+            title: '渠道',
+            dataIndex: 'channel_type',
+            width: '14%',
+            render: (value: string) => <Tag color="blue">{value}</Tag>,
+          },
           {
             title: '渠道配置',
             dataIndex: 'channel_config_id',
+            width: '16%',
+            ellipsis: true,
             render: (value: string) => {
               if (!value) return <Typography.Text type="secondary">未关联</Typography.Text>;
               return channelConfigById.get(value)?.name || value;
             },
           },
-          { title: '智能体', dataIndex: 'agent_id', render: (value: string) => agentNameById.get(value) || value },
-          { title: '状态', render: (_, row) => <StatusTag status={Boolean(row.enabled)}>{row.enabled ? '启用' : '停用'}</StatusTag> },
+          {
+            title: '智能体',
+            dataIndex: 'agent_id',
+            width: '14%',
+            ellipsis: true,
+            render: (value: string) => agentNameById.get(value) || value,
+          },
+          {
+            title: '状态',
+            width: '8%',
+            render: (_, row) => <StatusTag status={Boolean(row.enabled)}>{row.enabled ? '启用' : '停用'}</StatusTag>,
+          },
           {
             title: '操作',
+            width: '12%',
+            align: 'right',
             render: (_, row) => (
-              <Space>
+              <Space wrap size={0} className="channel-row-actions">
                 <Button size="small" onClick={() => openEdit(row)}>编辑</Button>
                 <Popconfirm title="确认删除该绑定？" onConfirm={() => void onDelete(row)}>
                   <Button size="small" danger>删除</Button>

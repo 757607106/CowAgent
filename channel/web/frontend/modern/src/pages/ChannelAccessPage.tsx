@@ -1,5 +1,6 @@
 import { Tabs } from 'antd';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { ConsolePage } from '../components/console';
 import BindingsPage from './BindingsPage';
 import ChannelsPage from './ChannelsPage';
@@ -10,6 +11,7 @@ interface ChannelAccessPageProps {
 
 export default function ChannelAccessPage({ defaultTab = 'bindings' }: ChannelAccessPageProps) {
   const [activeKey, setActiveKey] = useState(defaultTab);
+  const navigate = useNavigate();
 
   useEffect(() => {
     setActiveKey(defaultTab);
@@ -23,7 +25,11 @@ export default function ChannelAccessPage({ defaultTab = 'bindings' }: ChannelAc
       <div className="channel-access-shell">
         <Tabs
           activeKey={activeKey}
-          onChange={(key) => setActiveKey(key as 'bindings' | 'channels')}
+          onChange={(key) => {
+            const nextKey = key as 'bindings' | 'channels';
+            setActiveKey(nextKey);
+            navigate(nextKey === 'bindings' ? '/bindings' : '/channels');
+          }}
           items={[
             {
               key: 'bindings',

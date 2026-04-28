@@ -4,7 +4,7 @@ LABEL maintainer="foo@bar.com"
 ARG TZ='Asia/Shanghai'
 
 ARG CHATGPT_ON_WECHAT_VER
-# Set to "false" to skip Playwright/Chromium and produce a smaller image
+# Set to "false" to skip Chromium/system browser install and produce a smaller image
 ARG INSTALL_BROWSER=true
 # Set to "true" to use China mirrors for apt / pip / playwright (faster in CN)
 ARG USE_CN_MIRROR=false
@@ -31,7 +31,6 @@ RUN apt-get update \
     && pip install --no-cache -e . \
     && if [ "$INSTALL_BROWSER" = "true" ]; then \
         apt-get install -y --no-install-recommends fonts-wqy-zenhei \
-        && pip install --no-cache "playwright==1.52.0" \
         && python -m playwright install-deps chromium \
         && mkdir -p /app/ms-playwright \
         && if [ "$USE_CN_MIRROR" = "true" ]; then \

@@ -1,7 +1,7 @@
 import { Alert, Button, Form, Input, InputNumber, Modal, Popconfirm, QRCode, Select, Space, Spin, Switch, Tag, Typography, message } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { PageTitle } from '../components/PageTitle';
-import { DataTableShell } from '../components/console';
+import { DataTableShell, PageToolbar } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type { ChannelConfigItem, ChannelField, ChannelTypeItem, WeixinQrInfo } from '../types';
@@ -315,10 +315,10 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
         />
       ) : (
         <div className="channel-tab-toolbar">
-          <Space>
+          <PageToolbar>
             <Button onClick={() => void load()}>刷新</Button>
             {canManage && <Button type="primary" onClick={openCreate}>新增渠道配置</Button>}
-          </Space>
+          </PageToolbar>
         </div>
       )}
 
