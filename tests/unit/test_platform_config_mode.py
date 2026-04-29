@@ -65,6 +65,25 @@ def test_platform_mode_is_always_tenant_mode(monkeypatch) -> None:
     assert web_channel._is_tenant_auth_enabled() is True
 
 
+def test_platform_web_process_does_not_start_channel_runtimes_by_default() -> None:
+    cfg = Config(config_module.available_setting)
+
+    assert cfg.get("platform_start_channel_runtimes") is False
+
+
+def test_platform_mode_disables_legacy_user_data_mutation() -> None:
+    cfg = Config({"web_tenant_auth": True})
+    user_data = cfg.get_user_data("same-external-user")
+
+    user_data["openai_api_key"] = "tenant-secret"
+    user_data["gpt_model"] = "tenant-model"
+    user_data.pop("openai_api_key")
+
+    assert cfg.user_datas == {}
+    assert cfg.get_user_data("same-external-user").get("openai_api_key") is None
+    assert cfg.get_user_data("same-external-user").get("gpt_model") is None
+
+
 def test_config_handler_writes_platform_settings_not_config_json(monkeypatch) -> None:
     saved = {}
 

@@ -82,10 +82,10 @@ class SchedulerService:
                         self.task_store.update_task(task['id'], {
                             "next_run_at": next_run.isoformat(),
                             "last_run_at": now.isoformat()
-                        })
+                        }, task=task)
                     else:
                         # One-time task completed, remove it
-                        self.task_store.delete_task(task['id'])
+                        self.task_store.delete_task(task['id'], task=task)
                         logger.info(f"[Scheduler] One-time task completed and removed: {task['id']}")
             except Exception as e:
                 logger.error(f"[Scheduler] Error processing task {task.get('id')}: {e}")
@@ -108,7 +108,7 @@ class SchedulerService:
             if next_run:
                 self.task_store.update_task(task['id'], {
                     "next_run_at": next_run.isoformat()
-                })
+                }, task=task)
                 return False
             return False
         
@@ -126,7 +126,7 @@ class SchedulerService:
                     # For one-time tasks, remove them directly
                     schedule = task.get("schedule", {})
                     if schedule.get("type") == "once":
-                        self.task_store.delete_task(task['id'])
+                        self.task_store.delete_task(task['id'], task=task)
                         logger.info(f"[Scheduler] One-time task {task['id']} expired, removed")
                         return False
                     
@@ -135,7 +135,7 @@ class SchedulerService:
                     if next_next_run:
                         self.task_store.update_task(task['id'], {
                             "next_run_at": next_next_run.isoformat()
-                        })
+                        }, task=task)
                         logger.info(f"[Scheduler] Rescheduled task {task['id']} to {next_next_run}")
                     return False
             
@@ -210,4 +210,4 @@ class SchedulerService:
             self.task_store.update_task(task['id'], {
                 "last_error": str(e),
                 "last_error_at": datetime.now().isoformat()
-            })
+            }, task=task)

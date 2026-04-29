@@ -570,9 +570,22 @@ class ChatChannel(Channel):
             # this, the semaphore would block the new message until the old
             # handler finishes, making the CancelToken mechanism ineffective.
             try:
-                Bridge().cancel_running_agent(session_id)
+                Bridge().cancel_running_agent(self._cancel_session_key(context))
             except Exception:
                 pass  # Agent bridge may not be initialised yet
+
+    def _cancel_session_key(self, context: Context) -> str:
+        session_id = context.get("session_id") or ""
+        tenant_id = context.get("tenant_id") or ""
+        agent_id = context.get("agent_id") or ""
+        if tenant_id and agent_id and session_id:
+            try:
+                from cow_platform.runtime.namespaces import build_namespace
+
+                return build_namespace(tenant_id, agent_id, session_id)
+            except Exception:
+                return session_id
+        return session_id
 
     # 消费者函数，单独线程，用于从消息队列中取出消息并处理
     def consume(self):

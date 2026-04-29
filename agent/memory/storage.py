@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from common.log import logger
 from cow_platform.db import connect, jsonb
 
 
@@ -61,45 +63,87 @@ class MemoryStorage:
             return
         now = int(time.time())
         with connect() as conn:
+            use_pgvector = self._has_pgvector_column(conn)
             with conn.transaction():
                 for chunk in chunks:
-                    conn.execute(
-                        """
-                        INSERT INTO platform_memory_chunks
-                            (namespace, id, user_id, scope, source, path, start_line,
-                             end_line, text, embedding, hash, metadata, created_at, updated_at)
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        ON CONFLICT (namespace, id)
-                        DO UPDATE SET
-                            user_id = EXCLUDED.user_id,
-                            scope = EXCLUDED.scope,
-                            source = EXCLUDED.source,
-                            path = EXCLUDED.path,
-                            start_line = EXCLUDED.start_line,
-                            end_line = EXCLUDED.end_line,
-                            text = EXCLUDED.text,
-                            embedding = EXCLUDED.embedding,
-                            hash = EXCLUDED.hash,
-                            metadata = EXCLUDED.metadata,
-                            updated_at = EXCLUDED.updated_at
-                        """,
-                        (
-                            self.namespace,
-                            chunk.id,
-                            chunk.user_id,
-                            chunk.scope,
-                            chunk.source,
-                            chunk.path,
-                            chunk.start_line,
-                            chunk.end_line,
-                            chunk.text,
-                            jsonb(chunk.embedding) if chunk.embedding else None,
-                            chunk.hash,
-                            jsonb(chunk.metadata) if chunk.metadata else None,
-                            now,
-                            now,
-                        ),
-                    )
+                    if use_pgvector:
+                        conn.execute(
+                            """
+                            INSERT INTO platform_memory_chunks
+                                (namespace, id, user_id, scope, source, path, start_line,
+                                 end_line, text, embedding, embedding_vector, hash, metadata, created_at, updated_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s::vector, %s, %s, %s, %s)
+                            ON CONFLICT (namespace, id)
+                            DO UPDATE SET
+                                user_id = EXCLUDED.user_id,
+                                scope = EXCLUDED.scope,
+                                source = EXCLUDED.source,
+                                path = EXCLUDED.path,
+                                start_line = EXCLUDED.start_line,
+                                end_line = EXCLUDED.end_line,
+                                text = EXCLUDED.text,
+                                embedding = EXCLUDED.embedding,
+                                embedding_vector = EXCLUDED.embedding_vector,
+                                hash = EXCLUDED.hash,
+                                metadata = EXCLUDED.metadata,
+                                updated_at = EXCLUDED.updated_at
+                            """,
+                            (
+                                self.namespace,
+                                chunk.id,
+                                chunk.user_id,
+                                chunk.scope,
+                                chunk.source,
+                                chunk.path,
+                                chunk.start_line,
+                                chunk.end_line,
+                                chunk.text,
+                                jsonb(chunk.embedding) if chunk.embedding else None,
+                                self._pgvector_literal(chunk.embedding),
+                                chunk.hash,
+                                jsonb(chunk.metadata) if chunk.metadata else None,
+                                now,
+                                now,
+                            ),
+                        )
+                    else:
+                        conn.execute(
+                            """
+                            INSERT INTO platform_memory_chunks
+                                (namespace, id, user_id, scope, source, path, start_line,
+                                 end_line, text, embedding, hash, metadata, created_at, updated_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON CONFLICT (namespace, id)
+                            DO UPDATE SET
+                                user_id = EXCLUDED.user_id,
+                                scope = EXCLUDED.scope,
+                                source = EXCLUDED.source,
+                                path = EXCLUDED.path,
+                                start_line = EXCLUDED.start_line,
+                                end_line = EXCLUDED.end_line,
+                                text = EXCLUDED.text,
+                                embedding = EXCLUDED.embedding,
+                                hash = EXCLUDED.hash,
+                                metadata = EXCLUDED.metadata,
+                                updated_at = EXCLUDED.updated_at
+                            """,
+                            (
+                                self.namespace,
+                                chunk.id,
+                                chunk.user_id,
+                                chunk.scope,
+                                chunk.source,
+                                chunk.path,
+                                chunk.start_line,
+                                chunk.end_line,
+                                chunk.text,
+                                jsonb(chunk.embedding) if chunk.embedding else None,
+                                chunk.hash,
+                                jsonb(chunk.metadata) if chunk.metadata else None,
+                                now,
+                                now,
+                            ),
+                        )
 
     def get_chunk(self, chunk_id: str) -> Optional[MemoryChunk]:
         with connect() as conn:
@@ -121,23 +165,107 @@ class MemoryStorage:
         limit: int = 10,
     ) -> List[SearchResult]:
         scopes = self._resolve_scopes(user_id, scopes)
+        with connect() as conn:
+            if self._has_pgvector_column(conn):
+                try:
+                    pgvector_results = self._search_vector_pgvector(
+                        conn,
+                        query_embedding=query_embedding,
+                        user_id=user_id,
+                        scopes=scopes,
+                        limit=limit,
+                    )
+                    if len(pgvector_results) >= max(1, int(limit)):
+                        return pgvector_results
+                    jsonb_results = self._search_vector_jsonb(
+                        conn,
+                        query_embedding=query_embedding,
+                        user_id=user_id,
+                        scopes=scopes,
+                        limit=limit,
+                    )
+                    return self._merge_vector_results(pgvector_results, jsonb_results, limit)
+                except Exception as e:
+                    logger.warning(f"[MemoryStorage] pgvector search failed, fallback to JSONB embeddings: {e}")
+            return self._search_vector_jsonb(
+                conn,
+                query_embedding=query_embedding,
+                user_id=user_id,
+                scopes=scopes,
+                limit=limit,
+            )
+
+    def _search_vector_pgvector(
+        self,
+        conn,
+        *,
+        query_embedding: List[float],
+        user_id: Optional[str],
+        scopes: List[str],
+        limit: int,
+    ) -> List[SearchResult]:
+        vector_literal = self._pgvector_literal(query_embedding)
+        if not vector_literal:
+            return []
+        params: list[Any] = [vector_literal, self.namespace, scopes]
+        user_filter = ""
+        if user_id:
+            user_filter = "AND (scope = 'shared' OR user_id = %s)"
+            params.append(user_id)
+        params.extend([vector_literal, max(1, int(limit))])
+        rows = conn.execute(
+            f"""
+            SELECT *,
+                   GREATEST(0, 1 - (embedding_vector <=> %s::vector)) AS vector_score
+            FROM platform_memory_chunks
+            WHERE namespace = %s
+              AND scope = ANY(%s)
+              AND embedding_vector IS NOT NULL
+              {user_filter}
+            ORDER BY embedding_vector <=> %s::vector
+            LIMIT %s
+            """,
+            tuple(params),
+        ).fetchall()
+        return [
+            SearchResult(
+                path=row["path"],
+                start_line=row["start_line"],
+                end_line=row["end_line"],
+                score=float(row["vector_score"] or 0),
+                snippet=self._truncate_text(row["text"], 500),
+                source=row["source"],
+                user_id=row["user_id"],
+            )
+            for row in rows
+            if float(row["vector_score"] or 0) > 0
+        ]
+
+    def _search_vector_jsonb(
+        self,
+        conn,
+        *,
+        query_embedding: List[float],
+        user_id: Optional[str],
+        scopes: List[str],
+        limit: int,
+    ) -> List[SearchResult]:
         params: list[Any] = [self.namespace, scopes]
         user_filter = ""
         if user_id:
             user_filter = "AND (scope = 'shared' OR user_id = %s)"
             params.append(user_id)
-        with connect() as conn:
-            rows = conn.execute(
-                f"""
-                SELECT *
-                FROM platform_memory_chunks
-                WHERE namespace = %s
-                  AND scope = ANY(%s)
-                  AND embedding IS NOT NULL
-                  {user_filter}
-                """,
-                tuple(params),
-            ).fetchall()
+        rows = conn.execute(
+            f"""
+            SELECT *
+            FROM platform_memory_chunks
+            WHERE namespace = %s
+              AND scope = ANY(%s)
+              AND embedding IS NOT NULL
+              {user_filter}
+            """,
+            tuple(params),
+        ).fetchall()
 
         results = []
         for row in rows:
@@ -157,6 +285,20 @@ class MemoryStorage:
             )
             for score, row in results[:limit]
         ]
+
+    @staticmethod
+    def _merge_vector_results(
+        primary: List[SearchResult],
+        fallback: List[SearchResult],
+        limit: int,
+    ) -> List[SearchResult]:
+        merged: dict[tuple[str, int, int, str, Optional[str]], SearchResult] = {}
+        for result in [*primary, *fallback]:
+            key = (result.path, result.start_line, result.end_line, result.source, result.user_id)
+            existing = merged.get(key)
+            if existing is None or result.score > existing.score:
+                merged[key] = result
+        return sorted(merged.values(), key=lambda item: item.score, reverse=True)[: max(1, int(limit))]
 
     def search_keyword(
         self,
@@ -286,6 +428,38 @@ class MemoryStorage:
         cjk_words = re.findall(r"[\u4e00-\u9fff]{2,}", query)
         latin_words = re.findall(r"[A-Za-z0-9_]+", query)
         return [token for token in [*cjk_words, *latin_words] if token]
+
+    @staticmethod
+    def _has_pgvector_column(conn) -> bool:
+        try:
+            row = conn.execute(
+                """
+                SELECT EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name = 'platform_memory_chunks'
+                      AND column_name = 'embedding_vector'
+                ) AS exists
+                """
+            ).fetchone()
+            return bool(row and row["exists"])
+        except Exception:
+            return False
+
+    @staticmethod
+    def _pgvector_literal(embedding: Optional[List[float]]) -> Optional[str]:
+        if not embedding:
+            return None
+        values: list[str] = []
+        for item in embedding:
+            try:
+                value = float(item)
+            except (TypeError, ValueError):
+                return None
+            if not math.isfinite(value):
+                return None
+            values.append(format(value, ".12g"))
+        return "[" + ",".join(values) + "]"
 
     @staticmethod
     def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:

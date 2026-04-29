@@ -24,8 +24,17 @@ class PluginManager:
         self.current_plugin_path = None
         self.loaded = {}
 
+    def _legacy_plugins_disabled(self) -> bool:
+        try:
+            return bool(conf().get("web_tenant_auth", True))
+        except Exception:
+            return True
+
     def register(self, name: str, desire_priority: int = 0, **kwargs):
         def wrapper(plugincls):
+            if self._legacy_plugins_disabled():
+                logger.debug("Legacy plugin registration skipped in platform tenant mode: %s", name)
+                return plugincls
             plugincls.name = name
             plugincls.priority = desire_priority
             plugincls.desc = kwargs.get("desc")
@@ -43,10 +52,17 @@ class PluginManager:
         return wrapper
 
     def save_config(self):
+        if self._legacy_plugins_disabled():
+            logger.debug("Legacy plugin config save skipped in platform tenant mode")
+            return
         with open("./plugins/plugins.json", "w", encoding="utf-8") as f:
             json.dump(self.pconf, f, indent=4, ensure_ascii=False)
 
     def load_config(self):
+        if self._legacy_plugins_disabled():
+            logger.info("Legacy plugins disabled in platform tenant mode")
+            self.pconf = {"plugins": SortedDict(lambda k, v: v["priority"], reverse=True)}
+            return self.pconf
         logger.debug("Loading plugins config...")
 
         modified = False
@@ -73,6 +89,9 @@ class PluginManager:
         """
         all_config_path = "./plugins/config.json"
         try:
+            if conf().get("web_tenant_auth", True):
+                logger.debug("Legacy plugin global config load skipped in platform tenant mode")
+                return
             if os.path.exists(all_config_path):
                 # read from all plugins config
                 with open(all_config_path, "r", encoding="utf-8") as f:
@@ -85,6 +104,9 @@ class PluginManager:
             logger.error(e)
 
     def scan_plugins(self):
+        if self._legacy_plugins_disabled():
+            logger.info("Legacy plugin scan skipped in platform tenant mode")
+            return []
         logger.debug("Scanning plugins ...")
         plugins_dir = "./plugins"
         raws = [self.plugins[name] for name in self.plugins]
@@ -138,6 +160,11 @@ class PluginManager:
             self.listening_plugins[event].sort(key=lambda name: self.plugins[name].priority, reverse=True)
 
     def activate_plugins(self):  # 生成新开启的插件实例
+        if self._legacy_plugins_disabled():
+            logger.info("Legacy plugin activation skipped in platform tenant mode")
+            self.listening_plugins.clear()
+            self.instances.clear()
+            return []
         failed_plugins = []
         for name, plugincls in self.plugins.items():
             if plugincls.enabled:
@@ -162,6 +189,8 @@ class PluginManager:
         return failed_plugins
 
     def reload_plugin(self, name: str):
+        if self._legacy_plugins_disabled():
+            return False
         name = name.upper()
         remove_plugin_config(name)
         if name in self.instances:
@@ -176,6 +205,13 @@ class PluginManager:
         return False
 
     def load_plugins(self):
+        if self._legacy_plugins_disabled():
+            logger.info("Legacy plugins disabled in platform tenant mode; use Agent tools/skills/MCP instead")
+            self.pconf = {"plugins": SortedDict(lambda k, v: v["priority"], reverse=True)}
+            self.plugins = SortedDict(lambda k, v: v.priority, reverse=True)
+            self.listening_plugins.clear()
+            self.instances.clear()
+            return
         self.load_config()
         self.scan_plugins()
         # 加载全量插件配置
@@ -188,6 +224,8 @@ class PluginManager:
         self.activate_plugins()
 
     def emit_event(self, e_context: EventContext, *args, **kwargs):
+        if self._legacy_plugins_disabled():
+            return e_context
         if e_context.event in self.listening_plugins:
             for name in self.listening_plugins[e_context.event]:
                 if self.plugins[name].enabled and e_context.action == EventAction.CONTINUE:
@@ -200,6 +238,8 @@ class PluginManager:
         return e_context
 
     def set_plugin_priority(self, name: str, priority: int):
+        if self._legacy_plugins_disabled():
+            return False
         name = name.upper()
         if name not in self.plugins:
             return False
@@ -215,6 +255,8 @@ class PluginManager:
         return True
 
     def enable_plugin(self, name: str):
+        if self._legacy_plugins_disabled():
+            return False, "平台模式已禁用 legacy 插件，请使用 Agent tools/skills/MCP"
         name = name.upper()
         if name not in self.plugins:
             return False, "插件不存在"
@@ -230,6 +272,8 @@ class PluginManager:
         return True, "插件已开启"
 
     def disable_plugin(self, name: str):
+        if self._legacy_plugins_disabled():
+            return True
         name = name.upper()
         if name not in self.plugins:
             return False
@@ -242,9 +286,13 @@ class PluginManager:
         return True
 
     def list_plugins(self):
+        if self._legacy_plugins_disabled():
+            return SortedDict(lambda k, v: v.priority, reverse=True)
         return self.plugins
 
     def install_plugin(self, repo: str):
+        if self._legacy_plugins_disabled():
+            return False, "平台模式已禁用 legacy 插件，请使用 Agent tools/skills/MCP"
         try:
             import common.package_manager as pkgmgr
 
@@ -286,6 +334,8 @@ class PluginManager:
             return False, "安装插件失败，" + str(e)
 
     def update_plugin(self, name: str):
+        if self._legacy_plugins_disabled():
+            return False, "平台模式已禁用 legacy 插件，请使用 Agent tools/skills/MCP"
         try:
             import common.package_manager as pkgmgr
 
@@ -321,6 +371,8 @@ class PluginManager:
             return False, "更新插件失败，" + str(e)
 
     def uninstall_plugin(self, name: str):
+        if self._legacy_plugins_disabled():
+            return False, "平台模式已禁用 legacy 插件，请使用 Agent tools/skills/MCP"
         name = name.upper()
         if name not in self.plugins:
             return False, "插件不存在"

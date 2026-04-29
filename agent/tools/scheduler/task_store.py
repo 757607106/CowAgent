@@ -111,7 +111,7 @@ class TaskStore:
         self.save_tasks(tasks)
         return True
     
-    def update_task(self, task_id: str, updates: dict) -> bool:
+    def update_task(self, task_id: str, updates: dict, task: dict = None) -> bool:
         """
         Update an existing task
         
@@ -134,7 +134,7 @@ class TaskStore:
         self.save_tasks(tasks)
         return True
     
-    def delete_task(self, task_id: str) -> bool:
+    def delete_task(self, task_id: str, task: dict = None) -> bool:
         """
         Delete a task
         
@@ -153,7 +153,7 @@ class TaskStore:
         self.save_tasks(tasks)
         return True
     
-    def get_task(self, task_id: str) -> Optional[dict]:
+    def get_task(self, task_id: str, task: dict = None) -> Optional[dict]:
         """
         Get a specific task
         

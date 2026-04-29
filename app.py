@@ -42,9 +42,14 @@ class ChannelManager:
     def __init__(self):
         self._channels = {}        # channel_name -> channel instance
         self._threads = {}         # channel_name -> thread
+        self._lease_stop_events = {}
+        self._lease_threads = {}
         self._primary_channel = None
         self._lock = threading.Lock()
         self.cloud_mode = False    # set to True when cloud client is active
+        from cow_platform.services.channel_runtime_service import ChannelRuntimeLeaseService
+
+        self._runtime_leases = ChannelRuntimeLeaseService()
 
     @property
     def channel(self):
@@ -56,6 +61,14 @@ class ChannelManager:
 
     def get_channel_config(self, channel_config_id: str):
         return self._channels.get(channel_config_id)
+
+    def list_channel_config_ids(self) -> list[str]:
+        with self._lock:
+            return [
+                name
+                for name, channel in self._channels.items()
+                if getattr(channel, "channel_config_id", "") == name
+            ]
 
     def start(self, channel_names: list, first_start: bool = False):
         """
@@ -146,24 +159,32 @@ class ChannelManager:
         if existing is not None:
             self.remove_channel_config(channel_config_id)
 
+        if not self._acquire_channel_runtime_lease(definition):
+            return
+
         logger.info(f"[ChannelManager] Starting tenant channel config '{channel_config_id}' ({channel_type})")
         _clear_singleton_cache(channel_type)
         from cow_platform.runtime.scope import activate_config_overrides
 
-        with activate_config_overrides(overrides):
-            ch = channel_factory.create_channel(channel_type, singleton_key=channel_config_id)
-        ch.cloud_mode = self.cloud_mode
-        ch.channel_config_id = channel_config_id
-        ch.tenant_id = getattr(definition, "tenant_id", "")
-        ch.config_overrides = overrides
+        try:
+            with activate_config_overrides(overrides):
+                ch = channel_factory.create_channel(channel_type, singleton_key=channel_config_id)
+            ch.cloud_mode = self.cloud_mode
+            ch.channel_config_id = channel_config_id
+            ch.tenant_id = getattr(definition, "tenant_id", "")
+            ch.config_overrides = overrides
 
-        with self._lock:
-            self._channels[channel_config_id] = ch
-        t = threading.Thread(target=self._run_channel, args=(channel_config_id, ch), daemon=True)
-        with self._lock:
-            self._threads[channel_config_id] = t
-        t.start()
-        logger.debug(f"[ChannelManager] Tenant channel config '{channel_config_id}' started in sub-thread")
+            with self._lock:
+                self._channels[channel_config_id] = ch
+            t = threading.Thread(target=self._run_channel, args=(channel_config_id, ch), daemon=True)
+            with self._lock:
+                self._threads[channel_config_id] = t
+            t.start()
+            self._start_channel_runtime_heartbeat(channel_config_id)
+            logger.debug(f"[ChannelManager] Tenant channel config '{channel_config_id}' started in sub-thread")
+        except Exception:
+            self._stop_channel_runtime_lease(channel_config_id, release=True)
+            raise
 
     def start_channel_configs(self, definitions: list):
         for definition in definitions:
@@ -173,6 +194,25 @@ class ChannelManager:
                 logger.error(
                     f"[ChannelManager] Failed to start channel config '{getattr(definition, 'channel_config_id', '')}': {e}"
                 )
+                logger.exception(e)
+
+    def sync_channel_configs(self, definitions: list):
+        desired = {
+            getattr(definition, "channel_config_id", ""): definition
+            for definition in definitions
+            if getattr(definition, "channel_config_id", "")
+        }
+        running = set(self.list_channel_config_ids())
+        for channel_config_id in sorted(running - set(desired)):
+            logger.info(f"[ChannelManager] Stopping stale tenant channel config '{channel_config_id}'")
+            self.remove_channel_config(channel_config_id)
+        for channel_config_id, definition in desired.items():
+            if self.get_channel_config(channel_config_id) is not None:
+                continue
+            try:
+                self.start_channel_config(definition)
+            except Exception as e:
+                logger.error(f"[ChannelManager] Failed to sync channel config '{channel_config_id}': {e}")
                 logger.exception(e)
 
     def remove_channel_config(self, channel_config_id: str):
@@ -187,6 +227,10 @@ class ChannelManager:
         except Exception as e:
             logger.error(f"[ChannelManager] Channel '{name}' startup error: {e}")
             logger.exception(e)
+        finally:
+            channel_config_id = getattr(channel, "channel_config_id", "") or ""
+            if channel_config_id:
+                self._stop_channel_runtime_lease(channel_config_id, release=True)
 
     def stop(self, channel_name: str = None):
         """
@@ -227,6 +271,79 @@ class ChannelManager:
                     else:
                         logger.warning(f"[ChannelManager] Channel '{name}' thread did not exit in 5s, forcing interrupt")
                         self._interrupt_thread(th, name)
+            channel_config_id = getattr(ch, "channel_config_id", "") or ""
+            if channel_config_id:
+                still_alive = bool(th and th.is_alive())
+                self._stop_channel_runtime_lease(channel_config_id, release=not still_alive)
+
+    def _acquire_channel_runtime_lease(self, definition) -> bool:
+        channel_config_id = getattr(definition, "channel_config_id", "")
+        try:
+            lease = self._runtime_leases.acquire(definition)
+        except Exception as e:
+            logger.error(f"[ChannelManager] Failed to acquire runtime lease for '{channel_config_id}': {e}")
+            return False
+        if not lease.acquired:
+            logger.warning(
+                f"[ChannelManager] Skip channel config '{channel_config_id}', runtime lease is owned by another instance"
+            )
+            return False
+        logger.info(
+            f"[ChannelManager] Acquired runtime lease for channel config '{channel_config_id}' "
+            f"until {lease.lease_until}"
+        )
+        return True
+
+    def _start_channel_runtime_heartbeat(self, channel_config_id: str):
+        stop_event = threading.Event()
+        with self._lock:
+            old_event = self._lease_stop_events.pop(channel_config_id, None)
+            self._lease_stop_events[channel_config_id] = stop_event
+        if old_event:
+            old_event.set()
+
+        interval = max(5, int(getattr(self._runtime_leases, "ttl_seconds", 90)) // 3)
+
+        def heartbeat_loop():
+            failures = 0
+            while not stop_event.wait(interval):
+                try:
+                    if self._runtime_leases.heartbeat(channel_config_id):
+                        failures = 0
+                        continue
+                    logger.error(f"[ChannelManager] Lost runtime lease for channel config '{channel_config_id}'")
+                    self.remove_channel_config(channel_config_id)
+                    return
+                except Exception as e:
+                    failures += 1
+                    logger.warning(
+                        f"[ChannelManager] Runtime lease heartbeat failed for '{channel_config_id}' "
+                        f"({failures}/3): {e}"
+                    )
+                    if failures >= 3:
+                        self.remove_channel_config(channel_config_id)
+                        return
+
+        thread = threading.Thread(target=heartbeat_loop, daemon=True)
+        with self._lock:
+            self._lease_threads[channel_config_id] = thread
+        thread.start()
+
+    def _stop_channel_runtime_lease(self, channel_config_id: str, *, release: bool):
+        with self._lock:
+            stop_event = self._lease_stop_events.pop(channel_config_id, None)
+            self._lease_threads.pop(channel_config_id, None)
+        if stop_event:
+            stop_event.set()
+        if not release:
+            logger.warning(
+                f"[ChannelManager] Runtime lease for '{channel_config_id}' will expire; channel thread is still alive"
+            )
+            return
+        try:
+            self._runtime_leases.release(channel_config_id)
+        except Exception as e:
+            logger.warning(f"[ChannelManager] Failed to release runtime lease for '{channel_config_id}': {e}")
 
     @staticmethod
     def _interrupt_thread(th: threading.Thread, name: str):
@@ -361,12 +478,15 @@ def run():
 
         _channel_mgr = ChannelManager()
         _channel_mgr.start(channel_names, first_start=True)
-        try:
-            from cow_platform.services.channel_config_service import ChannelConfigService
+        if conf().get("platform_start_channel_runtimes", False):
+            try:
+                from cow_platform.services.channel_config_service import ChannelConfigService
 
-            _channel_mgr.start_channel_configs(ChannelConfigService().list_enabled_runtime_configs())
-        except Exception as e:
-            logger.warning(f"[App] Failed to auto-start tenant channel configs: {e}")
+                _channel_mgr.start_channel_configs(ChannelConfigService().list_enabled_runtime_configs())
+            except Exception as e:
+                logger.warning(f"[App] Failed to auto-start tenant channel configs: {e}")
+        else:
+            logger.info("[App] Tenant channel runtimes are disabled in web process; use cow platform channel-runtime")
 
         while True:
             time.sleep(1)

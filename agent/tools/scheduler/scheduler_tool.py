@@ -93,7 +93,11 @@ class SchedulerTool(BaseTool):
         action = params.get("action")
         kwargs = params
         
-        if not self.task_store:
+        if self.task_store and hasattr(self.task_store, "for_context") and self.current_context is None:
+            return ToolResult.fail("错误: 无法获取当前对话上下文")
+
+        task_store = self._task_store()
+        if not task_store:
             return ToolResult.fail("错误: 定时任务系统未初始化")
         
         try:
@@ -154,6 +158,8 @@ class SchedulerTool(BaseTool):
             return "错误: 无法获取当前对话上下文"
         
         context = self.current_context
+        scope = self._scope_from_context(context)
+        channel_type = scope["channel_type"] or self.config.get("channel_type", "unknown")
         
         # Create task
         task_id = str(uuid.uuid4())[:8]
@@ -166,7 +172,11 @@ class SchedulerTool(BaseTool):
                 "receiver": context.get("receiver"),
                 "receiver_name": self._get_receiver_name(context),
                 "is_group": context.get("isgroup", False),
-                "channel_type": self.config.get("channel_type", "unknown")
+                "channel_type": channel_type,
+                "tenant_id": scope["tenant_id"],
+                "agent_id": scope["agent_id"],
+                "binding_id": scope["binding_id"],
+                "channel_config_id": scope["channel_config_id"],
             }
         else:  # ai_task
             action = {
@@ -175,7 +185,11 @@ class SchedulerTool(BaseTool):
                 "receiver": context.get("receiver"),
                 "receiver_name": self._get_receiver_name(context),
                 "is_group": context.get("isgroup", False),
-                "channel_type": self.config.get("channel_type", "unknown")
+                "channel_type": channel_type,
+                "tenant_id": scope["tenant_id"],
+                "agent_id": scope["agent_id"],
+                "binding_id": scope["binding_id"],
+                "channel_config_id": scope["channel_config_id"],
             }
         
         # 针对钉钉单聊，额外存储 sender_staff_id
@@ -185,6 +199,11 @@ class SchedulerTool(BaseTool):
         
         task_data = {
             "id": task_id,
+            "tenant_id": scope["tenant_id"],
+            "agent_id": scope["agent_id"],
+            "binding_id": scope["binding_id"],
+            "channel_config_id": scope["channel_config_id"],
+            "session_id": scope["session_id"],
             "name": name,
             "enabled": True,
             "created_at": datetime.now().isoformat(),
@@ -199,7 +218,7 @@ class SchedulerTool(BaseTool):
             task_data["next_run_at"] = next_run.isoformat()
         
         # Save task
-        self.task_store.add_task(task_data)
+        self._task_store().add_task(task_data)
         
         # Format response
         schedule_desc = self._format_schedule_description(schedule)
@@ -222,7 +241,7 @@ class SchedulerTool(BaseTool):
     
     def _list_tasks(self, **kwargs) -> str:
         """List all tasks"""
-        tasks = self.task_store.list_tasks()
+        tasks = self._task_store().list_tasks()
         
         if not tasks:
             return "📋 暂无定时任务"
@@ -248,7 +267,7 @@ class SchedulerTool(BaseTool):
         if not task_id:
             return "错误: 缺少任务ID (task_id)"
         
-        task = self.task_store.get_task(task_id)
+        task = self._task_store().get_task(task_id)
         if not task:
             return f"错误: 任务 '{task_id}' 不存在"
         
@@ -279,11 +298,11 @@ class SchedulerTool(BaseTool):
         if not task_id:
             return "错误: 缺少任务ID (task_id)"
         
-        task = self.task_store.get_task(task_id)
+        task = self._task_store().get_task(task_id)
         if not task:
             return f"错误: 任务 '{task_id}' 不存在"
         
-        self.task_store.delete_task(task_id)
+        self._task_store().delete_task(task_id)
         return f"✅ 任务 '{task['name']}' ({task_id}) 已删除"
     
     def _enable_task(self, **kwargs) -> str:
@@ -292,11 +311,11 @@ class SchedulerTool(BaseTool):
         if not task_id:
             return "错误: 缺少任务ID (task_id)"
         
-        task = self.task_store.get_task(task_id)
+        task = self._task_store().get_task(task_id)
         if not task:
             return f"错误: 任务 '{task_id}' 不存在"
         
-        self.task_store.enable_task(task_id, True)
+        self._task_store().enable_task(task_id, True)
         return f"✅ 任务 '{task['name']}' ({task_id}) 已启用"
     
     def _disable_task(self, **kwargs) -> str:
@@ -305,12 +324,27 @@ class SchedulerTool(BaseTool):
         if not task_id:
             return "错误: 缺少任务ID (task_id)"
         
-        task = self.task_store.get_task(task_id)
+        task = self._task_store().get_task(task_id)
         if not task:
             return f"错误: 任务 '{task_id}' 不存在"
         
-        self.task_store.enable_task(task_id, False)
+        self._task_store().enable_task(task_id, False)
         return f"✅ 任务 '{task['name']}' ({task_id}) 已禁用"
+
+    def _task_store(self):
+        if self.task_store and hasattr(self.task_store, "for_context"):
+            return self.task_store.for_context(self.current_context)
+        return self.task_store
+
+    def _scope_from_context(self, context: Context) -> dict[str, str]:
+        return {
+            "tenant_id": str(context.get("tenant_id") or context.get("source_tenant_id") or "default"),
+            "agent_id": str(context.get("agent_id") or "default"),
+            "binding_id": str(context.get("binding_id") or ""),
+            "channel_config_id": str(context.get("channel_config_id") or ""),
+            "session_id": str(context.get("session_id") or ""),
+            "channel_type": str(context.get("channel_type") or ""),
+        }
     
     def _parse_schedule(self, schedule_type: str, schedule_value: str) -> Optional[dict]:
         """Parse and validate schedule configuration"""

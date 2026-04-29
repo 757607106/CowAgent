@@ -38,6 +38,16 @@ services:
       COW_PLATFORM_MINIO_ACCESS_KEY: ${PLATFORM_MINIO_ROOT_USER:-cowplatform-prod}
       COW_PLATFORM_MINIO_SECRET_KEY: ${PLATFORM_MINIO_ROOT_PASSWORD:-prod-smoke-minio-secret}
 
+  platform-channel-runtime:
+    restart: unless-stopped
+    environment:
+      COW_PLATFORM_ENV: production
+      COW_PLATFORM_REQUIRE_DEPENDENCIES: "true"
+      COW_PLATFORM_STRICT_STARTUP: "true"
+      COW_PLATFORM_DATABASE_URL: postgresql://${PLATFORM_POSTGRES_USER:-cowplatform}:${PLATFORM_POSTGRES_PASSWORD:-prod-smoke-db-secret}@postgres:5432/${PLATFORM_POSTGRES_DB:-cowplatform}
+      COW_PLATFORM_MINIO_ACCESS_KEY: ${PLATFORM_MINIO_ROOT_USER:-cowplatform-prod}
+      COW_PLATFORM_MINIO_SECRET_KEY: ${PLATFORM_MINIO_ROOT_PASSWORD:-prod-smoke-minio-secret}
+
   platform-web:
     restart: unless-stopped
     environment:
@@ -48,3 +58,4 @@ services:
       COW_PLATFORM_MINIO_ACCESS_KEY: ${PLATFORM_MINIO_ROOT_USER:-cowplatform-prod}
       COW_PLATFORM_MINIO_SECRET_KEY: ${PLATFORM_MINIO_ROOT_PASSWORD:-prod-smoke-minio-secret}
       WEB_TENANT_AUTH: "true"
+      COW_PLATFORM_START_CHANNEL_RUNTIMES: "false"

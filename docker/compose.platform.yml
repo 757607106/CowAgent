@@ -71,6 +71,27 @@ services:
       minio:
         condition: service_started
 
+  platform-channel-runtime:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.latest
+      args:
+        INSTALL_BROWSER: "false"
+    command: python -m cow_platform.worker.channel_runtime --poll-interval 15
+    environment:
+      <<: *platform-environment
+    volumes:
+      - ../cow:/home/agent/cow
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      minio:
+        condition: service_started
+
   platform-web:
     build:
       context: ..
@@ -82,6 +103,7 @@ services:
       <<: *platform-environment
       WEB_PORT: ${WEB_PORT:-9899}
       WEB_TENANT_AUTH: "true"
+      COW_PLATFORM_START_CHANNEL_RUNTIMES: "false"
     ports:
       - "${WEB_PORT:-9899}:${WEB_PORT:-9899}"
     volumes:

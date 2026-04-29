@@ -11,11 +11,15 @@
 ### `app.py`
 
 - 平台模式强制按多租户运行，启动阶段只保留 `web` 控制台，不再根据启动配置中的 `channel_type` 启动微信、飞书、QQ 等全局渠道
-- 启动后仍会从租户数据库加载已启用的渠道配置，并按 `channel_config_id` 维度启动托管运行时
+- Web 进程默认不再启动租户托管渠道；只有显式设置 `platform_start_channel_runtimes=true` 时才兼容旧式同进程启动
+- 托管渠道启动前必须获取 `platform_channel_runtime_leases` 分布式 lease，运行期间通过 heartbeat 续租，防止多实例部署时同一租户渠道重复启动
+- 渠道停止时释放 lease；如果线程未退出则停止续租并让 lease 自动过期，避免旧线程仍存活时被其他实例立刻接管
 
 升级关注点：
 
 - 如果上游调整应用启动或 ChannelManager，需要重新确认租户渠道仍只来自数据库配置
+- 如果上游调整渠道生命周期，需要确认托管渠道仍按 `channel_config_id` 获取 lease 后才能启动
+- 如果上游调整应用启动参数，需要确认 Web 进程不会重新默认承载长连接/轮询渠道
 
 ### `config.py`
 
@@ -23,10 +27,60 @@
 - 平台托管渠道运行时通过该覆盖机制注入模型、渠道密钥等租户级配置
 - 平台模式不读取项目根目录 `config.json` / `config-template.json`，启动层来自环境变量，平台运行时配置来自 PostgreSQL `platform_settings`
 - 数据库平台设置会覆盖内存配置，并同步到环境变量供子进程使用，避免旧环境变量压过平台数据库配置
+- 平台租户模式不再读取或保存全局 `user_datas.pkl`，运行期 `get_user_data()` 也返回 no-op 视图，避免不同租户的外部用户 ID 复用 legacy 用户级模型/API key
+- `platform_start_channel_runtimes` 默认关闭，用于把 Web 进程与租户渠道 runtime worker 解耦
 
 升级关注点：
 
 - 如果上游调整全局配置读取方式，需要重新确认优先级仍是 runtime scope > platform_settings > environment > 内置默认值
+- 如果上游重新引入用户级 legacy 配置持久化，需要确认平台模式不会落回全局 pickle 文件或全局内存字典
+
+### `cow_platform/db/postgres.py`
+
+- 平台 PostgreSQL 访问增加连接池，减少高频仓储调用反复建连的开销
+- 增加版本化 migration runner 和 `platform_schema_migrations` 迁移登记表，容器启动、CLI 与测试共用同一套 schema 入口
+- 增加 `platform_scheduled_tasks` 表，作为定时任务在平台模式下的唯一配置真源
+- 增加 `platform_channel_runtime_leases` 表，作为托管渠道运行时的分布式所有权记录
+- `platform_memory_chunks` 在 pgvector 可用时增加 `embedding_vector` 和 HNSW 索引；pgvector 不可用时保留 JSONB embedding 回退
+
+升级关注点：
+
+- 如果上游调整数据库初始化方式，需要确认平台连接池、版本化 migration、调度任务表、渠道运行时 lease 表和 memory vector schema 仍会初始化
+
+### `cow_platform/db/migrate.py`
+
+- 容器启动 migration 入口改为调用版本化 `run_migrations()`，输出实际应用的 migration 版本
+
+升级关注点：
+
+- 如果上游调整容器入口或数据库初始化脚本，需要确认仍调用同一套版本化 migration runner
+
+### `cow_platform/services/channel_runtime_service.py`
+
+- 新增托管渠道运行时 lease 服务，按 `channel_config_id` 原子获取、续租和释放运行时所有权
+- 只有当前实例 owner 可以续租或释放，lease 过期后其他实例才能接管
+
+升级关注点：
+
+- 如果上游调整托管渠道启动方式，需要保留 acquire/heartbeat/release 生命周期，避免多实例重复拉起同一渠道
+
+### `cow_platform/worker/channel_runtime.py`
+
+- 新增租户渠道 runtime worker，按数据库已启用渠道配置定期 sync 启停后台 runtime
+- Web 进程只负责 Web/API；飞书 websocket、QQ、钉钉、企微等长连接/轮询渠道由该 worker 持有
+
+升级关注点：
+
+- 如果上游调整 worker 或部署入口，需要确认 `cow platform channel-runtime` 与容器服务仍能独立启动租户渠道 runtime
+
+### `cow_platform/services/scheduler_task_store.py`
+
+- 新增 DB-backed scheduler task store，所有任务按 `tenant_id + agent_id + task_id` 隔离
+- 工具/UI 使用 scoped store，只能读写当前租户和 Agent 的任务；后台调度使用 unscoped store 扫描到期任务
+
+升级关注点：
+
+- 如果上游调整 scheduler 存储接口，需要保留 tenant/agent scope，不能重新把任务写回全局 `tasks.json`
 
 ### `cow_platform/services/platform_config_service.py`
 
@@ -50,10 +104,12 @@
 ### `agent/memory/storage.py`
 
 - 长期记忆存储使用平台 Agent 工作区路径派生隔离命名空间
+- embedding 写入优先同步到 PostgreSQL `vector` 列，向量搜索优先走 pgvector 距离排序
+- 当 pgvector 扩展、列或索引不可用时保留 JSONB embedding + Python cosine 回退，避免部署环境缺扩展导致 memory 功能不可用
 
 升级关注点：
 
-- 如果上游重构长期记忆索引路径，需要重新确认租户/Agent 工作区不会串用
+- 如果上游重构长期记忆索引路径，需要重新确认租户/Agent 工作区不会串用，且向量搜索不会退回全表 JSON 扫描作为唯一生产路径
 
 ### `agent/tools/*`
 
@@ -78,20 +134,25 @@
 - 合并 Agent 自定义 `system_prompt`
 - 从 Agent 独立工作区恢复会话历史
 - 仅平台默认 Agent 在 tools/skills 为空时继承默认能力；自定义 Agent 空 allowlist 表示不启用对应能力
+- 平台租户模式不再把模型密钥写入全局 `~/.cow/.env`
 
 升级关注点：
 
 - 如果上游重构 Agent 初始化顺序，需要重新检查工作区解析和 prompt 合并逻辑
+- 如果上游调整密钥初始化，需要确认平台模型配置仍只来自 runtime scope / 数据库配置，不写全局用户目录
 
 ### `bridge/agent_bridge.py`
 
 - 支持基于 `tenant_id + agent_id + session_id` 的实例缓存键
+- 运行中请求取消也使用同一 scoped key，避免相同 `session_id` 在不同租户/Agent 间互相取消
 - 接入 runtime scope
 - 接入 Phase 3 的 quota 校验和 usage 记录
+- 平台租户模式不再把模型密钥写入全局 `~/.cow/.env`
 
 升级关注点：
 
 - 如果上游重构 `agent_reply()` 或消息持久化逻辑，需要重新验证 usage 与 quota 的接入点
+- 如果上游调整 preemption/cancel 逻辑，需要确认取消 key 仍与 Agent 实例缓存 key 一致
 
 ### `bridge/context.py`
 
@@ -180,10 +241,49 @@
 - ChatChannel 支持按 `binding_id` 或渠道身份解析目标 Agent
 - 消息 context 会注入 `binding_id`、`tenant_id`、`agent_id`、租户用户身份和 config overrides
 - 对带 `channel_config_id` / `source_tenant_id` 的托管渠道强制重新解析绑定；解析不到或租户不一致时 fail-closed，禁止落回 legacy/global Agent
+- preemption 取消 key 按 `tenant_id + agent_id + session_id` 生成，避免跨租户同 session_id 互相取消
 
 升级关注点：
 
 - 如果上游调整终端/聊天通道消息上下文，需要重新验证 binding 解析和身份映射
+- 如果上游调整消息排队/取消逻辑，需要重新验证 scoped cancel key
+
+### `agent/tools/scheduler/*`
+
+- scheduler 在平台数据库可用时使用 `platform_scheduled_tasks`，不再以 `tasks.json` 作为平台任务真源
+- 任务创建时写入 `tenant_id`、`agent_id`、`binding_id`、`channel_config_id`、`session_id`
+- 调度执行时把任务作用域重新注入 Context，并按 `channel_config_id` 激活渠道运行时覆盖
+- legacy JSON store 保留为数据库不可用时的兼容回退
+
+升级关注点：
+
+- 如果上游调整 scheduler tool/service，需要重新确认任务 CRUD、到期执行和发送结果都带租户/Agent/channel scope
+
+### `channel/web/handlers/workspace.py`
+
+- Scheduler API 在平台模式下读取 scoped DB task store，避免页面任务列表跨租户/Agent 泄露
+
+升级关注点：
+
+- 如果上游调整 workspace handler，需要确认 `/api/scheduler` 不再直接拼工作区 `scheduler/tasks.json`
+
+### `common/cloud_client.py`
+
+- 平台租户模式下禁止远程配置回写项目根目录 `config.json`
+
+升级关注点：
+
+- 如果上游调整 LinkAI/cloud 配置同步，需要确认平台模式不会重新写根 `config.json`
+
+### `plugins/plugin_manager.py`
+
+- 平台租户模式禁用 legacy 插件事件总线，不再读取 `plugins/plugins.json`、`plugins/config.json` 或扫描插件目录
+- `emit_event()` 在平台模式下直接透传事件上下文，避免全局插件实例影响不同租户
+- legacy 插件启停、安装、更新、卸载在平台模式下返回禁用提示；平台能力统一走 Agent tools / skills / MCP
+
+升级关注点：
+
+- 如果上游调整插件系统，需要确认平台模式仍不会加载全局插件配置或全局插件实例
 
 ### `channel/qq/qq_channel.py`
 
@@ -259,7 +359,7 @@
 
 ### `cli/commands/platform.py`
 
-- 新增 `cow platform` 治理、doctor、worker 相关命令
+- 新增 `cow platform` 治理、doctor、worker、channel-runtime、migrate 相关命令
 
 升级关注点：
 
@@ -275,11 +375,12 @@
 
 ### `docker/compose.platform.yml`
 
-- 定义平台 API、worker、PostgreSQL 等运行组件
+- 定义平台 API、job worker、channel runtime worker、Web 控制台、PostgreSQL 等运行组件
+- `platform-web` 显式设置 `COW_PLATFORM_START_CHANNEL_RUNTIMES=false`，避免 Web 进程承载租户长连接/轮询渠道
 
 升级关注点：
 
-- 如果上游调整 compose 文件组织方式，需要重新确认平台部署文件不被覆盖
+- 如果上游调整 compose 文件组织方式，需要重新确认平台部署文件不被覆盖，且 `platform-channel-runtime` 仍与 `platform-web` 分离
 
 ## 使用方式
 

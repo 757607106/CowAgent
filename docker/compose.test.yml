@@ -23,7 +23,12 @@ services:
     environment:
       <<: *test-platform-environment
 
+  platform-channel-runtime:
+    environment:
+      <<: *test-platform-environment
+
   platform-web:
     environment:
       <<: *test-platform-environment
       WEB_TENANT_AUTH: "true"
+      COW_PLATFORM_START_CHANNEL_RUNTIMES: "false"

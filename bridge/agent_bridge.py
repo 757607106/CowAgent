@@ -528,7 +528,7 @@ class AgentBridge:
                     cache_session_key = resolved_runtime.cache_session_key
 
             # Preemption: cancel previous request for this session and get a new token
-            effective_session = session_id or "_default_"
+            effective_session = cache_session_key or session_id or "_default_"
             if cancel_token is None:
                 cancel_token = self._cancel_registry.cancel_and_replace(effective_session)
             else:
@@ -759,6 +759,10 @@ class AgentBridge:
         """
         from config import conf
         import os
+
+        if conf().get("web_tenant_auth", True):
+            logger.debug("[AgentBridge] Skip global .env sync in platform tenant mode")
+            return
         
         key_mapping = {
             "open_ai_api_key": "OPENAI_API_KEY",
@@ -844,7 +848,7 @@ class AgentBridge:
                 f"[AgentBridge] Failed to persist messages for session={session_id}: {e}"
             )
 
-    def cancel_running_session(self, session_id: str):
+    def cancel_running_session(self, session_id: str, *, cache_key: str = "", context: Context = None):
         """Cancel the currently running agent task for a session.
 
         Called by ChatChannel.produce() when a new message arrives so that the
@@ -854,11 +858,19 @@ class AgentBridge:
         Args:
             session_id: The session whose running task should be cancelled.
         """
-        effective_session = session_id or "_default_"
+        effective_session = cache_key or ""
+        if not effective_session and context is not None:
+            try:
+                resolved_runtime = self.runtime_adapter.resolve_from_context(context)
+                if resolved_runtime:
+                    effective_session = resolved_runtime.cache_session_key
+            except Exception as e:
+                logger.debug(f"[AgentBridge] Failed to resolve scoped cancel key: {e}")
+        effective_session = effective_session or session_id or "_default_"
         token = self._cancel_registry.get(effective_session)
         if token is not None and not token.is_cancelled:
             token.cancel()
-            logger.info(f"[AgentBridge] Cancelled running task for session={session_id}")
+            logger.info(f"[AgentBridge] Cancelled running task for session={effective_session}")
 
     def clear_session(self, session_id: str = None, cache_key: str = None):
         """

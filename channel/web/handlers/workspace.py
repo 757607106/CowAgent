@@ -164,16 +164,33 @@ class SchedulerHandler:
         _require_auth()
         web.header('Content-Type', 'application/json; charset=utf-8')
         try:
-            from agent.tools.scheduler.task_store import TaskStore
             params = web.input(agent_id='', binding_id='', tenant_id='')
-            workspace_root = _get_workspace_root(
+            target = _resolve_runtime_target(
                 agent_id=params.agent_id,
                 tenant_id=params.tenant_id,
                 binding_id=params.binding_id,
             )
-            store_path = os.path.join(workspace_root, "scheduler", "tasks.json")
-            store = TaskStore(store_path)
-            tasks = store.list_tasks()
+            tasks = None
+            try:
+                from cow_platform.services.scheduler_task_store import PlatformSchedulerTaskStore
+
+                store = PlatformSchedulerTaskStore().for_scope(
+                    tenant_id=target["tenant_id"],
+                    agent_id=target["agent_id"] or "default",
+                    binding_id=target["binding_id"],
+                )
+                tasks = store.list_tasks()
+            except Exception:
+                from agent.tools.scheduler.task_store import TaskStore
+
+                workspace_root = _get_workspace_root(
+                    agent_id=params.agent_id,
+                    tenant_id=params.tenant_id,
+                    binding_id=params.binding_id,
+                )
+                store_path = os.path.join(workspace_root, "scheduler", "tasks.json")
+                store = TaskStore(store_path)
+                tasks = store.list_tasks()
             return json.dumps({"status": "success", "tasks": tasks}, ensure_ascii=False)
         except Exception as e:
             logger.error(f"[WebChannel] Scheduler API error: {e}")

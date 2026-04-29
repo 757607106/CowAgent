@@ -130,6 +130,8 @@ def _reset_platform_postgres_if_configured() -> None:
                     platform_audit_logs,
                     platform_usage_records,
                     platform_jobs,
+                    platform_scheduled_tasks,
+                    platform_channel_runtime_leases,
                     platform_quotas,
                     platform_pricing,
                     platform_model_configs,

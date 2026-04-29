@@ -25,7 +25,7 @@ Commands:
   logs     View CowAgent logs.
   skill    Manage CowAgent skills.
   knowledge  Manage knowledge base.
-  platform   Run platform API and worker commands.
+  platform   Run platform API, workers, migrations and doctor commands.
   install-browser  Install browser tool (Playwright + Chromium).
 
 Tip: You can also send /help, /skill list, etc. in agent chat."""

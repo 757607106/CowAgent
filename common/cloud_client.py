@@ -636,6 +636,9 @@ class CloudClient(LinkAIClient):
         Save configuration to config.json file.
         """
         try:
+            if conf().get("web_tenant_auth", True):
+                logger.warning("[CloudClient] Skip config.json write in platform tenant mode")
+                return
             config_path = os.path.join(get_root(), "config.json")
             if not os.path.exists(config_path):
                 logger.warning(f"[CloudClient] config.json not found at {config_path}, skip saving")

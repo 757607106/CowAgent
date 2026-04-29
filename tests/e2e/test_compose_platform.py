@@ -21,5 +21,6 @@ def test_platform_compose_file_is_valid() -> None:
     assert result.returncode == 0, result.stderr
     assert "platform-app:" in result.stdout
     assert "platform-worker:" in result.stdout
+    assert "platform-channel-runtime:" in result.stdout
     assert "platform-web:" in result.stdout
     assert "COW_PLATFORM_DATABASE_URL" in result.stdout

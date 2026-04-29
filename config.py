@@ -208,6 +208,7 @@ available_setting = {
     "platform_minio_access_key": "",  # MinIO access key
     "platform_minio_secret_key": "",  # MinIO secret key
     "platform_minio_bucket": "cowagent",  # MinIO bucket used by platform deployments
+    "platform_start_channel_runtimes": False,  # Web 进程是否兼容启动租户托管渠道；默认交给 runtime worker
     "agent": True,  # 是否开启Agent模式
     "agent_workspace": "~/cow",  # agent工作空间路径，用于存储skills、memory等
     "agent_max_context_tokens": 50000,  # Agent模式下最大上下文tokens
@@ -216,6 +217,22 @@ available_setting = {
     "enable_thinking": True,  # Whether to enable deep thinking for web channel
     "knowledge": True,  # 是否开启知识库功能
 }
+
+
+class _DisabledUserData(dict):
+    """No-op user data view used in platform tenant mode."""
+
+    def __setitem__(self, key, value):
+        return None
+
+    def update(self, *args, **kwargs):
+        return None
+
+    def setdefault(self, key, default=None):
+        return default
+
+    def pop(self, key, default=None):
+        return default
 
 
 class Config(dict):
@@ -228,6 +245,7 @@ class Config(dict):
             self[k] = v
         # user_datas: 用户数据，key为用户名，value为用户数据，也是dict
         self.user_datas = {}
+        self._disabled_user_data = _DisabledUserData()
 
     def __getitem__(self, key):
         # 跳过以下划线开头的注释字段
@@ -289,11 +307,17 @@ class Config(dict):
 
     # Make sure to return a dictionary to ensure atomic
     def get_user_data(self, user) -> dict:
+        if self.get("web_tenant_auth", True):
+            return self._disabled_user_data
         if self.user_datas.get(user) is None:
             self.user_datas[user] = {}
         return self.user_datas[user]
 
     def load_user_datas(self):
+        if self.get("web_tenant_auth", True):
+            self.user_datas = {}
+            logger.debug("[Config] Skip legacy user_datas.pkl in platform tenant mode.")
+            return
         try:
             with open(os.path.join(get_appdata_dir(), "user_datas.pkl"), "rb") as f:
                 self.user_datas = pickle.load(f)
@@ -305,6 +329,9 @@ class Config(dict):
             self.user_datas = {}
 
     def save_user_datas(self):
+        if self.get("web_tenant_auth", True):
+            logger.debug("[Config] Skip legacy user_datas.pkl save in platform tenant mode.")
+            return
         try:
             with open(os.path.join(get_appdata_dir(), "user_datas.pkl"), "wb") as f:
                 pickle.dump(self.user_datas, f)
@@ -358,6 +385,7 @@ _CONFIG_TO_ENV = {
     "platform_minio_access_key": "COW_PLATFORM_MINIO_ACCESS_KEY",
     "platform_minio_secret_key": "COW_PLATFORM_MINIO_SECRET_KEY",
     "platform_minio_bucket": "COW_PLATFORM_MINIO_BUCKET",
+    "platform_start_channel_runtimes": "COW_PLATFORM_START_CHANNEL_RUNTIMES",
 }
 
 

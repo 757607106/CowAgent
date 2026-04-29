@@ -128,7 +128,7 @@ class Bridge(object):
             self._agent_bridge = AgentBridge(self)
         return self._agent_bridge
 
-    def cancel_running_agent(self, session_id: str):
+    def cancel_running_agent(self, session_id: str, *, cache_key: str = "", context: Context = None):
         """Cancel the currently running agent task for the given session.
 
         This is the entry-point that ChatChannel.produce() calls when a new
@@ -139,7 +139,10 @@ class Bridge(object):
             session_id: The session whose running task should be cancelled.
         """
         if self._agent_bridge is not None:
-            self._agent_bridge.cancel_running_session(session_id)
+            if cache_key or context is not None:
+                self._agent_bridge.cancel_running_session(session_id, cache_key=cache_key, context=context)
+            else:
+                self._agent_bridge.cancel_running_session(session_id)
 
     def fetch_agent_reply(self, query: str, context: Context = None,
                           on_event=None, clear_history: bool = False) -> Reply:

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
-from cow_platform.db.postgres import ensure_database, get_database_url
+from cow_platform.db.postgres import get_database_url, run_migrations
 
 
 def main() -> None:
-    ensure_database()
+    applied = run_migrations()
+    if applied:
+        print(f"PostgreSQL schema migrated: {get_database_url()} ({', '.join(applied)})")
+        return
     print(f"PostgreSQL schema is ready: {get_database_url()}")
 
 

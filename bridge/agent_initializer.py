@@ -615,6 +615,10 @@ class AgentInitializer:
     def _migrate_config_to_env(self, workspace_root: str):
         """Migrate API keys from config.json to .env file"""
         from config import conf
+
+        if conf().get("web_tenant_auth", True):
+            logger.debug("[AgentInitializer] Skip global .env sync in platform tenant mode")
+            return
         
         key_mapping = {
             "open_ai_api_key": "OPENAI_API_KEY",
