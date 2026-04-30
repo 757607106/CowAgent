@@ -5,6 +5,7 @@ import time
 from typing import Any, Iterable
 
 from cow_platform.db import connect
+from cow_platform.services.runtime_state_service import RuntimeStateService
 
 
 PLATFORM_CONFIG_KEYS = {
@@ -68,6 +69,9 @@ class PlatformConfigService:
     only for platform-level runtime settings that used to live in ``config.json``.
     """
 
+    def __init__(self, runtime_state_service: RuntimeStateService | None = None):
+        self.runtime_state_service = runtime_state_service or RuntimeStateService()
+
     def list_settings(self, keys: Iterable[str] | None = None) -> dict[str, Any]:
         selected = [key for key in (keys or PLATFORM_CONFIG_KEYS) if key in PLATFORM_CONFIG_KEYS]
         if not selected:
@@ -101,6 +105,10 @@ class PlatformConfigService:
                     (key, self._encode_value(value), now),
                 )
             conn.commit()
+        self.runtime_state_service.safe_invalidate_platform(
+            reason="platform_settings_updated",
+            metadata={"keys": sorted(normalized)},
+        )
         return normalized
 
     @staticmethod

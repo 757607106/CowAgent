@@ -9,6 +9,7 @@ from bridge.context import Context, ContextType
 from bridge.reply import ReplyType
 from config import conf
 from cow_platform.services.agent_service import AgentService
+from cow_platform.services.model_config_service import ModelConfigService
 
 
 class _DummyQuotaAgent:
@@ -53,10 +54,15 @@ def test_agent_bridge_enforces_quota_and_records_usage(tmp_path, monkeypatch) ->
 
     service = AgentService()
     service.ensure_default_agent()
+    model_config_id = ModelConfigService().create_platform_model(
+        provider="dashscope",
+        model_name="qwen-plus",
+        api_key="test-dashscope-key",
+    )["model_config_id"]
     service.create_agent(
         agent_id="writer",
         name="写作助手",
-        model="qwen-plus",
+        model_config_id=model_config_id,
         system_prompt="你擅长写作。",
     )
 

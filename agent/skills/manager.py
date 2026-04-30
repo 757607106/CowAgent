@@ -22,6 +22,8 @@ class SkillManager:
         builtin_dir: Optional[str] = None,
         custom_dir: Optional[str] = None,
         config: Optional[Dict] = None,
+        tenant_id: str = "",
+        agent_id: str = "",
     ):
         """
         Initialize the skill manager.
@@ -35,6 +37,7 @@ class SkillManager:
         self.custom_dir = custom_dir or os.path.join(project_root, 'workspace', 'skills')
         self.config = config or {}
         self._skills_config_path = os.path.join(self.custom_dir, SKILLS_CONFIG_FILE)
+        self._platform_scope = self._resolve_platform_scope(tenant_id=tenant_id, agent_id=agent_id)
 
         # skills_config: full skill metadata keyed by name
         # { "web-fetch": {"name": ..., "description": ..., "source": ..., "enabled": true}, ... }
@@ -55,11 +58,42 @@ class SkillManager:
         self._sync_skills_config()
         logger.debug(f"SkillManager: Loaded {len(self.skills)} skills")
 
+    @staticmethod
+    def _platform_config_service():
+        from cow_platform.services.skill_config_service import SkillConfigService
+
+        return SkillConfigService()
+
+    @staticmethod
+    def _resolve_platform_scope(*, tenant_id: str = "", agent_id: str = "") -> tuple[str, str] | None:
+        explicit_tenant_id = str(tenant_id or "").strip()
+        explicit_agent_id = str(agent_id or "").strip()
+        if explicit_tenant_id and explicit_agent_id:
+            return explicit_tenant_id, explicit_agent_id
+        try:
+            from cow_platform.runtime.scope import get_current_runtime_context
+
+            runtime_context = get_current_runtime_context()
+            if runtime_context is not None and runtime_context.tenant_id and runtime_context.agent_id:
+                return runtime_context.tenant_id, runtime_context.agent_id
+        except Exception:
+            pass
+        return None
+
     # ------------------------------------------------------------------
-    # skills_config.json management
+    # skills config backend management
     # ------------------------------------------------------------------
     def _load_skills_config(self) -> Dict[str, dict]:
-        """Load skills_config.json from custom_dir. Returns empty dict if not found."""
+        """Load skill config from the platform DB or legacy skills_config.json."""
+        if self._platform_scope is not None:
+            try:
+                return self._platform_config_service().list_skill_configs(
+                    tenant_id=self._platform_scope[0],
+                    agent_id=self._platform_scope[1],
+                )
+            except Exception as e:
+                logger.warning(f"[SkillManager] Failed to load platform skill config: {e}")
+                return {}
         if not os.path.exists(self._skills_config_path):
             return {}
         try:
@@ -71,8 +105,19 @@ class SkillManager:
             logger.warning(f"[SkillManager] Failed to load {SKILLS_CONFIG_FILE}: {e}")
         return {}
 
-    def _save_skills_config(self):
-        """Persist skills_config to custom_dir/skills_config.json."""
+    def _save_skills_config(self, *, invalidate: bool = False):
+        """Persist skill config to the platform DB or legacy skills_config.json."""
+        if self._platform_scope is not None:
+            try:
+                self._platform_config_service().save_skill_configs(
+                    tenant_id=self._platform_scope[0],
+                    agent_id=self._platform_scope[1],
+                    configs=self.skills_config,
+                    invalidate=invalidate,
+                )
+            except Exception as e:
+                logger.error(f"[SkillManager] Failed to save platform skill config: {e}")
+            return
         os.makedirs(self.custom_dir, exist_ok=True)
         try:
             with open(self._skills_config_path, "w", encoding="utf-8") as f:
@@ -115,7 +160,8 @@ class SkillManager:
             merged[name] = entry_dict
 
         self.skills_config = merged
-        self._save_skills_config()
+        if merged != saved:
+            self._save_skills_config(invalidate=False)
 
     def is_skill_enabled(self, name: str) -> bool:
         """
@@ -139,7 +185,13 @@ class SkillManager:
         if name not in self.skills_config:
             raise ValueError(f"skill '{name}' not found in config")
         self.skills_config[name]["enabled"] = enabled
-        self._save_skills_config()
+        self._save_skills_config(invalidate=True)
+
+    def set_runtime_skill_enabled(self, name: str, enabled: bool):
+        """Set enabled state for the current Agent runtime without persisting it."""
+        if name not in self.skills_config:
+            raise ValueError(f"skill '{name}' not found in config")
+        self.skills_config[name]["enabled"] = enabled
 
     def get_skills_config(self) -> Dict[str, dict]:
         """

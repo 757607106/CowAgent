@@ -8,6 +8,7 @@ from typing import Any
 from common.log import logger
 from cow_platform.domain.models import ChannelConfigDefinition
 from cow_platform.repositories.channel_config_repository import ChannelConfigRepository
+from cow_platform.services.runtime_state_service import RuntimeStateService
 from cow_platform.services.tenant_service import TenantService
 
 
@@ -133,9 +134,11 @@ class ChannelConfigService:
         self,
         repository: ChannelConfigRepository | None = None,
         tenant_service: TenantService | None = None,
+        runtime_state_service: RuntimeStateService | None = None,
     ):
         self.repository = repository or ChannelConfigRepository()
         self.tenant_service = tenant_service or TenantService()
+        self.runtime_state_service = runtime_state_service or RuntimeStateService()
 
     def list_channel_type_defs(self) -> list[dict[str, object]]:
         return [self.serialize_channel_type(definition) for definition in CHANNEL_TYPE_DEFS.values()]
@@ -205,6 +208,7 @@ class ChannelConfigService:
             metadata=metadata or {},
             created_by=(created_by or "").strip(),
         )
+        self._invalidate_channel_config(definition, reason="channel_config_created")
         return self.serialize_channel_config(definition)
 
     def update_channel_config(
@@ -236,6 +240,7 @@ class ChannelConfigService:
             enabled=enabled,
             metadata=metadata,
         )
+        self._invalidate_channel_config(definition, reason="channel_config_updated")
         return self.serialize_channel_config(definition)
 
     def delete_channel_config(self, *, channel_config_id: str, tenant_id: str = "") -> dict[str, Any]:
@@ -249,12 +254,12 @@ class ChannelConfigService:
         if linked_bindings:
             raise ValueError("channel config is still used by bindings")
         self.delete_channel_runtime_artifacts(existing)
-        return self.serialize_channel_config(
-            self.repository.delete_channel_config(
-                channel_config_id=existing.channel_config_id,
-                tenant_id=existing.tenant_id,
-            )
+        deleted = self.repository.delete_channel_config(
+            channel_config_id=existing.channel_config_id,
+            tenant_id=existing.tenant_id,
         )
+        self._invalidate_channel_config(deleted, reason="channel_config_deleted")
+        return self.serialize_channel_config(deleted)
 
     def build_runtime_overrides(self, definition: ChannelConfigDefinition) -> dict[str, Any]:
         return self._config_with_defaults(definition.channel_type, dict(definition.config or {}))
@@ -289,6 +294,7 @@ class ChannelConfigService:
             config=self._normalize_config("weixin", config),
             enabled=True,
         )
+        self._invalidate_channel_config(definition, reason="weixin_credentials_saved")
         return self.serialize_channel_config(definition)
 
     def clear_weixin_credentials(self, *, channel_config_id: str, tenant_id: str = "") -> dict[str, Any]:
@@ -303,6 +309,7 @@ class ChannelConfigService:
             tenant_id=existing.tenant_id,
             config=self._normalize_config("weixin", config),
         )
+        self._invalidate_channel_config(definition, reason="weixin_credentials_cleared")
         return self.serialize_channel_config(definition)
 
     def delete_channel_runtime_artifacts(self, definition: ChannelConfigDefinition | dict[str, Any]) -> list[str]:
@@ -537,3 +544,30 @@ class ChannelConfigService:
             return True
         except Exception:
             return False
+
+    def _invalidate_channel_config(self, definition: ChannelConfigDefinition, *, reason: str) -> None:
+        self.runtime_state_service.safe_invalidate_channel_config(
+            definition.channel_config_id,
+            tenant_id=definition.tenant_id,
+            reason=reason,
+            metadata={"channel_type": definition.channel_type},
+        )
+        try:
+            from cow_platform.repositories.binding_repository import ChannelBindingRepository
+
+            bindings = ChannelBindingRepository().list_bindings(
+                tenant_id=definition.tenant_id,
+                channel_config_id=definition.channel_config_id,
+            )
+            for binding in bindings:
+                self.runtime_state_service.safe_invalidate_agent(
+                    binding.tenant_id,
+                    binding.agent_id,
+                    reason=reason,
+                    metadata={
+                        "channel_config_id": definition.channel_config_id,
+                        "binding_id": binding.binding_id,
+                    },
+                )
+        except Exception as exc:
+            logger.warning(f"[ChannelConfigService] Failed to invalidate channel-bound agents: {exc}")

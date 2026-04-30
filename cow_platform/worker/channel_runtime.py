@@ -7,6 +7,7 @@ import time
 
 from common.log import logger
 from config import load_config
+from cow_platform.runtime.channel_manager import ChannelManager, set_channel_manager
 from cow_platform.services.channel_config_service import ChannelConfigService
 
 
@@ -21,10 +22,9 @@ def main(argv: list[str] | None = None) -> None:
     args = parse_args(argv)
     load_config()
 
-    import app
-
     stop_event = threading.Event()
-    manager = app.ChannelManager()
+    manager = ChannelManager()
+    set_channel_manager(manager)
     service = ChannelConfigService()
 
     def _handle_signal(signum, _frame):

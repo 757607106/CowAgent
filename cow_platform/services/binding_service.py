@@ -8,6 +8,7 @@ from cow_platform.domain.models import ChannelBindingDefinition
 from cow_platform.repositories.binding_repository import ChannelBindingRepository
 from cow_platform.services.agent_service import AgentService
 from cow_platform.services.channel_config_service import CHANNEL_TYPE_DEFS, ChannelConfigService
+from cow_platform.services.runtime_state_service import RuntimeStateService
 from cow_platform.services.tenant_service import TenantService
 
 
@@ -20,11 +21,13 @@ class ChannelBindingService:
         tenant_service: TenantService | None = None,
         agent_service: AgentService | None = None,
         channel_config_service: ChannelConfigService | None = None,
+        runtime_state_service: RuntimeStateService | None = None,
     ):
         self.repository = repository or ChannelBindingRepository()
         self.tenant_service = tenant_service or TenantService()
         self.agent_service = agent_service or AgentService()
         self.channel_config_service = channel_config_service or ChannelConfigService(tenant_service=self.tenant_service)
+        self.runtime_state_service = runtime_state_service or RuntimeStateService()
 
     def list_bindings(
         self,
@@ -120,6 +123,12 @@ class ChannelBindingService:
             enabled=enabled,
             metadata=metadata or {},
         )
+        self.runtime_state_service.safe_invalidate_agent(
+            definition.tenant_id,
+            definition.agent_id,
+            reason="binding_created",
+            metadata={"binding_id": definition.binding_id},
+        )
         return self.serialize_binding(definition)
 
     def update_binding(
@@ -153,6 +162,19 @@ class ChannelBindingService:
             enabled=enabled,
             metadata=metadata,
         )
+        self.runtime_state_service.safe_invalidate_agent(
+            existing.tenant_id,
+            existing.agent_id,
+            reason="binding_updated",
+            metadata={"binding_id": existing.binding_id},
+        )
+        if definition.agent_id != existing.agent_id:
+            self.runtime_state_service.safe_invalidate_agent(
+                definition.tenant_id,
+                definition.agent_id,
+                reason="binding_updated",
+                metadata={"binding_id": definition.binding_id},
+            )
         return self.serialize_binding(definition)
 
     def serialize_binding(self, definition: ChannelBindingDefinition) -> dict[str, Any]:
@@ -169,6 +191,12 @@ class ChannelBindingService:
         tenant_id: str = "",
     ) -> dict[str, Any]:
         definition = self.repository.delete_binding(binding_id=binding_id, tenant_id=tenant_id)
+        self.runtime_state_service.safe_invalidate_agent(
+            definition.tenant_id,
+            definition.agent_id,
+            reason="binding_deleted",
+            metadata={"binding_id": definition.binding_id},
+        )
         return self.serialize_binding(definition)
 
     def list_binding_records(

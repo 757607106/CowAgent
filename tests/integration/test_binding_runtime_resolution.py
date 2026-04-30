@@ -10,6 +10,7 @@ from cow_platform.adapters.cowagent_runtime_adapter import CowAgentRuntimeAdapte
 from cow_platform.repositories.session_repository import SessionRepository
 from cow_platform.services.agent_service import AgentService
 from cow_platform.services.binding_service import ChannelBindingService
+from cow_platform.services.model_config_service import ModelConfigService
 from cow_platform.services.tenant_service import TenantService
 
 
@@ -38,18 +39,29 @@ def test_binding_runtime_resolution_isolates_tenants(tmp_path: Path, monkeypatch
 
     tenant_service.create_tenant(tenant_id="team-a", name="团队 A")
     tenant_service.create_tenant(tenant_id="team-b", name="团队 B")
+    model_service = ModelConfigService(tenant_service=tenant_service)
+    model_a_id = model_service.create_platform_model(
+        provider="openai",
+        model_name="model-a",
+        api_key="test-key-a",
+    )["model_config_id"]
+    model_b_id = model_service.create_platform_model(
+        provider="openai",
+        model_name="model-b",
+        api_key="test-key-b",
+    )["model_config_id"]
     agent_service.create_agent(
         tenant_id="team-a",
         agent_id="assistant",
         name="团队 A 助手",
-        model="model-a",
+        model_config_id=model_a_id,
         system_prompt="你服务团队 A。",
     )
     agent_service.create_agent(
         tenant_id="team-b",
         agent_id="assistant",
         name="团队 B 助手",
-        model="model-b",
+        model_config_id=model_b_id,
         system_prompt="你服务团队 B。",
     )
     binding_service.create_binding(

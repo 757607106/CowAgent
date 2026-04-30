@@ -430,10 +430,9 @@ def _get_runtime_adapter():
 
 def _restart_channel_config_runtime(channel_config_id: str):
     try:
-        import sys
+        from cow_platform.runtime.channel_manager import get_channel_manager
 
-        app_module = sys.modules.get('__main__') or sys.modules.get('app')
-        mgr = getattr(app_module, '_channel_mgr', None) if app_module else None
+        mgr = get_channel_manager()
         if not mgr:
             return
         definition = _get_channel_config_service().resolve_channel_config(channel_config_id=channel_config_id)
@@ -447,10 +446,9 @@ def _restart_channel_config_runtime(channel_config_id: str):
 
 def _stop_channel_config_runtime(channel_config_id: str):
     try:
-        import sys
+        from cow_platform.runtime.channel_manager import get_channel_manager
 
-        app_module = sys.modules.get('__main__') or sys.modules.get('app')
-        mgr = getattr(app_module, '_channel_mgr', None) if app_module else None
+        mgr = get_channel_manager()
         if mgr:
             mgr.remove_channel_config(channel_config_id)
     except Exception as e:

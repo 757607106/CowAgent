@@ -68,12 +68,21 @@ class SkillsHandler:
             from agent.skills.service import SkillService
             from agent.skills.manager import SkillManager
             params = web.input(agent_id='', binding_id='', tenant_id='')
+            target = _resolve_runtime_target(
+                agent_id=params.agent_id,
+                tenant_id=params.tenant_id,
+                binding_id=params.binding_id,
+            )
             workspace_root = _get_workspace_root(
                 agent_id=params.agent_id,
                 tenant_id=params.tenant_id,
                 binding_id=params.binding_id,
             )
-            manager = SkillManager(custom_dir=os.path.join(workspace_root, "skills"))
+            manager = SkillManager(
+                custom_dir=os.path.join(workspace_root, "skills"),
+                tenant_id=target["tenant_id"],
+                agent_id=target["agent_id"],
+            )
             service = SkillService(manager)
             skills = service.query()
             return json.dumps({"status": "success", "skills": skills}, ensure_ascii=False)
@@ -92,12 +101,21 @@ class SkillsHandler:
             name = body.get("name")
             if not action or not name:
                 return json.dumps({"status": "error", "message": "action and name are required"})
+            target = _resolve_runtime_target(
+                agent_id=body.get("agent_id", ""),
+                tenant_id=body.get("tenant_id", ""),
+                binding_id=body.get("binding_id", ""),
+            )
             workspace_root = _get_workspace_root(
                 agent_id=body.get("agent_id", ""),
                 tenant_id=body.get("tenant_id", ""),
                 binding_id=body.get("binding_id", ""),
             )
-            manager = SkillManager(custom_dir=os.path.join(workspace_root, "skills"))
+            manager = SkillManager(
+                custom_dir=os.path.join(workspace_root, "skills"),
+                tenant_id=target["tenant_id"],
+                agent_id=target["agent_id"],
+            )
             service = SkillService(manager)
             if action == "open":
                 service.open({"name": name})

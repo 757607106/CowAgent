@@ -15,6 +15,7 @@ from config import conf
 from cow_platform.adapters.cowagent_runtime_adapter import CowAgentRuntimeAdapter
 from cow_platform.repositories.session_repository import SessionRepository
 from cow_platform.services.agent_service import AgentService
+from cow_platform.services.model_config_service import ModelConfigService
 
 
 class _DummyAgent:
@@ -57,17 +58,28 @@ def test_runtime_adapter_and_session_store_isolate_agents(tmp_path: Path, monkey
 
     service = AgentService()
     service.ensure_default_agent()
+    model_service = ModelConfigService()
+    model_a_id = model_service.create_platform_model(
+        provider="openai",
+        model_name="model-a",
+        api_key="test-key-a",
+    )["model_config_id"]
+    model_b_id = model_service.create_platform_model(
+        provider="openai",
+        model_name="model-b",
+        api_key="test-key-b",
+    )["model_config_id"]
     service.create_agent(
         agent_id="agent-a",
         name="助手A",
-        model="model-a",
+        model_config_id=model_a_id,
         system_prompt="你是助手A。",
         knowledge_enabled=True,
     )
     service.create_agent(
         agent_id="agent-b",
         name="助手B",
-        model="model-b",
+        model_config_id=model_b_id,
         system_prompt="你是助手B。",
         knowledge_enabled=True,
     )

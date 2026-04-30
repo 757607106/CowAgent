@@ -40,7 +40,7 @@ class SkillService:
     def query(self) -> List[dict]:
         """
         Query all skills and return a serialisable list.
-        Reads from skills_config.json (refreshes from disk if needed).
+        Reads from the manager's configured backend: DB in platform scope, JSON only in legacy mode.
 
         :return: list of skill info dicts
         """
@@ -99,7 +99,7 @@ class SkillService:
         category = payload.get("category")
         if category and name in self.manager.skills_config:
             self.manager.skills_config[name]["category"] = category
-            self.manager._save_skills_config()
+            self.manager._save_skills_config(invalidate=True)
 
     def _add_url(self, name: str, payload: dict) -> None:
         """Install a skill by downloading individual files."""

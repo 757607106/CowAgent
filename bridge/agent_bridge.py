@@ -290,6 +290,7 @@ class AgentBridge:
     def __init__(self, bridge: Bridge):
         self.bridge = bridge
         self.agents = {}  # session_id -> Agent instance mapping
+        self.agent_config_versions = {}
         self.default_agent = None  # For backward compatibility (no session_id)
         self.agent: Optional[Agent] = None
         self.scheduler_initialized = False
@@ -460,7 +461,7 @@ class AgentBridge:
 
         return agent
     
-    def get_agent(self, session_id: str = None, cache_key: str = None) -> Optional[Agent]:
+    def get_agent(self, session_id: str = None, cache_key: str = None, config_version: int | None = None) -> Optional[Agent]:
         """
         Get agent instance for the given session
         
@@ -479,9 +480,23 @@ class AgentBridge:
 
         agent_cache_key = cache_key or session_id
 
+        if (
+            config_version is not None
+            and agent_cache_key in self.agents
+            and self.agent_config_versions.get(agent_cache_key) != int(config_version)
+        ):
+            logger.info(
+                f"[AgentBridge] Runtime cache version changed for {agent_cache_key}: "
+                f"{self.agent_config_versions.get(agent_cache_key)} -> {int(config_version)}"
+            )
+            del self.agents[agent_cache_key]
+            self.agent_config_versions.pop(agent_cache_key, None)
+
         # Check if agent exists for this session
         if agent_cache_key not in self.agents:
             self._init_agent_for_session(agent_cache_key, session_id or agent_cache_key)
+            if config_version is not None:
+                self.agent_config_versions[agent_cache_key] = int(config_version)
 
         return self.agents[agent_cache_key]
     
@@ -549,7 +564,11 @@ class AgentBridge:
                         return Reply(ReplyType.ERROR, quota_result["message"])
 
                 # Get agent for this session (will auto-initialize if needed)
-                agent = self.get_agent(session_id=session_id, cache_key=cache_session_key)
+                agent = self.get_agent(
+                    session_id=session_id,
+                    cache_key=cache_session_key,
+                    config_version=resolved_runtime.config_version if resolved_runtime else None,
+                )
                 if not agent:
                     return Reply(ReplyType.ERROR, "Failed to initialize super agent")
                 
@@ -884,6 +903,7 @@ class AgentBridge:
         if target_key in self.agents:
             logger.info(f"[AgentBridge] Clearing session: {target_key}")
             del self.agents[target_key]
+            self.agent_config_versions.pop(target_key, None)
 
     def clear_agent_sessions(self, tenant_id: str, agent_id: str):
         """
@@ -901,6 +921,7 @@ class AgentBridge:
             return
         for key in matched_keys:
             del self.agents[key]
+            self.agent_config_versions.pop(key, None)
         logger.info(
             f"[AgentBridge] Cleared {len(matched_keys)} cached session(s) for "
             f"tenant={tenant_id}, agent={agent_id}"
@@ -910,6 +931,7 @@ class AgentBridge:
         """Clear all agent sessions"""
         logger.info(f"[AgentBridge] Clearing all sessions ({len(self.agents)} total)")
         self.agents.clear()
+        self.agent_config_versions.clear()
         self.default_agent = None
     
     def refresh_all_skills(self) -> int:

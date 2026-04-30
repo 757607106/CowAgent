@@ -555,6 +555,39 @@ _SCHEMA = [
 ]
 
 
+_RUNTIME_STATE_SCHEMA = [
+    """
+    CREATE TABLE IF NOT EXISTS platform_runtime_state (
+        scope_key TEXT PRIMARY KEY,
+        resource_type TEXT NOT NULL,
+        tenant_id TEXT NOT NULL DEFAULT '',
+        agent_id TEXT NOT NULL DEFAULT '',
+        config_version BIGINT NOT NULL DEFAULT 0,
+        desired_state JSONB NOT NULL DEFAULT '{}'::jsonb,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        invalidated_at TEXT NOT NULL DEFAULT '',
+        updated_at TEXT NOT NULL
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_platform_runtime_state_scope ON platform_runtime_state (resource_type, tenant_id, agent_id)",
+    """
+    CREATE TABLE IF NOT EXISTS platform_skill_configs (
+        tenant_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        skill_name TEXT NOT NULL,
+        config JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        PRIMARY KEY (tenant_id, agent_id, skill_name),
+        FOREIGN KEY (tenant_id, agent_id)
+            REFERENCES platform_agents(tenant_id, agent_id) ON DELETE CASCADE
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_platform_skill_configs_agent ON platform_skill_configs (tenant_id, agent_id)",
+]
+
+
 _MIGRATIONS = (
     SchemaMigration("0001_platform_schema", tuple(_SCHEMA)),
+    SchemaMigration("0002_runtime_state_and_skill_configs", tuple(_RUNTIME_STATE_SCHEMA)),
 )

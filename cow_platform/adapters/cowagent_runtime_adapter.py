@@ -13,6 +13,7 @@ from cow_platform.runtime.scope import activate_runtime_scope
 from cow_platform.services.agent_service import AgentService, DEFAULT_TENANT_ID
 from cow_platform.services.binding_service import ChannelBindingService
 from cow_platform.services.model_config_service import ModelConfigService
+from cow_platform.services.runtime_state_service import RuntimeStateService
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +24,7 @@ class ResolvedAgentRuntime:
     runtime_context: RuntimeContext
     external_session_id: str
     cache_session_key: str
+    config_version: int
 
     @contextmanager
     def activate(self) -> Iterator[None]:
@@ -38,10 +40,12 @@ class CowAgentRuntimeAdapter:
         agent_service: AgentService | None = None,
         binding_service: ChannelBindingService | None = None,
         model_config_service: ModelConfigService | None = None,
+        runtime_state_service: RuntimeStateService | None = None,
     ):
         self.agent_service = agent_service or AgentService()
         self.binding_service = binding_service or ChannelBindingService(agent_service=self.agent_service)
         self.model_config_service = model_config_service or ModelConfigService()
+        self.runtime_state_service = runtime_state_service or RuntimeStateService()
 
     def resolve_from_context(self, context: Context | None) -> ResolvedAgentRuntime | None:
         if context is None:
@@ -75,6 +79,7 @@ class CowAgentRuntimeAdapter:
         model_config = self.model_config_service.resolve_for_agent(tenant_id, agent_definition)
         model_config_record = self.model_config_service.serialize_model(model_config)
         config_overrides = self.model_config_service.build_runtime_overrides(model_config)
+        config_version = self._effective_config_version(tenant_id, agent_definition.agent_id)
         workspace_root = self.agent_service.repository.get_workspace_path(
             tenant_id,
             agent_definition.agent_id,
@@ -93,6 +98,7 @@ class CowAgentRuntimeAdapter:
                 "agent_name": agent_definition.name,
                 "binding_id": getattr(resolved_binding, "binding_id", ""),
                 "model_config": model_config_record,
+                "config_version": config_version,
                 "config_overrides": config_overrides,
                 **({"enable_thinking": bool(context.get("enable_thinking"))} if "enable_thinking" in context else {}),
             },
@@ -103,8 +109,18 @@ class CowAgentRuntimeAdapter:
             runtime_context=runtime_context,
             external_session_id=session_id,
             cache_session_key=self.build_cache_session_key(tenant_id, agent_definition.agent_id, session_id),
+            config_version=config_version,
         )
 
     @staticmethod
     def build_cache_session_key(tenant_id: str, agent_id: str, session_id: str) -> str:
         return build_namespace(tenant_id, agent_id, session_id)
+
+    def _effective_config_version(self, tenant_id: str, agent_id: str) -> int:
+        try:
+            return self.runtime_state_service.get_effective_config_version(
+                tenant_id=tenant_id,
+                agent_id=agent_id,
+            )
+        except Exception:
+            return 0

@@ -96,17 +96,6 @@ def register_agent_binding_routes(
                 mcp_servers=payload.mcp_servers,
             ),
         }
-        # Runtime config changed: invalidate cached agent instances for this tenant-agent
-        # so the next message uses the latest prompt/tool/skill/knowledge/mcp settings.
-        try:
-            from bridge.bridge import Bridge
-
-            Bridge().get_agent_bridge().clear_agent_sessions(
-                tenant_id=result["agent"]["tenant_id"],
-                agent_id=agent_id,
-            )
-        except Exception:
-            pass
         record_audit(
             action="update_agent",
             resource_type="agent",

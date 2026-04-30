@@ -10,16 +10,13 @@
 
 ### `app.py`
 
-- 平台模式强制按多租户运行，启动阶段只保留 `web` 控制台，不再根据启动配置中的 `channel_type` 启动微信、飞书、QQ 等全局渠道
-- Web 进程默认不再启动租户托管渠道；只有显式设置 `platform_start_channel_runtimes=true` 时才兼容旧式同进程启动
-- 托管渠道启动前必须获取 `platform_channel_runtime_leases` 分布式 lease，运行期间通过 heartbeat 续租，防止多实例部署时同一租户渠道重复启动
-- 渠道停止时释放 lease；如果线程未退出则停止续租并让 lease 自动过期，避免旧线程仍存活时被其他实例立刻接管
+- 平台模式启动入口只负责加载配置、启动 Web 控制台和注册信号处理
+- `ChannelManager` 已抽离到 `cow_platform/runtime/channel_manager.py`，`app.py` 仅保留兼容导出
 
 升级关注点：
 
-- 如果上游调整应用启动或 ChannelManager，需要重新确认租户渠道仍只来自数据库配置
-- 如果上游调整渠道生命周期，需要确认托管渠道仍按 `channel_config_id` 获取 lease 后才能启动
-- 如果上游调整应用启动参数，需要确认 Web 进程不会重新默认承载长连接/轮询渠道
+- 如果上游调整应用启动，需要确认 Web 进程不会重新默认承载长连接/轮询渠道
+- 如果上游调整 ChannelManager，需要合并到平台 runtime 层，不要重新塞回 `app.py`
 
 ### `config.py`
 
@@ -41,11 +38,23 @@
 - 增加版本化 migration runner 和 `platform_schema_migrations` 迁移登记表，容器启动、CLI 与测试共用同一套 schema 入口
 - 增加 `platform_scheduled_tasks` 表，作为定时任务在平台模式下的唯一配置真源
 - 增加 `platform_channel_runtime_leases` 表，作为托管渠道运行时的分布式所有权记录
+- 增加 `platform_runtime_state` 表，作为 runtime desired state、config_version 和 invalidation 的统一真源
+- 增加 `platform_skill_configs` 表，作为平台模式下 skills_config 的租户/Agent 级配置真源
 - `platform_memory_chunks` 在 pgvector 可用时增加 `embedding_vector` 和 HNSW 索引；pgvector 不可用时保留 JSONB embedding 回退
 
 升级关注点：
 
-- 如果上游调整数据库初始化方式，需要确认平台连接池、版本化 migration、调度任务表、渠道运行时 lease 表和 memory vector schema 仍会初始化
+- 如果上游调整数据库初始化方式，需要确认平台连接池、版本化 migration、调度任务表、runtime state、技能配置、渠道运行时 lease 表和 memory vector schema 仍会初始化
+
+### `cow_platform/runtime/channel_manager.py`
+
+- 平台 ChannelManager 的唯一实现位置，负责本地 Web channel、租户托管渠道、lease、heartbeat、singleton cache 清理和运行时配置覆盖
+- `app.py` 与 `cow_platform/worker/channel_runtime.py` 都引用该模块，避免 Web 入口和 runtime worker 各自维护一套渠道生命周期逻辑
+
+升级关注点：
+
+- 如果上游调整渠道生命周期，需要确认托管渠道仍按 `channel_config_id` 获取 lease 后才能启动
+- 如果上游新增渠道 singleton 或启动约束，需要在这里统一维护，不要分散到 `app.py` 或 Web handler
 
 ### `cow_platform/db/migrate.py`
 
@@ -86,10 +95,30 @@
 
 - `platform_settings` 表承载平台级运行时配置，替代 Web 控制台写 `config.json`
 - 该服务只保存平台级设置；租户渠道、模型、Agent、MCP、技能等仍使用各自租户隔离表
+- 平台设置更新后 bump platform runtime config_version，使跨进程 Agent cache 在下一次请求时失效
 
 升级关注点：
 
 - 如果上游新增平台级配置入口，需要接入该服务，不能重新写回根 `config.json`
+
+### `cow_platform/services/runtime_state_service.py`
+
+- 统一维护 platform / tenant / agent / channel_config scope 的 runtime state 与 config_version
+- Agent 运行时有效版本由 platform、tenant、agent 三层版本合并得到，跨进程通过 PostgreSQL 版本变化触发本进程缓存失效
+- 所有配置写入口应调用该服务 bump version，避免直接操作 AgentBridge 进程内缓存
+
+升级关注点：
+
+- 如果上游新增会影响运行时的配置资源，必须接入该服务的 invalidation，不要增加新的本地缓存清理路径
+
+### `cow_platform/services/skill_config_service.py`
+
+- 平台模式下 `skills_config` 迁入 `platform_skill_configs`
+- 配置按 `tenant_id + agent_id + skill_name` 隔离，更新时 bump 对应 Agent 的 config_version
+
+升级关注点：
+
+- 如果上游调整 SkillManager 的配置读写，需要确认平台模式仍不写 workspace `skills_config.json`
 
 ### `agent/memory/conversation_store.py`
 
@@ -134,6 +163,7 @@
 - 合并 Agent 自定义 `system_prompt`
 - 从 Agent 独立工作区恢复会话历史
 - 仅平台默认 Agent 在 tools/skills 为空时继承默认能力；自定义 Agent 空 allowlist 表示不启用对应能力
+- Agent 定义的 skills allowlist 只做运行时过滤，不再反向写入 skills_config
 - 平台租户模式不再把模型密钥写入全局 `~/.cow/.env`
 
 升级关注点：
@@ -146,6 +176,7 @@
 - 支持基于 `tenant_id + agent_id + session_id` 的实例缓存键
 - 运行中请求取消也使用同一 scoped key，避免相同 `session_id` 在不同租户/Agent 间互相取消
 - 接入 runtime scope
+- Agent cache 记录解析时的 config_version；跨进程配置变更后，下一次请求会按 DB 版本自动重建本进程缓存
 - 接入 Phase 3 的 quota 校验和 usage 记录
 - 平台租户模式不再把模型密钥写入全局 `~/.cow/.env`
 
@@ -153,6 +184,26 @@
 
 - 如果上游重构 `agent_reply()` 或消息持久化逻辑，需要重新验证 usage 与 quota 的接入点
 - 如果上游调整 preemption/cancel 逻辑，需要确认取消 key 仍与 Agent 实例缓存 key 一致
+- 如果上游新增 AgentBridge 缓存入口，需要接入 config_version 检查，不能只做进程内清理
+
+### `cow_platform/services/model_config_service.py`
+
+- 平台模式下 Agent 模型解析必须命中 DB model config；`build_legacy_model_config()` 只允许非平台 legacy 模式使用
+- 平台/租户模型配置变更会 bump platform 或 tenant config_version，触发跨进程 Agent cache 失效
+
+升级关注点：
+
+- 如果上游新增模型配置 fallback，需要确认平台模式不会重新从 `config.py` / 环境变量拼出租户运行时模型配置
+
+### `agent/skills/manager.py`
+
+- 平台 runtime scope 下不再读写 workspace `skills_config.json`
+- `SkillManager` 通过 `SkillConfigService` 读取/保存租户 Agent 级技能配置
+- 提供 runtime-only skill enable 过滤，避免 Agent allowlist 初始化时修改持久配置
+
+升级关注点：
+
+- 如果上游调整 skills_config 同步逻辑，需要保留平台 DB backend 和 runtime-only allowlist 语义
 
 ### `bridge/context.py`
 
@@ -166,6 +217,7 @@
 
 - 租户级外部渠道绑定必须关联本租户 `channel_config_id`
 - `web` 与非平台托管入口仍保留无 `channel_config_id` 的历史绑定能力
+- binding 创建、更新、删除会 bump 关联 Agent 的 runtime config_version
 
 升级关注点：
 
@@ -177,6 +229,7 @@
 - 微信扫码成功后的 token / base_url / bot_id / user_id 写入租户渠道配置数据库
 - 删除微信渠道配置时会清理历史默认路径下的本地凭证文件，避免旧文件在重新绑定时被误用
 - 运行时覆盖不再为租户微信渠道自动注入 `weixin_credentials_path`
+- 渠道配置变更会 bump channel_config runtime state，并同步 bump 已绑定 Agent 的 config_version
 
 升级关注点：
 
@@ -187,6 +240,8 @@
 
 - 默认 Agent 在未配置 MCP allowlist 时继承本租户已启用的 MCP catalog
 - 自定义 Agent 不继承租户 MCP catalog，只有显式绑定的 MCP server 才会进入运行时
+- 平台默认 Agent 不再从 legacy `model` 配置兜底模型，运行时模型必须来自 DB model config
+- Agent 创建、更新、删除会 bump 对应 Agent runtime config_version
 
 升级关注点：
 

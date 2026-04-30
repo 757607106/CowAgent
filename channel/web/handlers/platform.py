@@ -715,16 +715,6 @@ class PlatformAgentDetailHandler:
                 knowledge_enabled=body.get("knowledge_enabled"),
                 mcp_servers=body.get("mcp_servers"),
             )
-            # Agent runtime capability boundary changed (prompt/tools/skills/mcp/knowledge):
-            # clear cached instances so next request always re-initializes with latest config.
-            try:
-                from bridge.bridge import Bridge
-                Bridge().get_agent_bridge().clear_agent_sessions(tenant_id=tenant_id, agent_id=agent_id)
-            except Exception as clear_err:
-                logger.warning(
-                    f"[WebChannel] Failed to clear cached sessions after agent update "
-                    f"({tenant_id}/{agent_id}): {clear_err}"
-                )
             return json.dumps({"status": "success", "agent": result}, ensure_ascii=False)
         except Exception as e:
             logger.error(f"[WebChannel] PlatformAgentDetail PUT error: {e}")
@@ -738,12 +728,6 @@ class PlatformAgentDetailHandler:
             tenant_id = _scope_tenant_id(params.tenant_id)
             service = _get_agent_service()
             deleted = service.delete_agent(agent_id=agent_id, tenant_id=tenant_id)
-            try:
-                from bridge.bridge import Bridge
-                Bridge().get_agent_bridge().clear_agent_sessions(tenant_id=tenant_id, agent_id=agent_id)
-            except Exception:
-                pass
-
             return json.dumps(
                 {"status": "success", "agent": deleted, "agent_id": agent_id},
                 ensure_ascii=False,

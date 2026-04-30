@@ -294,3 +294,27 @@ def test_agent_bridge_can_clear_all_sessions_for_target_agent():
     assert "default:agent-a:s2" not in agent_bridge.agents
     assert "default:agent-b:s1" in agent_bridge.agents
     assert "legacy-session" in agent_bridge.agents
+
+
+def test_agent_bridge_reinitializes_cache_when_config_version_changes():
+    from bridge.agent_bridge import AgentBridge
+
+    with patch("bridge.agent_bridge.AgentInitializer"), patch("bridge.agent_bridge.CowAgentRuntimeAdapter"):
+        bridge = MagicMock()
+        agent_bridge = AgentBridge(bridge)
+
+    cache_key = "default:agent-a:s1"
+    old_agent = object()
+    new_agent = object()
+    agent_bridge.agents = {cache_key: old_agent}
+    agent_bridge.agent_config_versions = {cache_key: 1}
+
+    def fake_init_agent(cache_key_arg, _session_id):
+        agent_bridge.agents[cache_key_arg] = new_agent
+
+    agent_bridge._init_agent_for_session = fake_init_agent
+
+    resolved = agent_bridge.get_agent(session_id="s1", cache_key=cache_key, config_version=2)
+
+    assert resolved is new_agent
+    assert agent_bridge.agent_config_versions[cache_key] == 2

@@ -11,6 +11,7 @@ from config import conf
 from cow_platform.domain.models import AgentDefinition
 from cow_platform.repositories.agent_repository import AgentRepository
 from cow_platform.services.mcp_server_service import TenantMcpServerService
+from cow_platform.services.runtime_state_service import RuntimeStateService
 from cow_platform.services.tenant_service import TenantService
 
 
@@ -29,17 +30,19 @@ class AgentService:
         repository: AgentRepository | None = None,
         tenant_service: TenantService | None = None,
         mcp_server_service: TenantMcpServerService | None = None,
+        runtime_state_service: RuntimeStateService | None = None,
     ):
         self.repository = repository or AgentRepository()
         self.tenant_service = tenant_service or TenantService()
         self.mcp_server_service = mcp_server_service or TenantMcpServerService(tenant_service=self.tenant_service)
+        self.runtime_state_service = runtime_state_service or RuntimeStateService()
 
     def ensure_default_agent(self, tenant_id: str = DEFAULT_TENANT_ID) -> AgentDefinition:
         self.tenant_service.resolve_tenant(tenant_id)
         existing = self.repository.get_agent(tenant_id, DEFAULT_AGENT_ID)
         if existing:
             return self._normalize_default_agent_name(existing)
-        model = os.getenv("MODEL") or conf().get("model", "")
+        model = "" if conf().get("web_tenant_auth", True) else (os.getenv("MODEL") or conf().get("model", ""))
         return self.repository.create_agent(
             tenant_id=tenant_id,
             agent_id=DEFAULT_AGENT_ID,
@@ -108,6 +111,11 @@ class AgentService:
             knowledge_enabled=knowledge_enabled,
             mcp_servers=mcp_servers,
         )
+        self.runtime_state_service.safe_invalidate_agent(
+            tenant_id=definition.tenant_id,
+            agent_id=definition.agent_id,
+            reason="agent_created",
+        )
         return self.serialize_agent(definition)
 
     def update_agent(
@@ -145,6 +153,11 @@ class AgentService:
             knowledge_enabled=knowledge_enabled,
             mcp_servers=mcp_servers,
         )
+        self.runtime_state_service.safe_invalidate_agent(
+            tenant_id=definition.tenant_id,
+            agent_id=definition.agent_id,
+            reason="agent_updated",
+        )
         return self.serialize_agent(definition)
 
     def delete_agent(self, agent_id: str, *, tenant_id: str = DEFAULT_TENANT_ID) -> dict[str, Any]:
@@ -152,6 +165,11 @@ class AgentService:
             raise ValueError("default agent cannot be deleted")
         self.tenant_service.resolve_tenant(tenant_id)
         definition = self.repository.delete_agent(tenant_id=tenant_id, agent_id=agent_id)
+        self.runtime_state_service.safe_invalidate_agent(
+            tenant_id=definition.tenant_id,
+            agent_id=definition.agent_id,
+            reason="agent_deleted",
+        )
         return self.serialize_agent(definition)
 
     def get_agent_workspace(self, tenant_id: str, agent_id: str) -> Path:

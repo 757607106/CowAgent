@@ -505,7 +505,10 @@ class AgentInitializer:
                     enabled_skills = set(agent_definition.skills or ())
                     for skill_name in list(skill_manager.skills_config.keys()):
                         try:
-                            skill_manager.set_skill_enabled(skill_name, skill_name in enabled_skills)
+                            if hasattr(skill_manager, "set_runtime_skill_enabled"):
+                                skill_manager.set_runtime_skill_enabled(skill_name, skill_name in enabled_skills)
+                            else:
+                                skill_manager.set_skill_enabled(skill_name, skill_name in enabled_skills)
                         except ValueError:
                             pass  # skill not in config, ignore
                     if session_id is None:

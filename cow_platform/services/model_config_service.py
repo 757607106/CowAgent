@@ -8,6 +8,7 @@ from typing import Any
 from config import conf
 from cow_platform.domain.models import AgentDefinition, ModelConfigDefinition
 from cow_platform.repositories.model_config_repository import ModelConfigRepository
+from cow_platform.services.runtime_state_service import RuntimeStateService
 from cow_platform.services.tenant_service import TenantService
 
 
@@ -136,9 +137,11 @@ class ModelConfigService:
         self,
         repository: ModelConfigRepository | None = None,
         tenant_service: TenantService | None = None,
+        runtime_state_service: RuntimeStateService | None = None,
     ):
         self.repository = repository or ModelConfigRepository()
         self.tenant_service = tenant_service or TenantService()
+        self.runtime_state_service = runtime_state_service or RuntimeStateService()
 
     def list_provider_options(self, *, scope: str = "") -> list[dict[str, object]]:
         resolved_scope = (scope or "").strip()
@@ -198,22 +201,25 @@ class ModelConfigService:
         created_by: str = "",
         model_config_id: str = "",
     ) -> dict[str, Any]:
-        return self.serialize_model(
-            self._create_model(
-                scope="platform",
-                tenant_id="",
-                provider=provider,
-                model_name=model_name,
-                display_name=display_name,
-                api_key=api_key,
-                api_base=api_base,
-                enabled=enabled,
-                is_public=is_public,
-                metadata=metadata,
-                created_by=created_by,
-                model_config_id=model_config_id,
-            )
+        definition = self._create_model(
+            scope="platform",
+            tenant_id="",
+            provider=provider,
+            model_name=model_name,
+            display_name=display_name,
+            api_key=api_key,
+            api_base=api_base,
+            enabled=enabled,
+            is_public=is_public,
+            metadata=metadata,
+            created_by=created_by,
+            model_config_id=model_config_id,
         )
+        self.runtime_state_service.safe_invalidate_platform(
+            reason="platform_model_created",
+            metadata={"model_config_id": definition.model_config_id},
+        )
+        return self.serialize_model(definition)
 
     def create_tenant_model(
         self,
@@ -231,22 +237,26 @@ class ModelConfigService:
     ) -> dict[str, Any]:
         resolved_tenant_id = self._normalize_required("tenant_id", tenant_id)
         self.tenant_service.resolve_tenant(resolved_tenant_id)
-        return self.serialize_model(
-            self._create_model(
-                scope="tenant",
-                tenant_id=resolved_tenant_id,
-                provider=provider,
-                model_name=model_name,
-                display_name=display_name,
-                api_key=api_key,
-                api_base=api_base,
-                enabled=enabled,
-                is_public=False,
-                metadata=metadata,
-                created_by=created_by,
-                model_config_id=model_config_id,
-            )
+        definition = self._create_model(
+            scope="tenant",
+            tenant_id=resolved_tenant_id,
+            provider=provider,
+            model_name=model_name,
+            display_name=display_name,
+            api_key=api_key,
+            api_base=api_base,
+            enabled=enabled,
+            is_public=False,
+            metadata=metadata,
+            created_by=created_by,
+            model_config_id=model_config_id,
         )
+        self.runtime_state_service.safe_invalidate_tenant(
+            resolved_tenant_id,
+            reason="tenant_model_created",
+            metadata={"model_config_id": definition.model_config_id},
+        )
+        return self.serialize_model(definition)
 
     def update_model(
         self,
@@ -299,6 +309,7 @@ class ModelConfigService:
             is_public=is_public if existing.scope == "platform" else False,
             metadata=metadata,
         )
+        self._invalidate_model_scope(definition, reason="model_updated")
         return self.serialize_model(definition)
 
     def delete_model(
@@ -313,7 +324,9 @@ class ModelConfigService:
             expected_scope=expected_scope,
             tenant_id=tenant_id,
         )
-        return self.serialize_model(self.repository.delete_model_config(existing.model_config_id))
+        definition = self.repository.delete_model_config(existing.model_config_id)
+        self._invalidate_model_scope(definition, reason="model_deleted")
+        return self.serialize_model(definition)
 
     def resolve_model_for_scope(
         self,
@@ -346,6 +359,12 @@ class ModelConfigService:
                 if definition.model_name == agent_definition.model:
                     return definition
 
+        if self._is_platform_runtime():
+            raise ValueError(
+                "agent model_config_id is required in platform tenant mode; "
+                f"tenant={resolved_tenant_id}, agent={agent_definition.agent_id}"
+            )
+
         model_name = agent_definition.model or str(conf().get("model", "") or "")
         return self.build_legacy_model_config(model_name)
 
@@ -370,6 +389,8 @@ class ModelConfigService:
         return overrides
 
     def build_legacy_model_config(self, model_name: str) -> ModelConfigDefinition:
+        if self._is_platform_runtime():
+            raise RuntimeError("legacy model config fallback is disabled in platform tenant mode")
         resolved_model_name = model_name or str(conf().get("model", "") or "") or "gpt-4.1"
         provider = self._detect_provider_by_model(resolved_model_name)
         mapping = PROVIDER_RUNTIME_MAP[provider]
@@ -502,6 +523,17 @@ class ModelConfigService:
             return definition.is_public
         return definition.tenant_id == tenant_id
 
+    def _invalidate_model_scope(self, definition: ModelConfigDefinition, *, reason: str) -> None:
+        metadata = {"model_config_id": definition.model_config_id}
+        if definition.scope == "platform":
+            self.runtime_state_service.safe_invalidate_platform(reason=reason, metadata=metadata)
+            return
+        self.runtime_state_service.safe_invalidate_tenant(
+            definition.tenant_id,
+            reason=reason,
+            metadata=metadata,
+        )
+
     @staticmethod
     def _mask_secret(value: str) -> str:
         if not value:
@@ -535,3 +567,10 @@ class ModelConfigService:
         if lowered.startswith("linkai"):
             return "linkai"
         return "openai"
+
+    @staticmethod
+    def _is_platform_runtime() -> bool:
+        try:
+            return bool(conf().get("web_tenant_auth", True))
+        except Exception:
+            return True

@@ -39,12 +39,13 @@ def _definition():
 
 def test_channel_manager_skips_runtime_when_lease_is_owned_elsewhere(monkeypatch):
     import app
+    import cow_platform.runtime.channel_manager as channel_manager_module
     import cow_platform.services.channel_config_service as channel_config_module
 
     monkeypatch.setattr(channel_config_module, "ChannelConfigService", FakeChannelConfigService)
-    monkeypatch.setattr(app, "_clear_singleton_cache", lambda channel_type: None)
+    monkeypatch.setattr(channel_manager_module, "_clear_singleton_cache", lambda channel_type: None)
     create_channel = Mock(side_effect=AssertionError("channel must not start without lease"))
-    monkeypatch.setattr(app.channel_factory, "create_channel", create_channel)
+    monkeypatch.setattr(channel_manager_module.channel_factory, "create_channel", create_channel)
 
     manager = app.ChannelManager()
     manager._runtime_leases = FakeLeaseService(acquired=False)
@@ -58,11 +59,12 @@ def test_channel_manager_skips_runtime_when_lease_is_owned_elsewhere(monkeypatch
 
 def test_channel_manager_releases_lease_when_runtime_creation_fails(monkeypatch):
     import app
+    import cow_platform.runtime.channel_manager as channel_manager_module
     import cow_platform.services.channel_config_service as channel_config_module
 
     monkeypatch.setattr(channel_config_module, "ChannelConfigService", FakeChannelConfigService)
-    monkeypatch.setattr(app, "_clear_singleton_cache", lambda channel_type: None)
-    monkeypatch.setattr(app.channel_factory, "create_channel", Mock(side_effect=RuntimeError("boom")))
+    monkeypatch.setattr(channel_manager_module, "_clear_singleton_cache", lambda channel_type: None)
+    monkeypatch.setattr(channel_manager_module.channel_factory, "create_channel", Mock(side_effect=RuntimeError("boom")))
 
     manager = app.ChannelManager()
     lease_service = FakeLeaseService(acquired=True)
