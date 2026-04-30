@@ -115,6 +115,32 @@ class ModelConfigUpdateRequest(BaseModel):
     metadata: dict[str, object] | None = None
 
 
+class CapabilityConfigCreateRequest(BaseModel):
+    capability: str
+    provider: str
+    model_name: str
+    display_name: str = ""
+    api_key: str = ""
+    api_base: str = ""
+    enabled: bool = True
+    is_public: bool = True
+    is_default: bool = False
+    metadata: dict[str, object] = Field(default_factory=dict)
+
+
+class CapabilityConfigUpdateRequest(BaseModel):
+    capability: str | None = None
+    provider: str | None = None
+    model_name: str | None = None
+    display_name: str | None = None
+    api_key: str | None = None
+    api_base: str | None = None
+    enabled: bool | None = None
+    is_public: bool | None = None
+    is_default: bool | None = None
+    metadata: dict[str, object] | None = None
+
+
 class BindingCreateRequest(BaseModel):
     tenant_id: str = Field(default=DEFAULT_TENANT_ID)
     binding_id: str = ""

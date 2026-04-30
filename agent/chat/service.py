@@ -196,59 +196,9 @@ class ChatService:
                     logger.info("[ChatService] Cleared agent message history after executor recovery")
             raise
 
-        # Sync executor messages back to agent (thread-safe).
-        # The executor may have trimmed context, making its list shorter than
-        # original_length. In that case we must replace entirely — just
-        # appending would leave stale pre-trim messages in agent.messages
-        # and cause the same trim to fire on every subsequent request.
-        from agent.protocol.multimodal import sanitize_images_for_history
+        from agent.protocol.run_state import sync_executor_messages
 
-        sanitized_messages = sanitize_images_for_history(list(executor.messages))
-        with agent.messages_lock:
-            trimmed = len(sanitized_messages) < original_length
-            if trimmed:
-                # Context was trimmed: the executor appended the new user
-                # query *before* trimming, so the new messages (user +
-                # assistant + tools) sit at the tail of the trimmed list.
-                # We cannot simply slice at original_length (it exceeds the
-                # list length).  Instead, count how many messages the
-                # executor added on top of the post-trim baseline.
-                #
-                # Timeline inside executor.run_stream:
-                #   1. messages had `original_length` items
-                #   2. append user query  → original_length + 1
-                #   3. _trim_messages()   → some smaller number (includes the
-                #      user query because it belongs to the last turn)
-                #   4. LLM replies / tool calls appended
-                #
-                # The user query message is always the first message of the
-                # last turn (it cannot be trimmed away), so we locate it to
-                # find where "new" messages begin.
-                new_start = original_length  # fallback
-                for idx in range(len(sanitized_messages) - 1, -1, -1):
-                    msg = sanitized_messages[idx]
-                    if msg.get("role") == "user":
-                        content = msg.get("content", [])
-                        is_user_query = False
-                        if isinstance(content, list):
-                            has_text = any(
-                                isinstance(b, dict) and b.get("type") == "text"
-                                for b in content
-                            )
-                            has_tool_result = any(
-                                isinstance(b, dict) and b.get("type") == "tool_result"
-                                for b in content
-                            )
-                            is_user_query = has_text and not has_tool_result
-                        elif isinstance(content, str):
-                            is_user_query = True
-                        if is_user_query:
-                            new_start = idx
-                            break
-                new_messages = list(sanitized_messages[new_start:])
-            else:
-                new_messages = list(sanitized_messages[original_length:])
-            agent.messages = sanitized_messages
+        new_messages = sync_executor_messages(agent, list(executor.messages), original_length)
 
         # Persist new messages to PostgreSQL so they survive restarts and
         # can be queried via the HISTORY interface.

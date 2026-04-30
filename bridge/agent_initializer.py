@@ -7,6 +7,7 @@ import asyncio
 import datetime
 import time
 from typing import Optional, List, Any
+from urllib.parse import urlparse
 
 from agent.protocol import Agent
 from agent.tools import ToolManager
@@ -289,6 +290,34 @@ class AgentInitializer:
                 logger.warning("[AgentInitializer] python-dotenv not installed")
             except Exception as e:
                 logger.warning(f"[AgentInitializer] Failed to load .env file: {e}")
+
+    @staticmethod
+    def _is_endpoint_specific_api_base(api_base: str) -> bool:
+        path = urlparse(api_base or "").path.rstrip("/")
+        endpoint_suffixes = (
+            "/images/generations",
+            "/chat/completions",
+            "/audio/transcriptions",
+            "/audio/speech",
+            "/embeddings",
+        )
+        return any(path.endswith(suffix) for suffix in endpoint_suffixes)
+
+    @classmethod
+    def _resolve_embedding_api_config(cls, config) -> tuple[str, str, str]:
+        model = config.get("embedding_model") or "text-embedding-3-small"
+        api_key = config.get("embedding_api_key") or config.get("open_ai_api_key", "")
+        explicit_base = (config.get("embedding_api_base") or "").strip()
+        api_base = explicit_base or (config.get("open_ai_api_base", "") or "https://api.openai.com/v1")
+        api_base = api_base.rstrip("/")
+        if api_base and cls._is_endpoint_specific_api_base(api_base):
+            source = "embedding_api_base" if explicit_base else "open_ai_api_base"
+            logger.warning(
+                f"[AgentInitializer] Skip embedding provider: {source} points to an endpoint, "
+                f"not an OpenAI-compatible API base: {api_base}"
+            )
+            return model, "", ""
+        return model, api_key, api_base
     
     def _setup_memory_system(self, workspace_root: str, session_id: Optional[str] = None):
         """
@@ -308,13 +337,12 @@ class AgentInitializer:
             # Initialize embedding provider (prefer OpenAI, fallback to LinkAI)
             embedding_provider = None
 
-            openai_api_key = conf().get("open_ai_api_key", "")
-            openai_api_base = conf().get("open_ai_api_base", "")
+            embedding_model, openai_api_key, openai_api_base = self._resolve_embedding_api_config(conf())
             if openai_api_key and openai_api_key not in ["", "YOUR API KEY", "YOUR_API_KEY"]:
                 try:
                     embedding_provider = create_embedding_provider(
                         provider="openai",
-                        model="text-embedding-3-small",
+                        model=embedding_model,
                         api_key=openai_api_key,
                         api_base=openai_api_base or "https://api.openai.com/v1"
                     )

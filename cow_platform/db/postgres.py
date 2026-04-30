@@ -587,7 +587,60 @@ _RUNTIME_STATE_SCHEMA = [
 ]
 
 
+_CAPABILITY_CONFIG_SCHEMA = [
+    """
+    CREATE TABLE IF NOT EXISTS platform_capability_configs (
+        capability_config_id TEXT PRIMARY KEY,
+        scope TEXT NOT NULL,
+        tenant_id TEXT NOT NULL DEFAULT '',
+        capability TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        model_name TEXT NOT NULL,
+        display_name TEXT NOT NULL DEFAULT '',
+        api_key TEXT NOT NULL DEFAULT '',
+        api_base TEXT NOT NULL DEFAULT '',
+        enabled BOOLEAN NOT NULL DEFAULT true,
+        is_public BOOLEAN NOT NULL DEFAULT true,
+        is_default BOOLEAN NOT NULL DEFAULT false,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_by TEXT NOT NULL DEFAULT '',
+        created_at BIGINT NOT NULL,
+        updated_at BIGINT NOT NULL,
+        CHECK (scope IN ('platform', 'tenant')),
+        CHECK (scope != 'tenant' OR tenant_id != '')
+    )
+    """,
+    "ALTER TABLE platform_capability_configs ADD COLUMN IF NOT EXISTS scope TEXT NOT NULL DEFAULT 'platform'",
+    "ALTER TABLE platform_capability_configs ADD COLUMN IF NOT EXISTS tenant_id TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE platform_capability_configs ADD COLUMN IF NOT EXISTS capability TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE platform_capability_configs ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'custom'",
+    "ALTER TABLE platform_capability_configs ADD COLUMN IF NOT EXISTS model_name TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE platform_capability_configs ADD COLUMN IF NOT EXISTS display_name TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE platform_capability_configs ADD COLUMN IF NOT EXISTS api_key TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE platform_capability_configs ADD COLUMN IF NOT EXISTS api_base TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE platform_capability_configs ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT true",
+    "ALTER TABLE platform_capability_configs ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT true",
+    "ALTER TABLE platform_capability_configs ADD COLUMN IF NOT EXISTS is_default BOOLEAN NOT NULL DEFAULT false",
+    "ALTER TABLE platform_capability_configs ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb",
+    "ALTER TABLE platform_capability_configs ADD COLUMN IF NOT EXISTS created_by TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE platform_capability_configs ADD COLUMN IF NOT EXISTS created_at BIGINT NOT NULL DEFAULT 0",
+    "ALTER TABLE platform_capability_configs ADD COLUMN IF NOT EXISTS updated_at BIGINT NOT NULL DEFAULT 0",
+    "CREATE INDEX IF NOT EXISTS idx_platform_capability_configs_scope ON platform_capability_configs (scope, tenant_id, capability, enabled)",
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_capability_configs_platform_default
+    ON platform_capability_configs (capability)
+    WHERE scope = 'platform' AND is_default = true
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_platform_capability_configs_tenant_default
+    ON platform_capability_configs (tenant_id, capability)
+    WHERE scope = 'tenant' AND is_default = true
+    """,
+]
+
+
 _MIGRATIONS = (
     SchemaMigration("0001_platform_schema", tuple(_SCHEMA)),
     SchemaMigration("0002_runtime_state_and_skill_configs", tuple(_RUNTIME_STATE_SCHEMA)),
+    SchemaMigration("0003_capability_configs", tuple(_CAPABILITY_CONFIG_SCHEMA)),
 )

@@ -148,6 +148,35 @@ class ModelConfigDefinition:
 
 
 @dataclass(frozen=True, slots=True)
+class CapabilityConfigDefinition:
+    """平台或租户可用的独立能力接入配置。"""
+
+    capability_config_id: str
+    scope: str
+    tenant_id: str
+    capability: str
+    provider: str
+    model_name: str
+    display_name: str = ""
+    api_key: str = ""
+    api_base: str = ""
+    enabled: bool = True
+    is_public: bool = True
+    is_default: bool = False
+    metadata: Mapping[str, Any] = field(default_factory=dict)
+    created_by: str = ""
+
+    def __post_init__(self) -> None:
+        _ensure_non_empty("capability_config_id", self.capability_config_id)
+        _ensure_non_empty("scope", self.scope)
+        _ensure_non_empty("capability", self.capability)
+        _ensure_non_empty("provider", self.provider)
+        _ensure_non_empty("model_name", self.model_name)
+        if self.scope == "tenant":
+            _ensure_non_empty("tenant_id", self.tenant_id)
+
+
+@dataclass(frozen=True, slots=True)
 class TenantUserIdentityDefinition:
     """租户用户与外部渠道身份的映射定义。"""
 

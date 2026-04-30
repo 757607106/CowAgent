@@ -1,4 +1,5 @@
 from agent.memory.storage import MemoryStorage, SearchResult
+from config import conf
 
 
 def test_pgvector_literal_accepts_finite_numbers():
@@ -23,3 +24,10 @@ def test_merge_vector_results_keeps_best_score_per_chunk():
     merged = MemoryStorage._merge_vector_results(primary, fallback, limit=2)
 
     assert [item.snippet for item in merged] == ["fallback", "other"]
+
+
+def test_jsonb_vector_candidate_limit_is_bounded_and_configurable(monkeypatch):
+    monkeypatch.setitem(conf(), "memory_jsonb_vector_scan_limit", 12)
+
+    assert MemoryStorage._jsonb_vector_candidate_limit(3) == 12
+    assert MemoryStorage._jsonb_vector_candidate_limit(20) == 20

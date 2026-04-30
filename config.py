@@ -1,5 +1,6 @@
 # encoding:utf-8
 
+import ast
 import copy
 import json
 import logging
@@ -95,12 +96,18 @@ available_setting = {
     "dashscope_api_key": "",
     # Google Gemini Api Key
     "gemini_api_key": "",
+    "embedding_model": "text-embedding-3-small",  # 长期记忆向量模型
+    "embedding_api_key": "",  # 长期记忆向量 API key，留空时可复用 open_ai_api_key
+    "embedding_api_base": "",  # 长期记忆向量 API base，留空时可复用安全的 open_ai_api_base
+    "memory_jsonb_vector_scan_limit": 2000,  # 无 pgvector 时 JSONB 向量回退最多扫描的候选块数量
+    "tools": {},  # Agent 工具配置统一命名
     # 语音设置
     "speech_recognition": True,  # 是否开启语音识别
     "group_speech_recognition": False,  # 是否开启群组语音识别
     "voice_reply_voice": False,  # 是否使用语音回复语音，需要设置对应语音合成引擎的api key
     "always_reply_voice": False,  # 是否一直使用语音回复
     "voice_to_text": "openai",  # 语音识别引擎，支持openai,baidu,google,azure,xunfei,ali
+    "speech_to_text_model": "whisper-1",  # OpenAI兼容语音识别模型
     "text_to_voice": "openai",  # 语音合成引擎，支持openai,baidu,google,azure,xunfei,ali,pytts(offline),elevenlabs,edge(online)
     "text_to_voice_model": "tts-1",
     "tts_voice_id": "alloy",
@@ -193,6 +200,7 @@ available_setting = {
     "cloud_port": None,
     "cloud_deployment_id": "",
     "minimax_api_key": "",
+    "minimax_api_base": "",
     "Minimax_group_id": "",
     "Minimax_base_url": "",
     "web_port": 9899,
@@ -364,6 +372,9 @@ _CONFIG_TO_ENV = {
     "deepseek_api_key": "DEEPSEEK_API_KEY",
     "deepseek_api_base": "DEEPSEEK_API_BASE",
     "modelscope_api_key": "MODELSCOPE_API_KEY",
+    "embedding_model": "EMBEDDING_MODEL",
+    "embedding_api_key": "EMBEDDING_API_KEY",
+    "embedding_api_base": "EMBEDDING_API_BASE",
     # Channel credentials (used by skills that check env vars)
     "feishu_app_id": "FEISHU_APP_ID",
     "feishu_app_secret": "FEISHU_APP_SECRET",
@@ -420,14 +431,21 @@ def drag_sensitive(config):
 
 
 def _parse_env_value(value: str):
+    stripped = value.strip()
+    lowered = stripped.lower()
+    if lowered == "false":
+        return False
+    if lowered == "true":
+        return True
+    if lowered in {"none", "null"}:
+        return None
     try:
-        return eval(value)
+        return json.loads(stripped)
     except Exception:
-        lowered = value.lower()
-        if lowered == "false":
-            return False
-        if lowered == "true":
-            return True
+        pass
+    try:
+        return ast.literal_eval(stripped)
+    except Exception:
         return value
 
 

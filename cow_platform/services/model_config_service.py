@@ -25,7 +25,7 @@ class ProviderRuntimeMapping:
     label: str = ""
     models: tuple[str, ...] = ()
     platform_configurable: bool = True
-    tenant_configurable: bool = False
+    tenant_configurable: bool = True
     custom: bool = False
 
 
@@ -155,6 +155,7 @@ class ModelConfigService:
                 "models": list(mapping.models),
                 "custom": mapping.custom,
                 "requires_api_base": mapping.custom,
+                "default_api_base": mapping.default_api_base,
                 "platform_configurable": mapping.platform_configurable,
                 "tenant_configurable": mapping.tenant_configurable,
             }
@@ -283,7 +284,7 @@ class ModelConfigService:
         if existing.scope == "platform" and not next_mapping.platform_configurable:
             raise ValueError(f"provider is not configurable by platform admin: {next_provider}")
         if existing.scope == "tenant" and not next_mapping.tenant_configurable:
-            raise ValueError(f"tenant model provider must be custom: {next_provider}")
+            raise ValueError(f"provider is not configurable by tenant admin: {next_provider}")
         next_model_name = self._normalize_required("model_name", model_name) if model_name is not None else existing.model_name
         next_api_key = existing.api_key if api_key is None else (api_key.strip() if isinstance(api_key, str) else api_key)
         if existing.scope == "platform" and not next_api_key:
@@ -457,7 +458,7 @@ class ModelConfigService:
         if resolved_scope == "platform" and not mapping.platform_configurable:
             raise ValueError(f"provider is not configurable by platform admin: {resolved_provider}")
         if resolved_scope == "tenant" and not mapping.tenant_configurable:
-            raise ValueError(f"tenant model provider must be custom: {resolved_provider}")
+            raise ValueError(f"provider is not configurable by tenant admin: {resolved_provider}")
         resolved_model_name = self._normalize_required("model_name", model_name)
         resolved_api_key = (api_key or "").strip()
         resolved_api_base = (api_base or "").strip() if mapping.custom else ""

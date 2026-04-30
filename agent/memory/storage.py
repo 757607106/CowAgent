@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from common.log import logger
+from config import conf
 from cow_platform.db import connect, jsonb
 
 
@@ -255,6 +256,7 @@ class MemoryStorage:
         if user_id:
             user_filter = "AND (scope = 'shared' OR user_id = %s)"
             params.append(user_id)
+        params.append(self._jsonb_vector_candidate_limit(limit))
         rows = conn.execute(
             f"""
             SELECT *
@@ -263,6 +265,8 @@ class MemoryStorage:
               AND scope = ANY(%s)
               AND embedding IS NOT NULL
               {user_filter}
+            ORDER BY updated_at DESC
+            LIMIT %s
             """,
             tuple(params),
         ).fetchall()
@@ -285,6 +289,18 @@ class MemoryStorage:
             )
             for score, row in results[:limit]
         ]
+
+    @staticmethod
+    def _jsonb_vector_candidate_limit(limit: int) -> int:
+        try:
+            configured = int(conf().get("memory_jsonb_vector_scan_limit", 2000) or 2000)
+        except Exception:
+            configured = 2000
+        try:
+            requested = max(1, int(limit)) if limit else 1
+        except Exception:
+            requested = 1
+        return max(requested, configured)
 
     @staticmethod
     def _merge_vector_results(

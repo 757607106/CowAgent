@@ -31,7 +31,7 @@ class OpenaiVoice(Voice):
                 "file": file,
             }
             data = {
-                "model": "whisper-1",
+                "model": conf().get("speech_to_text_model") or "whisper-1",
             }
             response = requests.post(url, headers=headers, files=files, data=data)
             response_data = response.json()

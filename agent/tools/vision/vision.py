@@ -7,7 +7,7 @@ Provider priority (default):
   2. Other models whose API key is configured — auto-discovered
   3. OpenAI / LinkAI raw HTTP — reliable fallback
   When use_linkai=true, LinkAI is promoted to #1.
-  When tool.vision.model is set, that model is used exclusively first.
+  When tools.vision.model is set, that model is used exclusively first.
 """
 
 import base64
@@ -63,6 +63,7 @@ class VisionProvider:
     model_override: Optional[str] = None
     use_bot: bool = False  # When True, call via bot.call_vision instead of raw HTTP
     fallback_bot: Any = None  # Bot instance for non-main-model providers
+    config_overrides: dict = field(default_factory=dict)
 
 
 class VisionAPIError(Exception):
@@ -176,11 +177,13 @@ class Vision(BaseTool):
         providers: List[VisionProvider] = []
 
         if use_linkai:
+            self._append_provider(providers, self._build_capability_provider)
             self._append_provider(providers, self._build_linkai_provider)
             self._append_provider(providers, self._build_main_model_provider)
             self._append_other_model_providers(providers)
             self._append_provider(providers, self._build_openai_provider)
         else:
+            self._append_provider(providers, self._build_capability_provider)
             self._append_provider(providers, self._build_main_model_provider)
             self._append_other_model_providers(providers)
             self._append_provider(providers, self._build_openai_provider)
@@ -238,11 +241,12 @@ class Vision(BaseTool):
         """
         Determine which model to use for vision.
 
-        1. User explicit config: tool.vision.model in config.json
+        1. User explicit config: tools.vision.model in config.json
         2. Fallback to the main configured model name
         """
-        tool_conf = conf().get("tool", {})
-        user_vision_model = tool_conf.get("vision", {}).get("model") if isinstance(tool_conf, dict) else None
+        tools_conf = conf().get("tools", {})
+        vision_conf = tools_conf.get("vision", {}) if isinstance(tools_conf, dict) else {}
+        user_vision_model = vision_conf.get("model") if isinstance(vision_conf, dict) else None
         if user_vision_model:
             return user_vision_model
         model_name = conf().get("model", "")
@@ -278,7 +282,12 @@ class Vision(BaseTool):
             return None
         api_base = (conf().get("open_ai_api_base") or os.environ.get("OPENAI_API_BASE", "")).rstrip("/") \
             or "https://api.openai.com/v1"
-        return VisionProvider(name="OpenAI", api_key=api_key, api_base=self._ensure_v1(api_base))
+        return VisionProvider(
+            name="OpenAI",
+            api_key=api_key,
+            api_base=self._ensure_v1(api_base),
+            model_override=self._resolve_vision_model(),
+        )
 
     def _build_linkai_provider(self) -> Optional[VisionProvider]:
         api_key = conf().get("linkai_api_key") or os.environ.get("LINKAI_API_KEY")
@@ -291,7 +300,59 @@ class Vision(BaseTool):
         extra.pop("Authorization", None)
         extra.pop("Content-Type", None)
         return VisionProvider(name="LinkAI", api_key=api_key, api_base=self._ensure_v1(api_base),
-                              extra_headers=extra)
+                              extra_headers=extra, model_override=self._resolve_vision_model())
+
+    def _build_capability_provider(self) -> Optional[VisionProvider]:
+        try:
+            from cow_platform.runtime.scope import get_current_config_overrides, get_current_runtime_context
+            from cow_platform.services.capability_config_service import CapabilityConfigService, provider_bot_type
+
+            runtime_context = get_current_runtime_context()
+            if runtime_context is None:
+                return None
+            definition = CapabilityConfigService().resolve_for_runtime(runtime_context.tenant_id, "multimodal")
+            if definition is None:
+                return None
+            service = CapabilityConfigService()
+            capability_overrides = service.build_runtime_overrides(definition)
+            overrides = {**get_current_config_overrides(), **capability_overrides}
+            provider = definition.provider
+            if provider in {"openai", "custom", "linkai"}:
+                api_key = definition.api_key
+                api_base = definition.api_base or (
+                    "https://api.link-ai.tech" if provider == "linkai" else "https://api.openai.com/v1"
+                )
+                if not api_key:
+                    return None
+                return VisionProvider(
+                    name=definition.display_name or provider,
+                    api_key=api_key,
+                    api_base=self._ensure_v1(api_base.rstrip("/")),
+                    model_override=definition.model_name,
+                    config_overrides=overrides,
+                )
+            bot_type = provider_bot_type(provider)
+            if not bot_type:
+                return None
+            from models.bot_factory import create_bot
+            from cow_platform.runtime.scope import activate_config_overrides
+
+            with activate_config_overrides(overrides):
+                bot = create_bot(bot_type)
+            if not hasattr(bot, "call_vision"):
+                return None
+            return VisionProvider(
+                name=definition.display_name or provider,
+                api_key="",
+                api_base="",
+                model_override=definition.model_name,
+                use_bot=True,
+                fallback_bot=bot,
+                config_overrides=overrides,
+            )
+        except Exception as e:
+            logger.debug(f"[Vision] capability provider unavailable: {e}")
+            return None
 
     def _call_via_bot(self, model: str, question: str, image_content: dict,
                       provider: Optional[VisionProvider] = None) -> ToolResult:
@@ -311,12 +372,23 @@ class Vision(BaseTool):
             raise VisionAPIError("No image URL in content block")
 
         try:
-            response = bot.call_vision(
-                image_url=image_url,
-                question=question,
-                model=model,
-                max_tokens=MAX_TOKENS,
-            )
+            if provider and provider.config_overrides:
+                from cow_platform.runtime.scope import activate_config_overrides, get_current_config_overrides
+
+                with activate_config_overrides({**get_current_config_overrides(), **provider.config_overrides}):
+                    response = bot.call_vision(
+                        image_url=image_url,
+                        question=question,
+                        model=model,
+                        max_tokens=MAX_TOKENS,
+                    )
+            else:
+                response = bot.call_vision(
+                    image_url=image_url,
+                    question=question,
+                    model=model,
+                    max_tokens=MAX_TOKENS,
+                )
         except Exception as e:
             raise VisionAPIError(f"call_vision failed: {e}")
 

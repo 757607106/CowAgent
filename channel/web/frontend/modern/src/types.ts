@@ -147,8 +147,39 @@ export interface ModelProviderOption {
   models: string[];
   custom?: boolean;
   requires_api_base?: boolean;
+  default_api_base?: string;
   platform_configurable?: boolean;
   tenant_configurable?: boolean;
+}
+
+export interface CapabilityTypeOption {
+  capability: string;
+  label: string;
+}
+
+export interface CapabilityProviderOption {
+  provider: string;
+  label: string;
+  capabilities: string[];
+  default_api_base?: string;
+  custom?: boolean;
+}
+
+export interface CapabilityConfigItem {
+  capability_config_id: string;
+  scope: 'platform' | 'tenant';
+  tenant_id?: string;
+  capability: string;
+  provider: string;
+  model_name: string;
+  display_name?: string;
+  api_base?: string;
+  enabled: boolean;
+  is_public: boolean;
+  is_default: boolean;
+  api_key_set?: boolean;
+  api_key_masked?: string;
+  metadata?: Record<string, unknown>;
 }
 
 export interface SkillItem {

@@ -393,7 +393,7 @@ export default function AgentsPage() {
 
   const modelOptions = useMemo(() => {
     const options = availableModels.map((item) => ({
-      label: `${item.display_name || item.model_name} (${item.provider})`,
+      label: item.display_name || item.model_name,
       value: item.model_config_id,
     }));
     const configuredIds = new Set(availableModels.map((item) => item.model_config_id));

@@ -97,8 +97,10 @@ class Channel(object):
                     clear_history=False
                 )
             except Exception as e:
-                logger.error(f"[Channel] Agent mode failed, fallback to normal mode: {e}")
-                # Fallback to normal mode if agent fails
+                logger.exception(f"[Channel] Agent mode failed: {e}")
+                if conf().get("web_tenant_auth", True):
+                    return Reply(ReplyType.ERROR, "Agent处理失败，请稍后再试")
+                logger.warning("[Channel] Legacy mode fallback to normal chat after agent failure")
                 return Bridge().fetch_reply_content(query, context)
         else:
             # Normal mode

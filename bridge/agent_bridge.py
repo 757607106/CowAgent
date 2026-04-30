@@ -16,6 +16,7 @@ from bridge.context import Context
 from bridge.reply import Reply, ReplyType
 from common import const
 from common.log import logger
+from common.model_routing import resolve_bot_type_from_model
 from common.utils import expand_path
 from cow_platform.adapters.cowagent_runtime_adapter import CowAgentRuntimeAdapter
 from cow_platform.runtime.scope import get_current_model_config_id, get_current_model_name
@@ -92,18 +93,6 @@ class AgentLLMModel(LLMModel):
     LLM Model adapter that uses COW's existing bot infrastructure
     """
 
-    _MODEL_BOT_TYPE_MAP = {
-        "wenxin": const.BAIDU, "wenxin-4": const.BAIDU,
-        "xunfei": const.XUNFEI, const.QWEN: const.QWEN_DASHSCOPE,
-        const.MODELSCOPE: const.MODELSCOPE,
-    }
-    _MODEL_PREFIX_MAP = [
-        ("qwen", const.QWEN_DASHSCOPE), ("qwq", const.QWEN_DASHSCOPE), ("qvq", const.QWEN_DASHSCOPE),
-        ("gemini", const.GEMINI), ("glm", const.ZHIPU_AI), ("claude", const.CLAUDEAPI),
-        ("moonshot", const.MOONSHOT), ("kimi", const.MOONSHOT),
-        ("doubao", const.DOUBAO), ("deepseek", const.DEEPSEEK),
-    ]
-
     def __init__(self, bridge: Bridge, bot_type: str = "chat"):
         from config import conf
         super().__init__(model=conf().get("model", const.GPT_41))
@@ -137,22 +126,7 @@ class AgentLLMModel(LLMModel):
         if configured_bot_type:
             return configured_bot_type
        
-        if not model_name or not isinstance(model_name, str):
-            return const.OPENAI
-        if model_name in self._MODEL_BOT_TYPE_MAP:
-            return self._MODEL_BOT_TYPE_MAP[model_name]
-        if model_name.lower().startswith("minimax") or model_name in ["abab6.5-chat"]:
-            return const.MiniMax
-        if model_name in [const.QWEN_TURBO, const.QWEN_PLUS, const.QWEN_MAX]:
-            return const.QWEN_DASHSCOPE
-        if model_name in [const.MOONSHOT, "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"]:
-            return const.MOONSHOT
-        if conf().get("bot_type") == "modelscope":
-            return const.MODELSCOPE
-        for prefix, btype in self._MODEL_PREFIX_MAP:
-            if model_name.startswith(prefix):
-                return btype
-        return const.OPENAI
+        return resolve_bot_type_from_model(model_name, default=const.OPENAI)
 
     @property
     def bot(self):

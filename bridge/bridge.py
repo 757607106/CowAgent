@@ -1,12 +1,20 @@
+from collections import OrderedDict
+import hashlib
+
 from models.bot_factory import create_bot
 from bridge.context import Context
 from bridge.reply import Reply
 from common import const
 from common.log import logger
+from common.model_routing import normalize_model_name, resolve_bot_type_from_model
 from common.singleton import singleton
 from config import conf
 from translate.factory import create_translator
 from voice.factory import create_voice
+
+
+_BOT_CACHE_LIMIT = 64
+_SECRET_KEY_MARKERS = ("key", "secret", "token", "password", "cookie")
 
 
 @singleton
@@ -23,50 +31,17 @@ class Bridge(object):
         if bot_type:
             self.btype["chat"] = bot_type
         else:
-            model_type = conf().get("model") or const.GPT_41_MINI
-            
-            # Ensure model_type is string to prevent AttributeError when using startswith()
-            # This handles cases where numeric model names (e.g., "1") are parsed as integers from YAML
-            if not isinstance(model_type, str):
-                logger.warning(f"[Bridge] model_type is not a string: {model_type} (type: {type(model_type).__name__}), converting to string")
-                model_type = str(model_type)
-            
-            if model_type in ["text-davinci-003"]:
-                self.btype["chat"] = const.OPEN_AI
+            raw_model_type = conf().get("model") or const.GPT_41_MINI
+            model_type = normalize_model_name(raw_model_type)
+            if raw_model_type != model_type:
+                logger.warning(
+                    f"[Bridge] model_type is not a string: {raw_model_type} "
+                    f"(type: {type(raw_model_type).__name__}), converting to string"
+                )
             if conf().get("use_azure_chatgpt", False):
                 self.btype["chat"] = const.CHATGPTONAZURE
-            if model_type in ["wenxin", "wenxin-4"]:
-                self.btype["chat"] = const.BAIDU
-            if model_type in ["xunfei"]:
-                self.btype["chat"] = const.XUNFEI
-            if model_type in [const.QWEN, const.QWEN_TURBO, const.QWEN_PLUS, const.QWEN_MAX]:
-                self.btype["chat"] = const.QWEN_DASHSCOPE
-            if model_type and (model_type.startswith("qwen") or model_type.startswith("qwq") or model_type.startswith("qvq")):
-                self.btype["chat"] = const.QWEN_DASHSCOPE
-            if model_type and model_type.startswith("gemini"):
-                self.btype["chat"] = const.GEMINI
-            if model_type and model_type.startswith("glm"):
-                self.btype["chat"] = const.ZHIPU_AI
-            if model_type and model_type.startswith("claude"):
-                self.btype["chat"] = const.CLAUDEAPI
-
-            if model_type in [const.MOONSHOT, "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"]:
-                self.btype["chat"] = const.MOONSHOT
-            if model_type and model_type.startswith("kimi"):
-                self.btype["chat"] = const.MOONSHOT
-
-            if model_type and model_type.startswith("doubao"):
-                self.btype["chat"] = const.DOUBAO
-
-            if model_type and model_type.startswith("deepseek"):
-                self.btype["chat"] = const.DEEPSEEK
-
-            if model_type in [const.MODELSCOPE]:
-                self.btype["chat"] = const.MODELSCOPE
-            
-            # MiniMax models
-            if model_type and (model_type in ["abab6.5-chat", "abab6.5"] or model_type.lower().startswith("minimax")):
-                self.btype["chat"] = const.MiniMax
+            else:
+                self.btype["chat"] = resolve_bot_type_from_model(model_type, default=const.OPENAI)
 
             if conf().get("use_linkai") and conf().get("linkai_api_key"):
                 self.btype["chat"] = const.LINKAI
@@ -75,26 +50,68 @@ class Bridge(object):
                 if not conf().get("text_to_voice") or conf().get("text_to_voice") in ["openai", const.TTS_1, const.TTS_1_HD]:
                     self.btype["text_to_voice"] = const.LINKAI
 
-        self.bots = {}
+        self.bots = OrderedDict()
         self.chat_bots = {}
         self._agent_bridge = None
 
+    def _runtime_bot_type(self, typename):
+        if typename == "voice_to_text":
+            return conf().get("voice_to_text", self.btype[typename])
+        if typename == "text_to_voice":
+            return conf().get("text_to_voice", self.btype[typename])
+        if typename == "translate":
+            return conf().get("translate", self.btype[typename])
+        if typename == "chat":
+            return conf().get("bot_type") or self.btype[typename]
+        return self.btype[typename]
+
+    def _freeze_runtime_value(self, key, value):
+        if isinstance(value, dict):
+            return tuple(sorted((k, self._freeze_runtime_value(k, v)) for k, v in value.items()))
+        if isinstance(value, (list, tuple, set)):
+            return tuple(self._freeze_runtime_value(key, item) for item in value)
+        if isinstance(value, str) and any(marker in key.lower() for marker in _SECRET_KEY_MARKERS):
+            return ("sha256", hashlib.sha256(value.encode("utf-8")).hexdigest())
+        return value
+
+    def _runtime_bot_cache_key(self, typename):
+        try:
+            from cow_platform.runtime.scope import get_current_config_overrides
+
+            overrides = tuple(
+                sorted(
+                    (key, self._freeze_runtime_value(key, value))
+                    for key, value in get_current_config_overrides().items()
+                )
+            )
+        except Exception:
+            overrides = ()
+        return (typename, self._runtime_bot_type(typename), overrides)
+
     # 模型对应的接口
     def get_bot(self, typename):
-        if self.bots.get(typename) is None:
-            logger.info("create bot {} for {}".format(self.btype[typename], typename))
+        cache_key = self._runtime_bot_cache_key(typename)
+        bot_type = self._runtime_bot_type(typename)
+        if cache_key in self.bots:
+            self.bots.move_to_end(cache_key)
+            return self.bots[cache_key]
+        if self.bots.get(cache_key) is None:
+            logger.info("create bot {} for {}".format(bot_type, typename))
             if typename == "text_to_voice":
-                self.bots[typename] = create_voice(self.btype[typename])
+                self.bots[cache_key] = create_voice(bot_type)
             elif typename == "voice_to_text":
-                self.bots[typename] = create_voice(self.btype[typename])
+                self.bots[cache_key] = create_voice(bot_type)
             elif typename == "chat":
-                self.bots[typename] = create_bot(self.btype[typename])
+                self.bots[cache_key] = create_bot(bot_type)
             elif typename == "translate":
-                self.bots[typename] = create_translator(self.btype[typename])
-        return self.bots[typename]
+                self.bots[cache_key] = create_translator(bot_type)
+            while len(self.bots) > _BOT_CACHE_LIMIT:
+                removed_key, _ = self.bots.popitem(last=False)
+                logger.info("[Bridge] evicted runtime bot cache: {}".format(removed_key[:2]))
+        return self.bots[cache_key]
 
     def get_bot_type(self, typename):
-        return self.btype[typename]
+        return self._runtime_bot_type(typename)
 
     def fetch_reply_content(self, query, context: Context) -> Reply:
         return self.get_bot("chat").reply(query, context)

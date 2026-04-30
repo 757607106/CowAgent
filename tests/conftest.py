@@ -136,6 +136,7 @@ def _reset_platform_postgres_if_configured() -> None:
                     platform_skill_configs,
                     platform_quotas,
                     platform_pricing,
+                    platform_capability_configs,
                     platform_model_configs,
                     platform_bindings,
                     platform_channel_configs,

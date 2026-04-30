@@ -490,18 +490,9 @@ class Agent:
                     logger.info("[Agent] Cleared Agent message history after executor recovery")
             raise
 
-        from agent.protocol.multimodal import sanitize_images_for_history
+        from agent.protocol.run_state import sync_executor_messages
 
-        # Sync executor's messages back to agent (thread-safe).
-        # If the executor trimmed context, its message list is shorter than
-        # original_length, so we must replace rather than append.
-        sanitized_messages = sanitize_images_for_history(list(executor.messages))
-        with self.messages_lock:
-            self.messages = sanitized_messages
-            # Track messages added in this run (user query + all assistant/tool messages)
-            # original_length may exceed executor.messages length after trimming
-            trim_adjusted_start = min(original_length, len(sanitized_messages))
-            self._last_run_new_messages = list(sanitized_messages[trim_adjusted_start:])
+        self._last_run_new_messages = sync_executor_messages(self, list(executor.messages), original_length)
         
         # Store executor reference for agent_bridge to access files_to_send
         self.stream_executor = executor

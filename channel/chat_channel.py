@@ -285,6 +285,16 @@ class ChatChannel(Channel):
                 context["desire_rtype"] = ReplyType.VOICE
         return context
 
+    def _build_capability_image_reply(self, context: Context, capability_config) -> Reply:
+        if capability_config is None:
+            return super().build_reply_content(context.content, context)
+        try:
+            image_context = Context(ContextType.IMAGE_CREATE, context.content, kwargs=dict(context.kwargs))
+            return Bridge().fetch_reply_content(context.content, image_context)
+        except Exception as e:
+            logger.exception(f"[chat_channel] image generation capability failed: {e}")
+            return Reply(ReplyType.ERROR, "图片生成失败，请稍后再试")
+
     def _handle(self, context: Context):
         if context is None or not context.content:
             return
@@ -304,7 +314,8 @@ class ChatChannel(Channel):
                 # reply的发送步骤
                 self._send_reply(context, reply)
 
-    def _generate_reply(self, context: Context, reply: Reply = Reply()) -> Reply:
+    def _generate_reply(self, context: Context, reply: Reply = None) -> Reply:
+        reply = reply or Reply()
         e_context = PluginManager().emit_event(
             EventContext(
                 Event.ON_HANDLE_CONTEXT,
@@ -316,7 +327,13 @@ class ChatChannel(Channel):
             logger.debug("[chat_channel] type={}, content={}".format(context.type, context.content))
             if context.type == ContextType.TEXT or context.type == ContextType.IMAGE_CREATE:  # 文字和图片消息
                 context["channel"] = e_context["channel"]
-                reply = super().build_reply_content(context.content, context)
+                if context.type == ContextType.IMAGE_CREATE:
+                    from cow_platform.runtime.capabilities import activate_context_capability
+
+                    with activate_context_capability(context, "image_generation") as capability_config:
+                        reply = self._build_capability_image_reply(context, capability_config)
+                else:
+                    reply = super().build_reply_content(context.content, context)
             elif context.type == ContextType.VOICE:  # 语音消息
                 cmsg = context["msg"]
                 cmsg.prepare()
@@ -328,7 +345,10 @@ class ChatChannel(Channel):
                     logger.warning("[chat_channel]any to wav error, use raw path. " + str(e))
                     wav_path = file_path
                 # 语音识别
-                reply = super().build_voice_to_text(wav_path)
+                from cow_platform.runtime.capabilities import activate_context_capability
+
+                with activate_context_capability(context, "speech_to_text"):
+                    reply = super().build_voice_to_text(wav_path)
                 # 删除临时文件
                 try:
                     os.remove(file_path)
@@ -377,7 +397,10 @@ class ChatChannel(Channel):
                 if reply.type == ReplyType.TEXT:
                     reply_text = reply.content
                     if desire_rtype == ReplyType.VOICE and ReplyType.VOICE not in self.NOT_SUPPORT_REPLYTYPE:
-                        reply = super().build_text_to_voice(reply.content)
+                        from cow_platform.runtime.capabilities import activate_context_capability
+
+                        with activate_context_capability(context, "text_to_speech"):
+                            reply = super().build_text_to_voice(reply.content)
                         return self._decorate_reply(context, reply)
                     if context.get("isgroup", False):
                         if not context.get("no_need_at", False):

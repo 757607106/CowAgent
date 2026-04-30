@@ -20,6 +20,9 @@ import type {
   UsageBucket,
   WeixinQrInfo,
   AuthUser,
+  CapabilityConfigItem,
+  CapabilityProviderOption,
+  CapabilityTypeOption,
   ModelConfigItem,
   ModelProviderOption,
 } from '../types';
@@ -116,6 +119,13 @@ export const api = {
     body: JSON.stringify(payload),
   }),
   deletePlatformModel: (modelConfigId: string) => requestJson(`/api/platform/admin/models/${encodeURIComponent(modelConfigId)}`, { method: 'DELETE' }),
+  listPlatformCapabilityConfigs: () => requestJson<{ status: string; configs: CapabilityConfigItem[]; capabilities?: CapabilityTypeOption[]; providers?: CapabilityProviderOption[] }>('/api/platform/admin/capability-configs'),
+  createPlatformCapabilityConfig: (payload: Record<string, any>) => requestJson('/api/platform/admin/capability-configs', { method: 'POST', body: JSON.stringify(payload) }),
+  updatePlatformCapabilityConfig: (capabilityConfigId: string, payload: Record<string, any>) => requestJson(`/api/platform/admin/capability-configs/${encodeURIComponent(capabilityConfigId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }),
+  deletePlatformCapabilityConfig: (capabilityConfigId: string) => requestJson(`/api/platform/admin/capability-configs/${encodeURIComponent(capabilityConfigId)}`, { method: 'DELETE' }),
   listAvailableModels: (tenantId = '') => requestJson<{ status: string; models: ModelConfigItem[] }>(`/api/platform/models/available${buildQuery({ tenant_id: tenantId })}`),
   listTenantModels: (tenantId = '') => requestJson<{ status: string; models: ModelConfigItem[]; providers?: ModelProviderOption[] }>(`/api/platform/tenant-models${buildQuery({ tenant_id: tenantId })}`),
   createTenantModel: (payload: Record<string, any>) => requestJson('/api/platform/tenant-models', { method: 'POST', body: JSON.stringify(payload) }),
@@ -124,6 +134,14 @@ export const api = {
     body: JSON.stringify(payload),
   }),
   deleteTenantModel: (modelConfigId: string) => requestJson(`/api/platform/tenant-models/${encodeURIComponent(modelConfigId)}`, { method: 'DELETE' }),
+  listAvailableCapabilityConfigs: (tenantId = '') => requestJson<{ status: string; configs: CapabilityConfigItem[] }>(`/api/platform/capability-configs/available${buildQuery({ tenant_id: tenantId })}`),
+  listTenantCapabilityConfigs: (tenantId = '') => requestJson<{ status: string; configs: CapabilityConfigItem[]; capabilities?: CapabilityTypeOption[]; providers?: CapabilityProviderOption[] }>(`/api/platform/tenant-capability-configs${buildQuery({ tenant_id: tenantId })}`),
+  createTenantCapabilityConfig: (payload: Record<string, any>) => requestJson('/api/platform/tenant-capability-configs', { method: 'POST', body: JSON.stringify(payload) }),
+  updateTenantCapabilityConfig: (capabilityConfigId: string, payload: Record<string, any>) => requestJson(`/api/platform/tenant-capability-configs/${encodeURIComponent(capabilityConfigId)}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload),
+  }),
+  deleteTenantCapabilityConfig: (capabilityConfigId: string) => requestJson(`/api/platform/tenant-capability-configs/${encodeURIComponent(capabilityConfigId)}`, { method: 'DELETE' }),
 
   listChannelConfigs: (tenantId = '', channelType = '') => requestJson<{ status: string; channel_configs: ChannelConfigItem[]; channel_types: ChannelTypeItem[] }>(
     `/api/platform/channel-configs${buildQuery({ tenant_id: tenantId, channel_type: channelType })}`,

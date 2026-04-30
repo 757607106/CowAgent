@@ -20,6 +20,7 @@ from cow_platform.services.agent_service import AgentService
 from cow_platform.services.auth_service import TenantAuthService
 from cow_platform.services.audit_service import AuditService
 from cow_platform.services.binding_service import ChannelBindingService
+from cow_platform.services.capability_config_service import CapabilityConfigService
 from cow_platform.services.channel_config_service import ChannelConfigService
 from cow_platform.services.doctor_service import DoctorService
 from cow_platform.services.job_service import JobService
@@ -38,6 +39,7 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     agent_service = AgentService(tenant_service=tenant_service)
     tenant_user_service = TenantUserService(tenant_service=tenant_service)
     model_config_service = ModelConfigService(tenant_service=tenant_service)
+    capability_config_service = CapabilityConfigService(tenant_service=tenant_service)
     channel_config_service = ChannelConfigService(tenant_service=tenant_service)
     auth_service = TenantAuthService(
         tenant_service=tenant_service,
@@ -111,12 +113,14 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
         tenant_service=tenant_service,
         agent_service=agent_service,
         model_config_service=model_config_service,
+        capability_config_service=capability_config_service,
         authorizer=authorizer,
         record_audit=audit_callback,
     )
     register_model_config_routes(
         app,
         model_config_service=model_config_service,
+        capability_config_service=capability_config_service,
         authorizer=authorizer,
         record_audit=audit_callback,
     )
