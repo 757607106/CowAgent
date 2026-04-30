@@ -28,7 +28,7 @@ dashscope_models = {
 
 # Model name prefixes that require MultiModalConversation API instead of Generation API.
 # Qwen3.5+ series are omni models that only support MultiModalConversation.
-MULTIMODAL_MODEL_PREFIXES = ("qwen3.5-", "qwen3.6-")
+MULTIMODAL_MODEL_PREFIXES = ("qwen3.5-", "qwen3.6-", "qwen3-vl-", "qwen-vl-", "qvq-")
 
 
 # Qwen对话模型API
@@ -572,7 +572,24 @@ class DashscopeBot(Bot):
                 msg["content"] = [{"text": ""}]
             elif isinstance(content, str):
                 msg["content"] = [{"text": content}]
-            # If content is already a list, keep as-is (already in multimodal format)
+            elif isinstance(content, list):
+                normalized_content = []
+                for block in content:
+                    if not isinstance(block, dict):
+                        normalized_content.append({"text": str(block)})
+                        continue
+                    block_type = block.get("type")
+                    if block_type == "text":
+                        normalized_content.append({"text": block.get("text", "")})
+                    elif block_type == "image_url":
+                        image_url = block.get("image_url", {})
+                        if isinstance(image_url, dict):
+                            image_url = image_url.get("url", "")
+                        if image_url:
+                            normalized_content.append({"image": image_url})
+                    else:
+                        normalized_content.append(block)
+                msg["content"] = normalized_content
 
             result.append(msg)
         return result

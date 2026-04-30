@@ -13,6 +13,7 @@ from typing import List, Dict, Any, Optional, Callable, Tuple
 from agent.protocol.models import LLMRequest, LLMModel
 from agent.protocol.cancel import CancelToken, CancelledError
 from agent.protocol.message_utils import sanitize_claude_messages, compress_turn_to_text_only
+from agent.protocol.multimodal import build_native_image_content, model_supports_native_image_input
 from agent.tools.base_tool import BaseTool, ToolResult
 from common.log import logger
 
@@ -38,7 +39,9 @@ class AgentStreamExecutor:
             on_event: Optional[Callable] = None,
             messages: Optional[List[Dict]] = None,
             max_context_turns: int = 30,
-            cancel_token: Optional[CancelToken] = None
+            cancel_token: Optional[CancelToken] = None,
+            prepared_user_content: Optional[List[Dict[str, Any]]] = None,
+            native_image_ref_count: int = 0,
     ):
         """
         Initialize stream executor
@@ -63,6 +66,8 @@ class AgentStreamExecutor:
         self.on_event = on_event
         self.max_context_turns = max_context_turns
         self.cancel_token = cancel_token
+        self.prepared_user_content = prepared_user_content
+        self.native_image_ref_count = native_image_ref_count
 
         # Message history - use provided messages or create new list
         self.messages = messages if messages is not None else []
@@ -317,14 +322,39 @@ class AgentStreamExecutor:
             self.agent.last_usage = None
         
         # Add user message (Claude format - use content blocks for consistency)
+        user_content = [
+            {
+                "type": "text",
+                "text": user_message
+            }
+        ]
+        if self.prepared_user_content:
+            user_content = self.prepared_user_content
+            logger.info(
+                f"[Agent] Native multimodal input enabled for {self.model.model}; "
+                f"skipped vision tool for {self.native_image_ref_count} image(s)"
+            )
+        else:
+            try:
+                bot_type = self.model._resolve_bot_type(self.model.model) if hasattr(self.model, "_resolve_bot_type") else ""
+                if model_supports_native_image_input(self.model.model, bot_type):
+                    vision_tool = self.tools.get("vision") if isinstance(self.tools, dict) else None
+                    image_content_builder = getattr(vision_tool, "_build_image_content", None)
+                    native_content, image_refs = build_native_image_content(user_message, image_content_builder)
+                    if native_content:
+                        user_content = native_content
+                        if isinstance(self.tools, dict) and "vision" in self.tools:
+                            self.tools.pop("vision", None)
+                        logger.info(
+                            f"[Agent] Native multimodal input enabled for {self.model.model}; "
+                            f"skipped vision tool for {len(image_refs)} image(s)"
+                        )
+            except Exception as e:
+                logger.warning(f"[Agent] Native multimodal input preparation failed, falling back to text markers: {e}")
+
         self.messages.append({
             "role": "user",
-            "content": [
-                {
-                    "type": "text",
-                    "text": user_message
-                }
-            ]
+            "content": user_content
         })
 
         # Trim context ONCE before the agent loop starts, not during tool steps.

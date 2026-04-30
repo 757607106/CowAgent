@@ -161,8 +161,10 @@ class ChatService:
         from config import conf
         max_context_turns = conf().get("agent_max_context_turns", 20)
 
+        tools_for_run, prepared_user_content, native_image_ref_count = agent.prepare_run_inputs(query)
+
         # Get full system prompt with skills
-        full_system_prompt = agent.get_full_system_prompt()
+        full_system_prompt = agent.get_full_system_prompt(tools_override=tools_for_run)
 
         # Create a copy of messages for this execution
         with agent.messages_lock:
@@ -175,11 +177,13 @@ class ChatService:
             agent=agent,
             model=agent.model,
             system_prompt=full_system_prompt,
-            tools=agent.tools,
+            tools=tools_for_run,
             max_turns=agent.max_steps,
             on_event=on_event,
             messages=messages_copy,
             max_context_turns=max_context_turns,
+            prepared_user_content=prepared_user_content,
+            native_image_ref_count=native_image_ref_count,
         )
 
         try:
@@ -197,8 +201,11 @@ class ChatService:
         # original_length. In that case we must replace entirely — just
         # appending would leave stale pre-trim messages in agent.messages
         # and cause the same trim to fire on every subsequent request.
+        from agent.protocol.multimodal import sanitize_images_for_history
+
+        sanitized_messages = sanitize_images_for_history(list(executor.messages))
         with agent.messages_lock:
-            trimmed = len(executor.messages) < original_length
+            trimmed = len(sanitized_messages) < original_length
             if trimmed:
                 # Context was trimmed: the executor appended the new user
                 # query *before* trimming, so the new messages (user +
@@ -218,8 +225,8 @@ class ChatService:
                 # last turn (it cannot be trimmed away), so we locate it to
                 # find where "new" messages begin.
                 new_start = original_length  # fallback
-                for idx in range(len(executor.messages) - 1, -1, -1):
-                    msg = executor.messages[idx]
+                for idx in range(len(sanitized_messages) - 1, -1, -1):
+                    msg = sanitized_messages[idx]
                     if msg.get("role") == "user":
                         content = msg.get("content", [])
                         is_user_query = False
@@ -238,10 +245,10 @@ class ChatService:
                         if is_user_query:
                             new_start = idx
                             break
-                new_messages = list(executor.messages[new_start:])
+                new_messages = list(sanitized_messages[new_start:])
             else:
-                new_messages = list(executor.messages[original_length:])
-            agent.messages = list(executor.messages)
+                new_messages = list(sanitized_messages[original_length:])
+            agent.messages = sanitized_messages
 
         # Persist new messages to PostgreSQL so they survive restarts and
         # can be queried via the HISTORY interface.

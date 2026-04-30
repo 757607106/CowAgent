@@ -104,7 +104,7 @@ class Agent:
             logger.warning(f"Failed to build skills prompt: {e}")
             return ""
     
-    def get_full_system_prompt(self, skill_filter=None) -> str:
+    def get_full_system_prompt(self, skill_filter=None, tools_override=None) -> str:
         """
         Build the complete system prompt from scratch every time.
 
@@ -122,7 +122,7 @@ class Agent:
 
             builder = PromptBuilder(workspace_dir=self.workspace_dir or "", language="zh")
             rebuilt_prompt = builder.build(
-                tools=self.tools,
+                tools=self.tools if tools_override is None else tools_override,
                 context_files=context_files,
                 skill_manager=self.skill_manager,
                 memory_manager=self.memory_manager,
@@ -135,6 +135,36 @@ class Agent:
         except Exception as e:
             logger.warning(f"Failed to rebuild system prompt, using cached version: {e}")
             return self.system_prompt
+
+    def prepare_run_inputs(self, user_message: str):
+        """
+        Prepare per-run tool list and native multimodal user content.
+
+        The web and chat channels already append image uploads as ``[图片: ...]``.
+        When the selected chat model can consume images natively, hide the
+        separate vision tool from the prompt/schema and pass image blocks
+        directly through the normal chat request.
+        """
+        tools_for_run = list(self.tools)
+        try:
+            from agent.protocol.multimodal import build_native_image_content, model_supports_native_image_input
+
+            model_name = self.model.model if self.model and hasattr(self.model, "model") else ""
+            bot_type = self.model._resolve_bot_type(model_name) if self.model and hasattr(self.model, "_resolve_bot_type") else ""
+            if not model_supports_native_image_input(model_name, bot_type):
+                return tools_for_run, None, 0
+
+            vision_tool = next((tool for tool in tools_for_run if getattr(tool, "name", "") == "vision"), None)
+            image_content_builder = getattr(vision_tool, "_build_image_content", None)
+            native_content, image_refs = build_native_image_content(user_message, image_content_builder)
+            if not native_content:
+                return tools_for_run, None, 0
+
+            tools_for_run = [tool for tool in tools_for_run if getattr(tool, "name", "") != "vision"]
+            return tools_for_run, native_content, len(image_refs)
+        except Exception as e:
+            logger.warning(f"[Agent] Native multimodal input preparation failed, falling back to text markers: {e}")
+            return tools_for_run, None, 0
 
     def refresh_skills(self):
         """Refresh the loaded skills."""
@@ -240,7 +270,7 @@ class Agent:
                 block_type = part.get('type', '')
                 if block_type == 'text':
                     total_tokens += self._estimate_text_tokens(part.get('text', ''))
-                elif block_type == 'image':
+                elif block_type in ('image', 'image_url'):
                     total_tokens += 1200
                 elif block_type == 'tool_use':
                     # tool_use has id + name + input (JSON-encoded)
@@ -414,8 +444,13 @@ class Agent:
         if not self.model:
             raise ValueError("No model available for agent")
 
+        tools_for_run, prepared_user_content, native_image_ref_count = self.prepare_run_inputs(user_message)
+
         # Get full system prompt with skills
-        full_system_prompt = self.get_full_system_prompt(skill_filter=skill_filter)
+        full_system_prompt = self.get_full_system_prompt(
+            skill_filter=skill_filter,
+            tools_override=tools_for_run,
+        )
 
         # Create a copy of messages for this execution to avoid concurrent modification
         # Record the original length to track which messages are new
@@ -432,12 +467,14 @@ class Agent:
             agent=self,
             model=self.model,
             system_prompt=full_system_prompt,
-            tools=self.tools,
+            tools=tools_for_run,
             max_turns=self.max_steps,
             on_event=on_event,
             messages=messages_copy,  # Pass copied message history
             max_context_turns=max_context_turns,
-            cancel_token=cancel_token
+            cancel_token=cancel_token,
+            prepared_user_content=prepared_user_content,
+            native_image_ref_count=native_image_ref_count,
         )
 
         # Execute
@@ -453,15 +490,18 @@ class Agent:
                     logger.info("[Agent] Cleared Agent message history after executor recovery")
             raise
 
+        from agent.protocol.multimodal import sanitize_images_for_history
+
         # Sync executor's messages back to agent (thread-safe).
         # If the executor trimmed context, its message list is shorter than
         # original_length, so we must replace rather than append.
+        sanitized_messages = sanitize_images_for_history(list(executor.messages))
         with self.messages_lock:
-            self.messages = list(executor.messages)
+            self.messages = sanitized_messages
             # Track messages added in this run (user query + all assistant/tool messages)
             # original_length may exceed executor.messages length after trimming
-            trim_adjusted_start = min(original_length, len(executor.messages))
-            self._last_run_new_messages = list(executor.messages[trim_adjusted_start:])
+            trim_adjusted_start = min(original_length, len(sanitized_messages))
+            self._last_run_new_messages = list(sanitized_messages[trim_adjusted_start:])
         
         # Store executor reference for agent_bridge to access files_to_send
         self.stream_executor = executor

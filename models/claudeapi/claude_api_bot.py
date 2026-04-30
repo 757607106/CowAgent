@@ -372,6 +372,41 @@ class ClaudeAPIBot(Bot, OpenAIImage):
         ``signature`` field required by the Anthropic API, causing 400 errors.
         We create a shallow copy so the original history is not mutated.
         """
+        if msg.get("role") == "user":
+            content = msg.get("content")
+            if not isinstance(content, list):
+                return msg
+            changed = False
+            converted = []
+            for block in content:
+                if not isinstance(block, dict) or block.get("type") != "image_url":
+                    converted.append(block)
+                    continue
+                image_url = block.get("image_url", {})
+                if isinstance(image_url, dict):
+                    image_url = image_url.get("url", "")
+                if not image_url:
+                    continue
+                if image_url.startswith("data:"):
+                    media_type, b64_data = ClaudeAPIBot._parse_data_url(image_url)
+                    if not b64_data:
+                        continue
+                    converted.append({
+                        "type": "image",
+                        "source": {
+                            "type": "base64",
+                            "media_type": media_type or "image/jpeg",
+                            "data": b64_data,
+                        },
+                    })
+                else:
+                    converted.append({
+                        "type": "image",
+                        "source": {"type": "url", "url": image_url},
+                    })
+                changed = True
+            return {**msg, "content": converted} if changed else msg
+
         if msg.get("role") != "assistant":
             return msg
         content = msg.get("content")
