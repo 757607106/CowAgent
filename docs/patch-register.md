@@ -368,10 +368,16 @@
 ### `docker/entrypoint.sh`
 
 - 支持平台 API / worker 等部署入口
+- 平台 Docker 启动只使用环境变量和 PostgreSQL migration，不再生成或修改根目录 `config.json`
 
 升级关注点：
 
-- 如果上游调整容器启动脚本，需要重新确认平台 API / worker / Web 控制台能按数据库配置启动
+- 如果上游调整容器启动脚本，需要重新确认平台 API / worker / Web 控制台能按数据库配置启动，且不会重新依赖根 `config.json`
+
+### `docker/Dockerfile.latest`
+
+- 平台镜像构建不再从 `config-template.json` 复制生成根 `config.json`
+- 多租户 Docker 部署的启动配置来自 compose 环境变量，运行时配置来自 PostgreSQL
 
 ### `docker/compose.platform.yml`
 

@@ -96,3 +96,12 @@ def test_test_and_production_compose_use_the_same_dependency_stack() -> None:
 
     for service_name in required_services:
         assert prod_config["services"][service_name].get("restart") == "unless-stopped"
+
+
+def test_platform_docker_image_does_not_generate_root_config_json() -> None:
+    dockerfile = (REPO_ROOT / "docker" / "Dockerfile.latest").read_text(encoding="utf-8")
+    entrypoint = (REPO_ROOT / "docker" / "entrypoint.sh").read_text(encoding="utf-8")
+
+    assert "cp config-template.json config.json" not in dockerfile
+    assert "CHATGPT_ON_WECHAT_CONFIG_PATH" not in entrypoint
+    assert "config.json" not in entrypoint
