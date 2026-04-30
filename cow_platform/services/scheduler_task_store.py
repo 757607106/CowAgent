@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Any, Optional
+import uuid
 
 from bridge.context import Context
 from common.log import logger
@@ -245,6 +246,114 @@ class PlatformSchedulerTaskStore:
     def enable_task(self, task_id: str, enabled: bool = True) -> bool:
         return self.update_task(task_id, {"enabled": enabled})
 
+    def add_task_run(
+        self,
+        task: dict,
+        *,
+        trigger_type: str = "schedule",
+        metadata: dict[str, Any] | None = None,
+    ) -> dict:
+        tenant_id, agent_id = self._scope_for_existing(task)
+        run_id = f"run_{uuid.uuid4().hex}"
+        started_at = datetime.now().isoformat()
+        with connect() as conn:
+            conn.execute(
+                """
+                INSERT INTO platform_scheduled_task_runs (
+                    run_id, tenant_id, agent_id, task_id, trigger_type,
+                    status, started_at, metadata
+                )
+                VALUES (
+                    %(run_id)s, %(tenant_id)s, %(agent_id)s, %(task_id)s, %(trigger_type)s,
+                    'running', %(started_at)s, %(metadata)s
+                )
+                """,
+                {
+                    "run_id": run_id,
+                    "tenant_id": tenant_id,
+                    "agent_id": agent_id,
+                    "task_id": task["id"],
+                    "trigger_type": trigger_type or "schedule",
+                    "started_at": started_at,
+                    "metadata": jsonb(metadata or {}),
+                },
+            )
+        return {
+            "run_id": run_id,
+            "tenant_id": tenant_id,
+            "agent_id": agent_id,
+            "task_id": task["id"],
+            "trigger_type": trigger_type or "schedule",
+            "status": "running",
+            "started_at": started_at,
+            "metadata": metadata or {},
+        }
+
+    def finish_task_run(
+        self,
+        run_id: str,
+        *,
+        status: str,
+        result: dict[str, Any] | None = None,
+        error_message: str = "",
+    ) -> bool:
+        finished_at = datetime.now().isoformat()
+        with connect() as conn:
+            row = conn.execute(
+                "SELECT started_at FROM platform_scheduled_task_runs WHERE run_id = %s",
+                (run_id,),
+            ).fetchone()
+            duration_ms = 0
+            if row and row.get("started_at"):
+                try:
+                    started = datetime.fromisoformat(str(row["started_at"]))
+                    finished = datetime.fromisoformat(finished_at)
+                    duration_ms = max(0, int((finished - started).total_seconds() * 1000))
+                except Exception:
+                    duration_ms = 0
+            cursor = conn.execute(
+                """
+                UPDATE platform_scheduled_task_runs
+                SET status = %(status)s,
+                    finished_at = %(finished_at)s,
+                    duration_ms = %(duration_ms)s,
+                    result = %(result)s,
+                    error_message = %(error_message)s
+                WHERE run_id = %(run_id)s
+                """,
+                {
+                    "run_id": run_id,
+                    "status": status,
+                    "finished_at": finished_at,
+                    "duration_ms": duration_ms,
+                    "result": jsonb(result or {}),
+                    "error_message": error_message or "",
+                },
+            )
+            return cursor.rowcount > 0
+
+    def list_task_runs(self, task_id: str, *, limit: int = 50) -> list[dict]:
+        where = ["task_id = %s"]
+        params: list[Any] = [task_id]
+        if self.tenant_id:
+            where.append("tenant_id = %s")
+            params.append(self.tenant_id)
+        if self.agent_id:
+            where.append("agent_id = %s")
+            params.append(self.agent_id)
+        params.append(max(1, min(int(limit or 50), 200)))
+        with connect() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT * FROM platform_scheduled_task_runs
+                WHERE {" AND ".join(where)}
+                ORDER BY started_at DESC
+                LIMIT %s
+                """,
+                params,
+            ).fetchall()
+        return [self._row_to_run(row) for row in rows]
+
     def _task_value(self, task: dict, key: str, default: str) -> str:
         value = task.get(key)
         if value is None or value == "":
@@ -299,3 +408,19 @@ class PlatformSchedulerTaskStore:
             if value:
                 task[key] = value
         return task
+
+    def _row_to_run(self, row: dict) -> dict:
+        return {
+            "run_id": row["run_id"],
+            "tenant_id": row["tenant_id"],
+            "agent_id": row["agent_id"],
+            "task_id": row["task_id"],
+            "trigger_type": row.get("trigger_type", "schedule"),
+            "status": row.get("status", "running"),
+            "started_at": row.get("started_at", ""),
+            "finished_at": row.get("finished_at", ""),
+            "duration_ms": row.get("duration_ms", 0),
+            "result": dict(row.get("result") or {}),
+            "error_message": row.get("error_message", ""),
+            "metadata": dict(row.get("metadata") or {}),
+        }

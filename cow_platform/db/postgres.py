@@ -639,8 +639,34 @@ _CAPABILITY_CONFIG_SCHEMA = [
 ]
 
 
+_SCHEDULED_TASK_RUNS_SCHEMA = [
+    """
+    CREATE TABLE IF NOT EXISTS platform_scheduled_task_runs (
+        run_id TEXT PRIMARY KEY,
+        tenant_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL DEFAULT '',
+        task_id TEXT NOT NULL,
+        trigger_type TEXT NOT NULL DEFAULT 'schedule',
+        status TEXT NOT NULL DEFAULT 'running',
+        started_at TEXT NOT NULL,
+        finished_at TEXT NOT NULL DEFAULT '',
+        duration_ms INTEGER NOT NULL DEFAULT 0,
+        result JSONB NOT NULL DEFAULT '{}'::jsonb,
+        error_message TEXT NOT NULL DEFAULT '',
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+        FOREIGN KEY (tenant_id, agent_id, task_id)
+            REFERENCES platform_scheduled_tasks(tenant_id, agent_id, task_id)
+            ON DELETE CASCADE
+    )
+    """,
+    "CREATE INDEX IF NOT EXISTS idx_platform_scheduled_task_runs_task ON platform_scheduled_task_runs (tenant_id, agent_id, task_id, started_at)",
+    "CREATE INDEX IF NOT EXISTS idx_platform_scheduled_task_runs_status ON platform_scheduled_task_runs (tenant_id, agent_id, status, started_at)",
+]
+
+
 _MIGRATIONS = (
     SchemaMigration("0001_platform_schema", tuple(_SCHEMA)),
     SchemaMigration("0002_runtime_state_and_skill_configs", tuple(_RUNTIME_STATE_SCHEMA)),
     SchemaMigration("0003_capability_configs", tuple(_CAPABILITY_CONFIG_SCHEMA)),
+    SchemaMigration("0004_scheduled_task_runs", tuple(_SCHEDULED_TASK_RUNS_SCHEMA)),
 )

@@ -262,6 +262,65 @@ export interface McpTestResult {
   [key: string]: unknown;
 }
 
+export interface ScheduledTaskAction {
+  type: 'send_message' | 'agent_task' | string;
+  content?: string;
+  task_description?: string;
+  receiver?: string;
+  receiver_name?: string;
+  is_group?: boolean;
+  channel_type?: string;
+  tenant_id?: string;
+  agent_id?: string;
+  binding_id?: string;
+  channel_config_id?: string;
+  [key: string]: unknown;
+}
+
+export interface ScheduledTaskSchedule {
+  type: 'once' | 'interval' | 'cron' | string;
+  run_at?: string;
+  seconds?: number;
+  expression?: string;
+  [key: string]: unknown;
+}
+
+export interface ScheduledTaskItem {
+  id: string;
+  tenant_id?: string;
+  agent_id?: string;
+  binding_id?: string;
+  channel_config_id?: string;
+  session_id?: string;
+  name: string;
+  enabled: boolean;
+  status?: string;
+  schedule: ScheduledTaskSchedule;
+  action: ScheduledTaskAction;
+  next_run_at?: string;
+  last_run_at?: string;
+  last_error?: string;
+  last_error_at?: string;
+  created_at?: string;
+  updated_at?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface ScheduledTaskRunItem {
+  run_id: string;
+  tenant_id?: string;
+  agent_id?: string;
+  task_id: string;
+  trigger_type: string;
+  status: string;
+  started_at?: string;
+  finished_at?: string;
+  duration_ms?: number;
+  result?: Record<string, unknown>;
+  error_message?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export interface UsageRecordItem {
   event_id: string;
   request_id: string;

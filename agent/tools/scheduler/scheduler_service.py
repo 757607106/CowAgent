@@ -74,19 +74,37 @@ class SchedulerService:
                 # Check if task is due
                 if self._is_task_due(task, now):
                     logger.info(f"[Scheduler] Executing task: {task['id']} - {task['name']}")
-                    self._execute_task(task)
+                    outcome = self._execute_task(task)
                     
                     # Update next run time
                     next_run = self._calculate_next_run(task, now)
                     if next_run:
-                        self.task_store.update_task(task['id'], {
+                        updates = {
                             "next_run_at": next_run.isoformat(),
                             "last_run_at": now.isoformat()
-                        }, task=task)
+                        }
+                        if outcome.get("status") == "failed":
+                            updates["last_error"] = outcome.get("error", "")
+                            updates["last_error_at"] = now.isoformat()
+                        else:
+                            updates["last_error"] = ""
+                            updates["last_error_at"] = ""
+                        self.task_store.update_task(task['id'], updates, task=task)
                     else:
-                        # One-time task completed, remove it
-                        self.task_store.delete_task(task['id'], task=task)
-                        logger.info(f"[Scheduler] One-time task completed and removed: {task['id']}")
+                        # Keep completed one-time tasks for UI observability and run history.
+                        updates = {
+                            "enabled": False,
+                            "next_run_at": "",
+                            "last_run_at": now.isoformat(),
+                        }
+                        if outcome.get("status") == "failed":
+                            updates["last_error"] = outcome.get("error", "")
+                            updates["last_error_at"] = now.isoformat()
+                        else:
+                            updates["last_error"] = ""
+                            updates["last_error_at"] = ""
+                        self.task_store.update_task(task['id'], updates, task=task)
+                        logger.info(f"[Scheduler] One-time task completed and retained: {task['id']}")
             except Exception as e:
                 logger.error(f"[Scheduler] Error processing task {task.get('id')}: {e}")
     
@@ -126,8 +144,13 @@ class SchedulerService:
                     # For one-time tasks, remove them directly
                     schedule = task.get("schedule", {})
                     if schedule.get("type") == "once":
-                        self.task_store.delete_task(task['id'], task=task)
-                        logger.info(f"[Scheduler] One-time task {task['id']} expired, removed")
+                        self.task_store.update_task(task['id'], {
+                            "enabled": False,
+                            "next_run_at": "",
+                            "last_error": "任务超过计划时间 5 分钟未执行，已自动停用",
+                            "last_error_at": now.isoformat(),
+                        }, task=task)
+                        logger.info(f"[Scheduler] One-time task {task['id']} expired and disabled")
                         return False
                     
                     # For recurring tasks, calculate next run from now
@@ -194,16 +217,44 @@ class SchedulerService:
         
         return None
     
-    def _execute_task(self, task: dict):
+    def execute_now(self, task: dict) -> dict:
+        """Execute a task immediately without changing its configured schedule."""
+        now = datetime.now()
+        outcome = self._execute_task(task, trigger_type="manual")
+        updates = {"last_run_at": now.isoformat()}
+        if outcome.get("status") == "failed":
+            updates["last_error"] = outcome.get("error", "")
+            updates["last_error_at"] = now.isoformat()
+        else:
+            updates["last_error"] = ""
+            updates["last_error_at"] = ""
+        self.task_store.update_task(task["id"], updates, task=task)
+        return outcome
+
+    def _execute_task(self, task: dict, *, trigger_type: str = "schedule") -> dict:
         """
         Execute a task
         
         Args:
             task: Task dictionary
         """
+        run_id = ""
+        if hasattr(self.task_store, "add_task_run"):
+            try:
+                run = self.task_store.add_task_run(task, trigger_type=trigger_type)
+                run_id = run.get("run_id", "")
+            except Exception as e:
+                logger.warning(f"[Scheduler] Failed to create task run record for {task['id']}: {e}")
         try:
             # Call the execute callback
-            self.execute_callback(task)
+            result = self.execute_callback(task)
+            if hasattr(self.task_store, "finish_task_run") and run_id:
+                self.task_store.finish_task_run(
+                    run_id,
+                    status="success",
+                    result=result if isinstance(result, dict) else {"result": str(result or "")},
+                )
+            return {"status": "success", "run_id": run_id, "result": result or {}}
         except Exception as e:
             logger.error(f"[Scheduler] Error executing task {task['id']}: {e}")
             # Update task with error
@@ -211,3 +262,13 @@ class SchedulerService:
                 "last_error": str(e),
                 "last_error_at": datetime.now().isoformat()
             }, task=task)
+            if hasattr(self.task_store, "finish_task_run") and run_id:
+                try:
+                    self.task_store.finish_task_run(
+                        run_id,
+                        status="failed",
+                        error_message=str(e),
+                    )
+                except Exception as record_error:
+                    logger.warning(f"[Scheduler] Failed to finish task run record for {task['id']}: {record_error}")
+            return {"status": "failed", "run_id": run_id, "error": str(e)}

@@ -52,6 +52,7 @@ def build_web_routes() -> tuple[str, ...]:
         "/api/agents", "AgentsHandler",
         "/api/bindings", "BindingsHandler",
         "/api/scheduler", "SchedulerHandler",
+        "/api/scheduler/(.*)", "SchedulerDetailHandler",
         "/api/sessions", "SessionsHandler",
         "/api/sessions/(.*)/generate_title", "SessionTitleHandler",
         "/api/sessions/(.*)/clear_context", "SessionClearContextHandler",

@@ -72,9 +72,10 @@ def init_scheduler(agent_bridge) -> bool:
                     # Legacy support for old tasks
                     _execute_skill_call(task, agent_bridge)
                 else:
-                    logger.warning(f"[Scheduler] Unknown action type: {action_type}")
+                    raise RuntimeError(f"unknown action type: {action_type}")
             except Exception as e:
                 logger.error(f"[Scheduler] Error executing task {task.get('id')}: {e}")
+                raise
         
         # Create scheduler service
         _scheduler_service = SchedulerService(_task_store, execute_task_callback)
@@ -114,12 +115,10 @@ def _execute_agent_task(task: dict, agent_bridge):
         channel_type = action.get("channel_type", "unknown")
         
         if not task_description:
-            logger.error(f"[Scheduler] Task {task['id']}: No task_description specified")
-            return
+            raise RuntimeError("No task_description specified")
         
         if not receiver:
-            logger.error(f"[Scheduler] Task {task['id']}: No receiver specified")
-            return
+            raise RuntimeError("No receiver specified")
         
         # Check for unsupported channels
         if channel_type == "dingtalk":
@@ -169,20 +168,25 @@ def _execute_agent_task(task: dict, agent_bridge):
                 try:
                     if _send_reply_via_channel(channel_type, reply, context, task):
                         logger.info(f"[Scheduler] Task {task['id']} executed successfully, result sent to {receiver}")
+                    else:
+                        raise RuntimeError("send result returned false")
                 except Exception as e:
                     logger.error(f"[Scheduler] Failed to send result: {e}")
+                    raise
             else:
-                logger.error(f"[Scheduler] Task {task['id']}: No result from agent execution")
+                raise RuntimeError("No result from agent execution")
                 
         except Exception as e:
             logger.error(f"[Scheduler] Failed to execute task via Agent: {e}")
             import traceback
             logger.error(f"[Scheduler] Traceback: {traceback.format_exc()}")
+            raise
             
     except Exception as e:
         logger.error(f"[Scheduler] Error in _execute_agent_task: {e}")
         import traceback
         logger.error(f"[Scheduler] Traceback: {traceback.format_exc()}")
+        raise
 
 
 def _execute_send_message(task: dict, agent_bridge):
@@ -201,8 +205,7 @@ def _execute_send_message(task: dict, agent_bridge):
         channel_type = action.get("channel_type", "unknown")
         
         if not receiver:
-            logger.error(f"[Scheduler] Task {task['id']}: No receiver specified")
-            return
+            raise RuntimeError("No receiver specified")
         
         # Create context for sending message
         context = Context(ContextType.TEXT, content)
@@ -249,15 +252,19 @@ def _execute_send_message(task: dict, agent_bridge):
         try:
             if _send_reply_via_channel(channel_type, reply, context, task):
                 logger.info(f"[Scheduler] Task {task['id']} executed: sent message to {receiver}")
+            else:
+                raise RuntimeError("send message returned false")
         except Exception as e:
             logger.error(f"[Scheduler] Failed to send message: {e}")
             import traceback
             logger.error(f"[Scheduler] Traceback: {traceback.format_exc()}")
+            raise
             
     except Exception as e:
         logger.error(f"[Scheduler] Error in _execute_send_message: {e}")
         import traceback
         logger.error(f"[Scheduler] Traceback: {traceback.format_exc()}")
+        raise
 
 
 def _execute_tool_call(task: dict, agent_bridge):
@@ -279,12 +286,10 @@ def _execute_tool_call(task: dict, agent_bridge):
         channel_type = action.get("channel_type", "unknown")
         
         if not tool_name:
-            logger.error(f"[Scheduler] Task {task['id']}: No tool_name specified")
-            return
+            raise RuntimeError("No tool_name specified")
         
         if not receiver:
-            logger.error(f"[Scheduler] Task {task['id']}: No receiver specified")
-            return
+            raise RuntimeError("No receiver specified")
         
         # Get tool manager and create tool instance
         from agent.tools.tool_manager import ToolManager
@@ -292,8 +297,7 @@ def _execute_tool_call(task: dict, agent_bridge):
         tool = tool_manager.create_tool(tool_name)
         
         if not tool:
-            logger.error(f"[Scheduler] Task {task['id']}: Tool '{tool_name}' not found")
-            return
+            raise RuntimeError(f"Tool '{tool_name}' not found")
         
         # Execute tool
         logger.info(f"[Scheduler] Task {task['id']}: Executing tool '{tool_name}' with params {tool_params}")
@@ -336,11 +340,15 @@ def _execute_tool_call(task: dict, agent_bridge):
         try:
             if _send_reply_via_channel(channel_type, reply, context, task):
                 logger.info(f"[Scheduler] Task {task['id']} executed: sent tool result to {receiver}")
+            else:
+                raise RuntimeError("send tool result returned false")
         except Exception as e:
             logger.error(f"[Scheduler] Failed to send tool result: {e}")
+            raise
 
     except Exception as e:
         logger.error(f"[Scheduler] Error in _execute_tool_call: {e}")
+        raise
 
 
 def _execute_skill_call(task: dict, agent_bridge):
@@ -362,12 +370,10 @@ def _execute_skill_call(task: dict, agent_bridge):
         channel_type = action.get("channel_type", "unknown")
         
         if not skill_name:
-            logger.error(f"[Scheduler] Task {task['id']}: No skill_name specified")
-            return
+            raise RuntimeError("No skill_name specified")
         
         if not receiver:
-            logger.error(f"[Scheduler] Task {task['id']}: No receiver specified")
-            return
+            raise RuntimeError("No receiver specified")
         
         logger.info(f"[Scheduler] Task {task['id']}: Executing skill '{skill_name}' with params {skill_params}")
         
@@ -414,17 +420,19 @@ def _execute_skill_call(task: dict, agent_bridge):
                 
                 logger.info(f"[Scheduler] Task {task['id']} executed: skill result sent to {receiver}")
             else:
-                logger.error(f"[Scheduler] Task {task['id']}: No result from skill execution")
+                raise RuntimeError("No result from skill execution")
                 
         except Exception as e:
             logger.error(f"[Scheduler] Failed to execute skill via Agent: {e}")
             import traceback
             logger.error(f"[Scheduler] Traceback: {traceback.format_exc()}")
+            raise
             
     except Exception as e:
         logger.error(f"[Scheduler] Error in _execute_skill_call: {e}")
         import traceback
         logger.error(f"[Scheduler] Traceback: {traceback.format_exc()}")
+        raise
 
 
 def _task_scope(task: dict) -> dict[str, str]:

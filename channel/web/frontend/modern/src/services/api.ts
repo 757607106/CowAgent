@@ -8,6 +8,8 @@ import type {
   McpServerItem,
   McpToolItem,
   RuntimeScope,
+  ScheduledTaskItem,
+  ScheduledTaskRunItem,
   SessionItem,
   SkillItem,
   TenantItem,
@@ -207,7 +209,31 @@ export const api = {
   readKnowledge: (scope: RuntimeScope, path: string) => requestJson<Record<string, any>>(`/api/knowledge/read${buildQuery({ ...scopeQuery(scope), path })}`),
   graphKnowledge: (scope: RuntimeScope) => requestJson<Record<string, any>>(`/api/knowledge/graph${buildQuery(scopeQuery(scope))}`),
 
-  listTasks: (scope: RuntimeScope) => requestJson<{ status: string; tasks: any[] }>(`/api/scheduler${buildQuery(scopeQuery(scope))}`),
+  listTasks: (scope: RuntimeScope) => requestJson<{ status: string; tasks: ScheduledTaskItem[] }>(`/api/scheduler${buildQuery(scopeQuery(scope))}`),
+  createTask: (scope: RuntimeScope, payload: Record<string, any>) => requestJson<{ status: string; task: ScheduledTaskItem }>('/api/scheduler', {
+    method: 'POST',
+    body: JSON.stringify({ ...scopeBody(scope), ...payload }),
+  }),
+  updateTask: (scope: RuntimeScope, taskId: string, payload: Record<string, any>) => requestJson<{ status: string; task: ScheduledTaskItem }>(`/api/scheduler/${encodeURIComponent(taskId)}`, {
+    method: 'PUT',
+    body: JSON.stringify({ ...scopeBody(scope), ...payload }),
+  }),
+  deleteTask: (scope: RuntimeScope, taskId: string) => requestJson(`/api/scheduler/${encodeURIComponent(taskId)}${buildQuery(scopeQuery(scope))}`, { method: 'DELETE' }),
+  enableTask: (scope: RuntimeScope, taskId: string) => requestJson<{ status: string; task: ScheduledTaskItem }>(`/api/scheduler/${encodeURIComponent(taskId)}/enable`, {
+    method: 'POST',
+    body: JSON.stringify(scopeBody(scope)),
+  }),
+  disableTask: (scope: RuntimeScope, taskId: string) => requestJson<{ status: string; task: ScheduledTaskItem }>(`/api/scheduler/${encodeURIComponent(taskId)}/disable`, {
+    method: 'POST',
+    body: JSON.stringify(scopeBody(scope)),
+  }),
+  runTaskOnce: (scope: RuntimeScope, taskId: string) => requestJson<{ status: string; outcome: Record<string, any> }>(`/api/scheduler/${encodeURIComponent(taskId)}/run_once`, {
+    method: 'POST',
+    body: JSON.stringify(scopeBody(scope)),
+  }),
+  listTaskRuns: (scope: RuntimeScope, taskId: string, limit = 50) => requestJson<{ status: string; runs: ScheduledTaskRunItem[] }>(
+    `/api/scheduler/${encodeURIComponent(taskId)}/runs${buildQuery({ ...scopeQuery(scope), limit })}`,
+  ),
 
   listSessions: (scope: RuntimeScope, page = 1, pageSize = 50) => requestJson<{ status: string; sessions: SessionItem[]; has_more?: boolean }>(
     `/api/sessions${buildQuery({ ...scopeQuery(scope), page, page_size: pageSize })}`,
