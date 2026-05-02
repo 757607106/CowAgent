@@ -8,6 +8,7 @@ into the CHAT socket protocol format (content chunks with segment_id, tool_calls
 import time
 from typing import Callable, Optional
 
+from agent.memory.conversation_persistence import persist_messages
 from common.log import logger
 
 
@@ -217,21 +218,7 @@ class ChatService:
 
     @staticmethod
     def _persist_messages(session_id: str, new_messages: list, channel_type: str = ""):
-        try:
-            from config import conf
-            if not conf().get("conversation_persistence", True):
-                return
-        except Exception:
-            pass
-        try:
-            from agent.memory import get_conversation_store
-            get_conversation_store().append_messages(
-                session_id, new_messages, channel_type=channel_type
-            )
-        except Exception as e:
-            logger.warning(
-                f"[ChatService] Failed to persist messages for session={session_id}: {e}"
-            )
+        persist_messages(session_id, new_messages, channel_type, source="ChatService")
 
 
 class _StreamState:

@@ -234,6 +234,7 @@ def test_image_generation_runtime_overrides_include_bot_type() -> None:
 
     assert overrides["bot_type"] == "zhipu"
     assert overrides["text_to_image"] == "cogview-3"
+    assert overrides["skill"]["image-generation"]["model"] == "cogview-3"
     assert overrides["image_create_size"] == "1024x1024"
 
 

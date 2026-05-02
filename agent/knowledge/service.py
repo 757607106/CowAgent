@@ -37,18 +37,23 @@ class KnowledgeService:
     # ------------------------------------------------------------------
     def list_tree(self) -> dict:
         """
-        Return the knowledge directory tree grouped by category.
+        Return the knowledge directory tree grouped by category and nested paths.
 
         Returns::
 
             {
+                "root_files": [
+                    {"name": "index.md", "title": "Index", "size": 1234},
+                    ...
+                ],
                 "tree": [
                     {
                         "dir": "concepts",
                         "files": [
                             {"name": "moe.md", "title": "MoE", "size": 1234},
                             ...
-                        ]
+                        ],
+                        "children": []
                     },
                     ...
                 ],
@@ -57,40 +62,49 @@ class KnowledgeService:
             }
         """
         if not self.enabled:
-            return {"tree": [], "stats": {"pages": 0, "size": 0}, "enabled": False}
+            return {"root_files": [], "tree": [], "stats": {"pages": 0, "size": 0}, "enabled": False}
 
         if not os.path.isdir(self.knowledge_dir):
-            return {"tree": [], "stats": {"pages": 0, "size": 0}, "enabled": self.enabled}
+            return {"root_files": [], "tree": [], "stats": {"pages": 0, "size": 0}, "enabled": self.enabled}
 
-        tree = []
-        total_files = 0
-        total_bytes = 0
-        for name in sorted(os.listdir(self.knowledge_dir)):
-            full = os.path.join(self.knowledge_dir, name)
-            if not os.path.isdir(full) or name.startswith("."):
-                continue
-            files = []
-            for fname in sorted(os.listdir(full)):
-                if fname.endswith(".md") and not fname.startswith("."):
-                    fpath = os.path.join(full, fname)
-                    size = os.path.getsize(fpath)
-                    total_files += 1
-                    total_bytes += size
-                    title = fname.replace(".md", "")
-                    try:
-                        with open(fpath, "r", encoding="utf-8") as f:
-                            first_line = f.readline().strip()
-                        title = self._extract_markdown_title(first_line, title)
-                    except Exception:
-                        pass
-                    files.append({"name": fname, "title": title, "size": size})
-            tree.append({"dir": name, "files": files})
+        stats = {"pages": 0, "size": 0}
+        root_files, tree = self._scan_dir(self.knowledge_dir, stats, is_root=True)
 
         return {
+            "root_files": root_files,
             "tree": tree,
-            "stats": {"pages": total_files, "size": total_bytes},
+            "stats": stats,
             "enabled": self.enabled,
         }
+
+    def _scan_dir(self, dir_path: str, stats: dict, is_root: bool = False) -> tuple[list[dict], list[dict]]:
+        """Recursively scan a knowledge directory."""
+        files = []
+        children = []
+        for name in sorted(os.listdir(dir_path)):
+            if name.startswith("."):
+                continue
+            full = os.path.join(dir_path, name)
+            if os.path.isdir(full):
+                sub_files, sub_children = self._scan_dir(full, stats)
+                children.append({"dir": name, "files": sub_files, "children": sub_children})
+                continue
+            if not name.endswith(".md"):
+                continue
+
+            size = os.path.getsize(full)
+            if not is_root:
+                stats["pages"] += 1
+                stats["size"] += size
+            title = name.replace(".md", "")
+            try:
+                with open(full, "r", encoding="utf-8") as f:
+                    first_line = f.readline().strip()
+                title = self._extract_markdown_title(first_line, title)
+            except Exception:
+                pass
+            files.append({"name": name, "title": title, "size": size})
+        return files, children
 
     # ------------------------------------------------------------------
     # read — single file content

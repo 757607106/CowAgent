@@ -31,7 +31,6 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
             "channel_type": "web",
             "web_port": str(port),
             "web_password": "",
-            "web_tenant_auth": "false",
         }
     )
 
@@ -49,31 +48,45 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert chat_resp.status_code == 200
         assert "<div id=\"root\"></div>" in chat_resp.text
 
-        list_agents_resp = requests.get(f"{base_url}/api/platform/agents", timeout=5)
+        tenant_a = requests.Session()
+        tenant_b = requests.Session()
+
+        register_a_resp = tenant_a.post(
+            f"{base_url}/auth/register",
+            json={
+                "tenant_id": tenant_id,
+                "tenant_name": "Web Console Tenant",
+                "account": f"{tenant_id}@example.test",
+                "user_name": "Owner A",
+                "password": "admin123456",
+            },
+            timeout=5,
+        )
+        register_b_resp = tenant_b.post(
+            f"{base_url}/auth/register",
+            json={
+                "tenant_id": tenant_id_2,
+                "tenant_name": "Web Console Tenant B",
+                "account": f"{tenant_id_2}@example.test",
+                "user_name": "Owner B",
+                "password": "admin123456",
+            },
+            timeout=5,
+        )
+        assert register_a_resp.status_code == 200
+        assert register_a_resp.json()["tenant"]["tenant_id"] == tenant_id
+        assert register_b_resp.status_code == 200
+        assert register_b_resp.json()["tenant"]["tenant_id"] == tenant_id_2
+
+        list_agents_resp = tenant_a.get(f"{base_url}/api/platform/agents", timeout=5)
         assert list_agents_resp.status_code == 200
         assert list_agents_resp.json()["status"] == "success"
 
-        list_tenants_resp = requests.get(f"{base_url}/api/platform/tenants", timeout=5)
+        list_tenants_resp = tenant_a.get(f"{base_url}/api/platform/tenants", timeout=5)
         assert list_tenants_resp.status_code == 200
         assert list_tenants_resp.json()["status"] == "success"
 
-        create_tenant_resp = requests.post(
-            f"{base_url}/api/platform/tenants",
-            json={"tenant_id": tenant_id, "name": "Web Console Tenant"},
-            timeout=5,
-        )
-        assert create_tenant_resp.status_code == 200
-        assert create_tenant_resp.json()["tenant"]["tenant_id"] == tenant_id
-
-        create_tenant_2_resp = requests.post(
-            f"{base_url}/api/platform/tenants",
-            json={"tenant_id": tenant_id_2, "name": "Web Console Tenant B"},
-            timeout=5,
-        )
-        assert create_tenant_2_resp.status_code == 200
-        assert create_tenant_2_resp.json()["tenant"]["tenant_id"] == tenant_id_2
-
-        create_mcp_a_resp = requests.post(
+        create_mcp_a_resp = tenant_a.post(
             f"{base_url}/api/mcp/servers",
             json={
                 "tenant_id": tenant_id,
@@ -84,7 +97,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
             },
             timeout=5,
         )
-        create_mcp_b_resp = requests.post(
+        create_mcp_b_resp = tenant_b.post(
             f"{base_url}/api/mcp/servers",
             json={
                 "tenant_id": tenant_id_2,
@@ -100,12 +113,12 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert create_mcp_b_resp.status_code == 200
         assert create_mcp_b_resp.json()["server"]["command"] == "node"
 
-        list_mcp_a_resp = requests.get(
+        list_mcp_a_resp = tenant_a.get(
             f"{base_url}/api/mcp/servers",
             params={"tenant_id": tenant_id},
             timeout=5,
         )
-        list_mcp_b_resp = requests.get(
+        list_mcp_b_resp = tenant_b.get(
             f"{base_url}/api/mcp/servers",
             params={"tenant_id": tenant_id_2},
             timeout=5,
@@ -115,7 +128,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert list_mcp_a_resp.json()["servers"][0]["command"] == "python"
         assert list_mcp_b_resp.json()["servers"][0]["command"] == "node"
 
-        update_mcp_a_resp = requests.put(
+        update_mcp_a_resp = tenant_a.put(
             f"{base_url}/api/mcp/servers/shared-mcp",
             json={
                 "tenant_id": tenant_id,
@@ -129,7 +142,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert update_mcp_a_resp.status_code == 200
         assert update_mcp_a_resp.json()["server"]["command"] == "python3"
 
-        verify_mcp_b_resp = requests.get(
+        verify_mcp_b_resp = tenant_b.get(
             f"{base_url}/api/mcp/servers",
             params={"tenant_id": tenant_id_2},
             timeout=5,
@@ -137,7 +150,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert verify_mcp_b_resp.status_code == 200
         assert verify_mcp_b_resp.json()["servers"][0]["command"] == "node"
 
-        delete_mcp_a_resp = requests.delete(
+        delete_mcp_a_resp = tenant_a.delete(
             f"{base_url}/api/mcp/servers/shared-mcp",
             params={"tenant_id": tenant_id},
             timeout=5,
@@ -145,12 +158,12 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert delete_mcp_a_resp.status_code == 200
         assert delete_mcp_a_resp.json()["server"]["tenant_id"] == tenant_id
 
-        list_mcp_a_after_delete_resp = requests.get(
+        list_mcp_a_after_delete_resp = tenant_a.get(
             f"{base_url}/api/mcp/servers",
             params={"tenant_id": tenant_id},
             timeout=5,
         )
-        list_mcp_b_after_delete_resp = requests.get(
+        list_mcp_b_after_delete_resp = tenant_b.get(
             f"{base_url}/api/mcp/servers",
             params={"tenant_id": tenant_id_2},
             timeout=5,
@@ -160,11 +173,11 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert list_mcp_b_after_delete_resp.status_code == 200
         assert list_mcp_b_after_delete_resp.json()["servers"][0]["tenant_id"] == tenant_id_2
 
-        tenant_user_meta = requests.get(f"{base_url}/api/platform/tenant-user-meta", timeout=5)
+        tenant_user_meta = tenant_a.get(f"{base_url}/api/platform/tenant-user-meta", timeout=5)
         assert tenant_user_meta.status_code == 200
         assert "owner" in tenant_user_meta.json()["roles"]
 
-        create_tenant_user_resp = requests.post(
+        create_tenant_user_resp = tenant_a.post(
             f"{base_url}/api/platform/tenant-users",
             json={
                 "tenant_id": tenant_id,
@@ -178,7 +191,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert create_tenant_user_resp.status_code == 200
         assert create_tenant_user_resp.json()["tenant_user"]["role"] == "admin"
 
-        create_agent_resp = requests.post(
+        create_agent_resp = tenant_a.post(
             f"{base_url}/api/platform/agents",
             json={
                 "tenant_id": tenant_id,
@@ -195,7 +208,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert agent_id.startswith("agt_")
         assert len(agent_id) == 12
 
-        shared_agent_a_resp = requests.post(
+        shared_agent_a_resp = tenant_a.post(
             f"{base_url}/api/platform/agents",
             json={
                 "tenant_id": tenant_id,
@@ -208,7 +221,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert shared_agent_a_resp.status_code == 200
         assert shared_agent_a_resp.json()["agent"]["tenant_id"] == tenant_id
 
-        shared_agent_b_resp = requests.post(
+        shared_agent_b_resp = tenant_b.post(
             f"{base_url}/api/platform/agents",
             json={
                 "tenant_id": tenant_id_2,
@@ -221,7 +234,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert shared_agent_b_resp.status_code == 200
         assert shared_agent_b_resp.json()["agent"]["tenant_id"] == tenant_id_2
 
-        get_agent_resp = requests.get(
+        get_agent_resp = tenant_a.get(
             f"{base_url}/api/platform/agents/{agent_id}",
             params={"tenant_id": tenant_id},
             timeout=5,
@@ -229,7 +242,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert get_agent_resp.status_code == 200
         assert get_agent_resp.json()["agent"]["name"] == "Web Console Agent"
 
-        get_shared_agent_a_resp = requests.get(
+        get_shared_agent_a_resp = tenant_a.get(
             f"{base_url}/api/platform/agents/shared-agent",
             params={"tenant_id": tenant_id},
             timeout=5,
@@ -237,7 +250,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert get_shared_agent_a_resp.status_code == 200
         assert get_shared_agent_a_resp.json()["agent"]["name"] == "Shared Agent A"
 
-        get_shared_agent_b_resp = requests.get(
+        get_shared_agent_b_resp = tenant_b.get(
             f"{base_url}/api/platform/agents/shared-agent",
             params={"tenant_id": tenant_id_2},
             timeout=5,
@@ -245,7 +258,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert get_shared_agent_b_resp.status_code == 200
         assert get_shared_agent_b_resp.json()["agent"]["name"] == "Shared Agent B"
 
-        update_shared_agent_a_resp = requests.put(
+        update_shared_agent_a_resp = tenant_a.put(
             f"{base_url}/api/platform/agents/shared-agent",
             json={
                 "tenant_id": tenant_id,
@@ -256,7 +269,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert update_shared_agent_a_resp.status_code == 200
         assert update_shared_agent_a_resp.json()["agent"]["name"] == "Shared Agent A v2"
 
-        verify_shared_agent_b_resp = requests.get(
+        verify_shared_agent_b_resp = tenant_b.get(
             f"{base_url}/api/platform/agents/shared-agent",
             params={"tenant_id": tenant_id_2},
             timeout=5,
@@ -264,7 +277,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert verify_shared_agent_b_resp.status_code == 200
         assert verify_shared_agent_b_resp.json()["agent"]["name"] == "Shared Agent B"
 
-        create_binding_resp = requests.post(
+        create_binding_resp = tenant_a.post(
             f"{base_url}/api/platform/bindings",
             json={
                 "tenant_id": tenant_id,
@@ -282,7 +295,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert create_binding_resp.status_code == 200
         assert create_binding_resp.json()["binding"]["agent_id"] == agent_id
 
-        get_binding_resp = requests.get(
+        get_binding_resp = tenant_a.get(
             f"{base_url}/api/platform/bindings/{binding_id}",
             params={"tenant_id": tenant_id},
             timeout=5,
@@ -290,7 +303,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert get_binding_resp.status_code == 200
         assert get_binding_resp.json()["binding"]["channel_type"] == "web"
 
-        create_identity_resp = requests.post(
+        create_identity_resp = tenant_a.post(
             f"{base_url}/api/platform/tenant-user-identities",
             json={
                 "tenant_id": tenant_id,
@@ -303,14 +316,14 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert create_identity_resp.status_code == 200
         assert create_identity_resp.json()["identity"]["external_user_id"] == "alice-web"
 
-        delete_identity_resp = requests.delete(
+        delete_identity_resp = tenant_a.delete(
             f"{base_url}/api/platform/tenant-user-identities/{tenant_id}/web/alice-web",
             timeout=5,
         )
         assert delete_identity_resp.status_code == 200
         assert delete_identity_resp.json()["identity"]["external_user_id"] == "alice-web"
 
-        delete_binding_resp = requests.delete(
+        delete_binding_resp = tenant_a.delete(
             f"{base_url}/api/platform/bindings/{binding_id}",
             params={"tenant_id": tenant_id},
             timeout=5,
@@ -318,7 +331,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert delete_binding_resp.status_code == 200
         assert delete_binding_resp.json()["status"] == "success"
 
-        delete_agent_resp = requests.delete(
+        delete_agent_resp = tenant_a.delete(
             f"{base_url}/api/platform/agents/{agent_id}",
             params={"tenant_id": tenant_id},
             timeout=5,
@@ -326,7 +339,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert delete_agent_resp.status_code == 200
         assert delete_agent_resp.json()["agent_id"] == agent_id
 
-        delete_shared_agent_a_resp = requests.delete(
+        delete_shared_agent_a_resp = tenant_a.delete(
             f"{base_url}/api/platform/agents/shared-agent",
             params={"tenant_id": tenant_id},
             timeout=5,
@@ -334,7 +347,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert delete_shared_agent_a_resp.status_code == 200
         assert delete_shared_agent_a_resp.json()["agent_id"] == "shared-agent"
 
-        still_get_shared_agent_b_resp = requests.get(
+        still_get_shared_agent_b_resp = tenant_b.get(
             f"{base_url}/api/platform/agents/shared-agent",
             params={"tenant_id": tenant_id_2},
             timeout=5,
@@ -342,7 +355,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert still_get_shared_agent_b_resp.status_code == 200
         assert still_get_shared_agent_b_resp.json()["agent"]["tenant_id"] == tenant_id_2
 
-        delete_shared_agent_b_resp = requests.delete(
+        delete_shared_agent_b_resp = tenant_b.delete(
             f"{base_url}/api/platform/agents/shared-agent",
             params={"tenant_id": tenant_id_2},
             timeout=5,
@@ -350,7 +363,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
         assert delete_shared_agent_b_resp.status_code == 200
         assert delete_shared_agent_b_resp.json()["agent_id"] == "shared-agent"
 
-        delete_tenant_user_resp = requests.delete(
+        delete_tenant_user_resp = tenant_a.delete(
             f"{base_url}/api/platform/tenant-users/{tenant_id}/alice",
             timeout=5,
         )

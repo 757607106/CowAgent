@@ -137,7 +137,7 @@ export default function ConfigPage() {
 
   const [rawConfig, setRawConfig] = useState<ConfigShape>({
     model: '',
-    enable_thinking: true,
+    enable_thinking: false,
     agent_max_context_tokens: 50000,
     agent_max_context_turns: 20,
     agent_max_steps: 20,
@@ -187,7 +187,7 @@ export default function ConfigPage() {
   const agentConfigDirty = useMemo(() => {
     if (!agentValues) return false;
     return (
-      Boolean(agentValues.enable_thinking) !== Boolean(rawConfig.enable_thinking ?? true)
+      Boolean(agentValues.enable_thinking) !== Boolean(rawConfig.enable_thinking ?? false)
       || Number(agentValues.agent_max_context_tokens || 0) !== Number(rawConfig.agent_max_context_tokens || 50000)
       || Number(agentValues.agent_max_context_turns || 0) !== Number(rawConfig.agent_max_context_turns || 20)
       || Number(agentValues.agent_max_steps || 0) !== Number(rawConfig.agent_max_steps || 20)
@@ -214,7 +214,7 @@ export default function ConfigPage() {
       setRawConfig(data);
 
       agentForm.setFieldsValue({
-        enable_thinking: Boolean(data.enable_thinking ?? true),
+        enable_thinking: Boolean(data.enable_thinking ?? false),
         agent_max_context_tokens: Number(data.agent_max_context_tokens || 50000),
         agent_max_context_turns: Number(data.agent_max_context_turns || 20),
         agent_max_steps: Number(data.agent_max_steps || 20),

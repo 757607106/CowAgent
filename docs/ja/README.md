@@ -43,6 +43,8 @@
 
 ## 更新履歴
 
+> **2026.04.22:** [v2.0.7](https://github.com/zhayujie/CowAgent/releases/tag/2.0.7) — 画像生成スキル、新モデルサポート、ナレッジベース強化、Web コンソール改善およびバグ修正。
+
 > **2026.04.14:** [v2.0.6](https://github.com/zhayujie/CowAgent/releases/tag/2.0.6) — ナレッジベース、Deep Dream 記憶蒸留、スマートコンテキスト圧縮、Web コンソールアップグレード。
 
 > **2026.04.01:** [v2.0.5](https://github.com/zhayujie/CowAgent/releases/tag/2.0.5) — Cow CLI、Skill Hubオープンソース化、ブラウザツール、WeCom Botスキャン作成など。

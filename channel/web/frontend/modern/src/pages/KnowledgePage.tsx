@@ -18,9 +18,11 @@ interface KnowledgeFile {
 interface KnowledgeGroup {
   dir: string;
   files: KnowledgeFile[];
+  children?: KnowledgeGroup[];
 }
 
 interface KnowledgeListResult {
+  root_files?: KnowledgeFile[];
   tree: KnowledgeGroup[];
   stats: { pages: number; size: number };
   enabled: boolean;
@@ -113,6 +115,44 @@ function getGraphLinks(graph: Record<string, any> | null): KnowledgeGraphLink[] 
 
 function shortLabel(label: string): string {
   return label.length > 15 ? `${label.slice(0, 14)}…` : label;
+}
+
+function knowledgeFileNode(path: string, file: KnowledgeFile): DataNode {
+  return {
+    key: path,
+    title: (
+      <Space size={6}>
+        <span>{file.title || file.name}</span>
+        <Typography.Text type="secondary" className="knowledge-file-size">
+          {formatBytes(file.size)}
+        </Typography.Text>
+      </Space>
+    ),
+    isLeaf: true,
+  };
+}
+
+function knowledgeGroupNode(group: KnowledgeGroup, basePath: string, keyword: string): DataNode | null {
+  const dirPath = basePath ? `${basePath}/${group.dir}` : group.dir;
+  const groupMatches = !keyword || group.dir.toLowerCase().includes(keyword);
+  const fileNodes = (group.files || [])
+    .filter((file) => {
+      if (groupMatches) return true;
+      return file.name.toLowerCase().includes(keyword) || file.title.toLowerCase().includes(keyword);
+    })
+    .map((file) => knowledgeFileNode(`${dirPath}/${file.name}`, file));
+  const childNodes = (group.children || [])
+    .map((child) => knowledgeGroupNode(child, dirPath, keyword))
+    .filter(Boolean) as DataNode[];
+
+  if (!groupMatches && fileNodes.length === 0 && childNodes.length === 0) return null;
+
+  return {
+    key: `dir:${dirPath}`,
+    title: `${group.dir} (${fileNodes.length + childNodes.length})`,
+    selectable: false,
+    children: [...fileNodes, ...childNodes],
+  };
 }
 
 function KnowledgeGraphView({
@@ -430,38 +470,17 @@ export function KnowledgePanel({
 
   const treeData = useMemo<DataNode[]>(() => {
     const keyword = search.trim().toLowerCase();
-
-    return listData.tree
-      .map((group) => {
-        const files = (group.files || []).filter((file) => {
-          if (!keyword) return true;
-          return file.name.toLowerCase().includes(keyword) || file.title.toLowerCase().includes(keyword);
-        });
-
-        if (files.length === 0 && keyword) {
-          return null;
-        }
-
-        return {
-          key: group.dir,
-          title: `${group.dir} (${files.length})`,
-          selectable: false,
-          children: files.map((file) => ({
-            key: `${group.dir}/${file.name}`,
-            title: (
-              <Space size={6}>
-                <span>{file.title || file.name}</span>
-                <Typography.Text type="secondary" className="knowledge-file-size">
-                  {formatBytes(file.size)}
-                </Typography.Text>
-              </Space>
-            ),
-            isLeaf: true,
-          })),
-        } satisfies DataNode;
+    const rootNodes = (listData.root_files || [])
+      .filter((file) => {
+        if (!keyword) return true;
+        return file.name.toLowerCase().includes(keyword) || file.title.toLowerCase().includes(keyword);
       })
+      .map((file) => knowledgeFileNode(file.name, file));
+    const groupNodes = (listData.tree || [])
+      .map((group) => knowledgeGroupNode(group, '', keyword))
       .filter(Boolean) as DataNode[];
-  }, [listData.tree, search]);
+    return [...rootNodes, ...groupNodes];
+  }, [listData.root_files, listData.tree, search]);
 
   return (
     <Card className={embedded ? 'knowledge-embedded-card' : undefined}>
@@ -510,7 +529,7 @@ export function KnowledgePanel({
                         selectedKeys={selectedPath ? [selectedPath] : []}
                         onSelect={(keys) => {
                           const key = String(keys[0] || '');
-                          if (!key || !key.includes('/')) return;
+                          if (!key || key.startsWith('dir:')) return;
                           const slashIndex = key.lastIndexOf('/');
                           void readPath(key, slashIndex >= 0 ? key.slice(slashIndex + 1) : key);
                         }}

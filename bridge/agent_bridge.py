@@ -4,12 +4,13 @@ Agent Bridge - Integrates Agent system with existing COW bridge
 
 import os
 from contextlib import nullcontext
-import uuid
 from typing import Any, Optional, List
 
 from agent.protocol import Agent, LLMModel, LLMRequest, CancelledError
 from agent.protocol.cancel import CancelToken, CancelTokenRegistry
+from agent.memory.conversation_persistence import clear_session_if_empty, persist_messages
 from bridge.agent_event_handler import AgentEventHandler
+from bridge.file_reply import create_file_reply
 from bridge.agent_initializer import AgentInitializer
 from bridge.bridge import Bridge
 from bridge.context import Context
@@ -20,9 +21,7 @@ from common.model_routing import resolve_bot_type_from_model
 from common.utils import expand_path
 from cow_platform.adapters.cowagent_runtime_adapter import CowAgentRuntimeAdapter
 from cow_platform.runtime.scope import get_current_model_config_id, get_current_model_name
-from cow_platform.services.pricing_service import PricingService
-from cow_platform.services.quota_service import QuotaService
-from cow_platform.services.usage_service import UsageService
+from cow_platform.services.agent_governance_service import AgentGovernanceService
 from models.openai_compatible_bot import OpenAICompatibleBot
 
 
@@ -85,7 +84,7 @@ def _resolve_thinking_enabled(channel_type: str) -> bool:
     except Exception:
         pass
 
-    return bool(conf().get("enable_thinking", True))
+    return bool(conf().get("enable_thinking", False))
 
 
 class AgentLLMModel(LLMModel):
@@ -269,9 +268,10 @@ class AgentBridge:
         self.agent: Optional[Agent] = None
         self.scheduler_initialized = False
         self.runtime_adapter = CowAgentRuntimeAdapter()
-        self.pricing_service = PricingService()
-        self.usage_service = UsageService(pricing_service=self.pricing_service)
-        self.quota_service = QuotaService(usage_service=self.usage_service)
+        self.governance_service = AgentGovernanceService()
+        self.pricing_service = self.governance_service.pricing_service
+        self.usage_service = self.governance_service.usage_service
+        self.quota_service = self.governance_service.quota_service
 
         # Create helper instances
         self.initializer = AgentInitializer(bridge, self)
@@ -281,11 +281,9 @@ class AgentBridge:
 
     def _check_runtime_quota(self, resolved_runtime, query: str) -> dict:
         """在真实执行前检查当前 Agent 的请求配额。"""
-        runtime_context = resolved_runtime.runtime_context
-        return self.quota_service.check_request_allowed(
-            tenant_id=runtime_context.tenant_id,
-            agent_id=runtime_context.agent_id,
-            prompt_tokens=self.usage_service.estimate_text_tokens(query),
+        return self.governance_service.check_request_allowed(
+            runtime_context=resolved_runtime.runtime_context,
+            query=query,
         )
 
     def _record_runtime_usage(
@@ -302,79 +300,21 @@ class AgentBridge:
         event_handler: AgentEventHandler | None = None,
     ) -> None:
         """记录当前请求的 usage 和成本信息。"""
-        runtime_context = resolved_runtime.runtime_context
-        provider_usage = self._normalize_provider_usage(getattr(agent, "last_usage", None) if agent else None)
-        usage_metrics = event_handler.get_usage_metrics() if event_handler else {}
-        skill_names = {
-            str(name): 1
-            for name in getattr(resolved_runtime.agent_definition, "skills", ())
-            if str(name or "").strip()
-        }
-        metadata = {
-            "status": status,
-            "tool_names": usage_metrics.get("tool_names", {}),
-        }
-        if skill_names:
-            metadata["skill_names"] = skill_names
-        if provider_usage:
-            metadata["provider_usage"] = provider_usage
-        self.usage_service.record_chat_usage(
-            request_id=request_id or f"req_{uuid.uuid4().hex}",
-            tenant_id=runtime_context.tenant_id,
-            agent_id=runtime_context.agent_id,
-            binding_id=str(runtime_context.metadata.get("binding_id", "") or ""),
-            session_id=runtime_context.session_id,
-            channel_type=channel_type,
-            model=model,
-            prompt_text=query,
+        self.governance_service.record_agent_usage(
+            resolved_runtime=resolved_runtime,
+            request_id=request_id,
+            query=query,
             completion_text=completion_text,
-            prompt_tokens=provider_usage.get("prompt_tokens"),
-            completion_tokens=provider_usage.get("completion_tokens"),
-            token_source="provider" if provider_usage else "estimated",
-            tool_call_count=int(usage_metrics.get("tool_call_count", 0)),
-            mcp_call_count=int(usage_metrics.get("mcp_call_count", 0)),
-            tool_error_count=int(usage_metrics.get("tool_error_count", 0)),
-            tool_execution_time_ms=int(usage_metrics.get("tool_execution_time_ms", 0)),
-            metadata=metadata,
+            model=model,
+            channel_type=channel_type,
+            status=status,
+            agent=agent,
+            event_handler=event_handler,
         )
 
     @staticmethod
     def _normalize_provider_usage(raw_usage: Any) -> dict[str, int]:
-        if not isinstance(raw_usage, dict) or not raw_usage:
-            return {}
-
-        def _read_int(*keys: str) -> int | None:
-            for key in keys:
-                if key not in raw_usage:
-                    continue
-                value = raw_usage.get(key)
-                if value in (None, ""):
-                    continue
-                try:
-                    return max(0, int(value))
-                except (TypeError, ValueError):
-                    continue
-            return None
-
-        prompt_tokens = _read_int("prompt_tokens", "input_tokens", "promptTokenCount")
-        completion_tokens = _read_int("completion_tokens", "output_tokens", "candidatesTokenCount")
-        total_tokens = _read_int("total_tokens", "totalTokenCount")
-
-        if total_tokens is None and prompt_tokens is not None and completion_tokens is not None:
-            total_tokens = prompt_tokens + completion_tokens
-        if prompt_tokens is None and total_tokens is not None and completion_tokens is not None:
-            prompt_tokens = max(0, total_tokens - completion_tokens)
-        if completion_tokens is None and total_tokens is not None and prompt_tokens is not None:
-            completion_tokens = max(0, total_tokens - prompt_tokens)
-
-        normalized = {}
-        if prompt_tokens is not None:
-            normalized["prompt_tokens"] = prompt_tokens
-        if completion_tokens is not None:
-            normalized["completion_tokens"] = completion_tokens
-        if total_tokens is not None:
-            normalized["total_tokens"] = total_tokens
-        return normalized
+        return AgentGovernanceService.normalize_provider_usage(raw_usage)
 
     def create_agent(self, system_prompt: str, tools: List = None, **kwargs) -> Agent:
         """
@@ -607,12 +547,7 @@ class AgentBridge:
                         with agent.messages_lock:
                             msg_count = len(agent.messages)
                         if msg_count == 0:
-                            try:
-                                from agent.memory import get_conversation_store
-                                get_conversation_store().clear_session(session_id)
-                                logger.info(f"[AgentBridge] Cleared DB for recovered session: {session_id}")
-                            except Exception as e:
-                                logger.warning(f"[AgentBridge] Failed to clear DB after recovery: {e}")
+                            clear_session_if_empty(session_id, msg_count, source="AgentBridge")
                 
                 # Check if there are files to send (from read tool)
                 if hasattr(agent, 'stream_executor') and hasattr(agent.stream_executor, 'files_to_send'):
@@ -685,11 +620,9 @@ class AgentBridge:
                         with agent.messages_lock:
                             msg_count = len(agent.messages)
                         if msg_count == 0:
-                            from agent.memory import get_conversation_store
-                            get_conversation_store().clear_session(session_id)
-                            logger.info(f"[AgentBridge] Cleared DB for session after error: {session_id}")
+                            clear_session_if_empty(session_id, msg_count, source="AgentBridge")
                     except Exception as db_err:
-                        logger.warning(f"[AgentBridge] Failed to clear DB after error: {db_err}")
+                        logger.warning(f"[AgentBridge] Failed to inspect DB cleanup state after error: {db_err}")
             return Reply(ReplyType.ERROR, f"Agent error: {str(e)}")
         finally:
             # Clean up cancel token registry entry when execution completes
@@ -708,112 +641,7 @@ class AgentBridge:
         Returns:
             Reply object for file sending
         """
-        file_type = file_info.get("file_type", "file")
-        file_path = file_info.get("path")
-        
-        # For images, use IMAGE_URL type (channel will handle upload)
-        if file_type == "image":
-            # Convert local path to file:// URL for channel processing
-            file_url = f"file://{file_path}"
-            logger.info(f"[AgentBridge] Sending image: {file_url}")
-            reply = Reply(ReplyType.IMAGE_URL, file_url)
-            # Attach text message if present (for channels that support text+image)
-            if text_response:
-                reply.text_content = text_response  # Store accompanying text
-            return reply
-        
-        # For all file types (document, video, audio), use FILE type
-        if file_type in ["document", "video", "audio"]:
-            file_url = f"file://{file_path}"
-            logger.info(f"[AgentBridge] Sending {file_type}: {file_url}")
-            reply = Reply(ReplyType.FILE, file_url)
-            reply.file_name = file_info.get("file_name", os.path.basename(file_path))
-            # Attach text message if present
-            if text_response:
-                reply.text_content = text_response
-            return reply
-        
-        # For all other file types (tar.gz, zip, etc.), also use FILE type
-        file_url = f"file://{file_path}"
-        logger.info(f"[AgentBridge] Sending generic file: {file_url}")
-        reply = Reply(ReplyType.FILE, file_url)
-        reply.file_name = file_info.get("file_name", os.path.basename(file_path))
-        if text_response:
-            reply.text_content = text_response
-        return reply
-    
-    def _migrate_config_to_env(self, workspace_root: str):
-        """
-        Sync API keys from config.json to .env file.
-        Adds new keys and updates changed values on each startup.
-
-        Args:
-            workspace_root: Workspace directory path (not used, kept for compatibility)
-        """
-        from config import conf
-        import os
-
-        if conf().get("web_tenant_auth", True):
-            logger.debug("[AgentBridge] Skip global .env sync in platform tenant mode")
-            return
-        
-        key_mapping = {
-            "open_ai_api_key": "OPENAI_API_KEY",
-            "open_ai_api_base": "OPENAI_API_BASE",
-            "gemini_api_key": "GEMINI_API_KEY",
-            "claude_api_key": "CLAUDE_API_KEY",
-            "linkai_api_key": "LINKAI_API_KEY",
-        }
-        
-        env_file = expand_path("~/.cow/.env")
-        
-        # Read existing env vars (key -> value)
-        existing_env_vars = {}
-        if os.path.exists(env_file):
-            try:
-                with open(env_file, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith('#') and '=' in line:
-                            key, val = line.split('=', 1)
-                            existing_env_vars[key.strip()] = val.strip()
-            except Exception as e:
-                logger.warning(f"[AgentBridge] Failed to read .env file: {e}")
-        
-        # Sync config.json values into .env (add/update/remove)
-        updated = False
-        for config_key, env_key in key_mapping.items():
-            raw = conf().get(config_key, "")
-            value = raw.strip() if raw else ""
-            old_value = existing_env_vars.get(env_key)
-
-            if value:
-                if old_value == value:
-                    continue
-                existing_env_vars[env_key] = value
-                os.environ[env_key] = value
-                updated = True
-            else:
-                if old_value is None:
-                    continue
-                existing_env_vars.pop(env_key, None)
-                os.environ.pop(env_key, None)
-                updated = True
-
-        if updated:
-            try:
-                env_dir = os.path.dirname(env_file)
-                os.makedirs(env_dir, exist_ok=True)
-
-                with open(env_file, 'w', encoding='utf-8') as f:
-                    f.write('# Environment variables for agent\n')
-                    f.write('# Auto-managed - synced from config.json on startup\n\n')
-                    for key, value in sorted(existing_env_vars.items()):
-                        f.write(f'{key}={value}\n')
-
-                logger.info(f"[AgentBridge] Synced API keys from config.json to .env")
-            except Exception as e:
-                logger.warning(f"[AgentBridge] Failed to sync API keys: {e}")
+        return create_file_reply(file_info, text_response)
     
     def _persist_messages(
         self, session_id: str, new_messages: list, channel_type: str = ""
@@ -823,23 +651,7 @@ class AgentBridge:
 
         Failures are logged but never propagate — they must not interrupt replies.
         """
-        if not new_messages:
-            return
-        try:
-            from config import conf
-            if not conf().get("conversation_persistence", True):
-                return
-        except Exception:
-            pass
-        try:
-            from agent.memory import get_conversation_store
-            get_conversation_store().append_messages(
-                session_id, new_messages, channel_type=channel_type
-            )
-        except Exception as e:
-            logger.warning(
-                f"[AgentBridge] Failed to persist messages for session={session_id}: {e}"
-            )
+        persist_messages(session_id, new_messages, channel_type, source="AgentBridge")
 
     def cancel_running_session(self, session_id: str, *, cache_key: str = "", context: Context = None):
         """Cancel the currently running agent task for a session.

@@ -49,7 +49,8 @@ CAPABILITY_PROVIDER_OPTIONS: dict[str, CapabilityProviderOption] = {
     "dashscope": CapabilityProviderOption(
         "dashscope",
         "通义千问 DashScope",
-        ("multimodal",),
+        ("multimodal", "image_generation"),
+        "https://dashscope.aliyuncs.com",
     ),
     "zhipu": CapabilityProviderOption(
         "zhipu",
@@ -72,7 +73,7 @@ CAPABILITY_PROVIDER_OPTIONS: dict[str, CapabilityProviderOption] = {
     "doubao": CapabilityProviderOption(
         "doubao",
         "豆包 Doubao",
-        ("multimodal",),
+        ("multimodal", "image_generation"),
         "https://ark.cn-beijing.volces.com/api/v3",
     ),
     "claudeAPI": CapabilityProviderOption(
@@ -84,13 +85,13 @@ CAPABILITY_PROVIDER_OPTIONS: dict[str, CapabilityProviderOption] = {
     "gemini": CapabilityProviderOption(
         "gemini",
         "Gemini",
-        ("multimodal",),
+        ("multimodal", "image_generation"),
         "https://generativelanguage.googleapis.com",
     ),
     "minimax": CapabilityProviderOption(
         "minimax",
         "MiniMax",
-        ("multimodal", "text_to_speech"),
+        ("multimodal", "image_generation", "text_to_speech"),
         "https://api.minimax.io",
     ),
     "linkai": CapabilityProviderOption(
@@ -374,6 +375,11 @@ class CapabilityConfigService:
             if bot_type:
                 overrides["bot_type"] = bot_type
             overrides["text_to_image"] = definition.model_name
+            skill_config = dict(conf().get("skill", {}) or {})
+            image_skill = dict(skill_config.get("image-generation", {}) or {})
+            image_skill["model"] = definition.model_name
+            skill_config["image-generation"] = image_skill
+            overrides["skill"] = skill_config
             if metadata.get("image_size"):
                 overrides["image_create_size"] = metadata["image_size"]
             if metadata.get("image_style"):
@@ -488,6 +494,8 @@ class CapabilityConfigService:
         if provider == "dashscope":
             if api_key:
                 overrides["dashscope_api_key"] = api_key
+            if api_base:
+                overrides["dashscope_api_base"] = api_base
             return overrides
         if provider == "zhipu":
             if api_key:

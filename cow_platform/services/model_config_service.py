@@ -82,7 +82,7 @@ PROVIDER_RUNTIME_MAP: dict[str, ProviderRuntimeMapping] = {
         "claude_api_base",
         "https://api.anthropic.com/v1",
         label="Claude",
-        models=("claude-sonnet-4-6", "claude-opus-4-6", "claude-sonnet-4-5", "claude-sonnet-4-0", "claude-3-5-sonnet-latest"),
+        models=("claude-opus-4-7", "claude-sonnet-4-6", "claude-opus-4-6", "claude-sonnet-4-5", "claude-sonnet-4-0", "claude-3-5-sonnet-latest"),
     ),
     "gemini": ProviderRuntimeMapping(
         "gemini",

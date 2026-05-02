@@ -26,6 +26,7 @@ def test_knowledge_service_hides_disabled_knowledge_base(tmp_path: Path) -> None
     service = KnowledgeService(str(workspace_dir), enabled=False)
 
     assert service.list_tree() == {
+        "root_files": [],
         "tree": [],
         "stats": {"pages": 0, "size": 0},
         "enabled": False,
@@ -34,3 +35,20 @@ def test_knowledge_service_hides_disabled_knowledge_base(tmp_path: Path) -> None
 
     with pytest.raises(RuntimeError, match="knowledge is disabled"):
         service.read_file("notes/a.md")
+
+
+def test_knowledge_service_lists_root_files_and_nested_dirs(tmp_path: Path) -> None:
+    workspace_dir = tmp_path / "workspace-knowledge"
+    knowledge_dir = workspace_dir / "knowledge"
+    knowledge_dir.mkdir(parents=True, exist_ok=True)
+    (knowledge_dir / "index.md").write_text("# Index\n", encoding="utf-8")
+    nested = knowledge_dir / "platform" / "analysis"
+    nested.mkdir(parents=True, exist_ok=True)
+    (nested / "perf.md").write_text("# Perf\ncontent", encoding="utf-8")
+
+    tree = KnowledgeService(str(workspace_dir), enabled=True).list_tree()
+
+    assert [item["name"] for item in tree["root_files"]] == ["index.md"]
+    assert tree["tree"][0]["dir"] == "platform"
+    assert tree["tree"][0]["children"][0]["dir"] == "analysis"
+    assert tree["tree"][0]["children"][0]["files"][0]["name"] == "perf.md"

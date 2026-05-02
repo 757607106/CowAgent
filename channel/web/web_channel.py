@@ -1,5 +1,3 @@
-import hashlib
-import hmac
 import time
 import json
 import logging
@@ -23,6 +21,7 @@ from cow_platform.runtime.tenant_scope import (
     normalize_tenant_id,
     resolve_tenant_scope,
 )
+from channel.web import auth_runtime
 from channel.web.frontend_layout import (
     FRONTEND_MODE_MODERN,
     build_frontend_layout,
@@ -37,8 +36,8 @@ IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".svg"}
 VIDEO_EXTENSIONS = {".mp4", ".webm", ".avi", ".mov", ".mkv"}
 _FRONTEND_LAYOUT = build_frontend_layout(__file__)
 _FRONTEND_MODE_WARNED = False
-_AUTH_COOKIE = "cow_auth_token"
-_TENANT_AUTH_COOKIE = "cow_tenant_auth_token"
+_AUTH_COOKIE = auth_runtime.AUTH_COOKIE
+_TENANT_AUTH_COOKIE = auth_runtime.TENANT_AUTH_COOKIE
 
 
 def _frontend_mode() -> str:
@@ -53,63 +52,33 @@ def _frontend_mode() -> str:
     return FRONTEND_MODE_MODERN
 
 def _is_password_enabled():
-    return bool(conf().get("web_password", ""))
+    return auth_runtime.is_password_enabled()
 
 
 def _is_tenant_auth_enabled():
-    return True
+    return auth_runtime.is_tenant_auth_enabled()
 
 
 def _session_expire_seconds():
-    return int(conf().get("web_session_expire_days", 30)) * 86400
+    return auth_runtime.session_expire_seconds()
 
 
 def _create_auth_token():
-    """Create a stateless signed token: ``<timestamp_hex>.<hmac_hex>``."""
-    ts = format(int(time.time()), "x")
-    sig = hmac.new(
-        conf().get("web_password", "").encode(),
-        ts.encode(),
-        hashlib.sha256,
-    ).hexdigest()
-    return f"{ts}.{sig}"
+    return auth_runtime.create_auth_token()
 
 
 def _verify_auth_token(token):
-    """Verify a signed token is valid and not expired.
-
-    The token is derived from the password, so it survives server restarts
-    and automatically invalidates when the password changes.
-    """
-    if not token or "." not in token:
-        return False
-    ts_hex, sig = token.split(".", 1)
-    try:
-        ts = int(ts_hex, 16)
-    except ValueError:
-        return False
-    if time.time() - ts > _session_expire_seconds():
-        return False
-    expected = hmac.new(
-        conf().get("web_password", "").encode(),
-        ts_hex.encode(),
-        hashlib.sha256,
-    ).hexdigest()
-    return hmac.compare_digest(sig, expected)
+    return auth_runtime.verify_auth_token(token)
 
 
 def _get_auth_service():
-    from cow_platform.services.auth_service import TenantAuthService
+    from channel.web import service_registry
 
-    return TenantAuthService(session_expire_seconds=_session_expire_seconds())
+    return service_registry.get_auth_service(session_expire_seconds=_session_expire_seconds())
 
 
 def _get_cookie_value(name: str) -> str:
-    try:
-        cookies = web.cookies()
-        return cookies.get(name, "")
-    except Exception:
-        return ""
+    return auth_runtime.get_cookie_value(name)
 
 
 def _get_authenticated_tenant_session():
@@ -125,150 +94,60 @@ def _is_platform_admin_session(session=None) -> bool:
 
 def _check_auth():
     """Return True if request is authenticated or password not enabled."""
-    if _is_tenant_auth_enabled():
-        return _get_authenticated_tenant_session() is not None
-    if not _is_password_enabled():
-        return True
-    return _verify_auth_token(_get_cookie_value(_AUTH_COOKIE))
-
-
-def _check_auth_payload() -> dict[str, object]:
-    if _is_tenant_auth_enabled():
-        service = _get_auth_service()
-        session = service.verify_session_token(_get_cookie_value(_TENANT_AUTH_COOKIE))
-        return {
-            "status": "success",
-            "auth_required": True,
-            "auth_mode": "tenant",
-            "authenticated": session is not None,
-            "bootstrap_required": not service.has_credentials(),
-            "platform_bootstrap_required": not service.has_platform_admin(),
-            "user": session.to_public_dict() if session else None,
-        }
-    if not _is_password_enabled():
-        return {"status": "success", "auth_required": False, "auth_mode": "none"}
-    return {
-        "status": "success",
-        "auth_required": True,
-        "auth_mode": "password",
-        "authenticated": _verify_auth_token(_get_cookie_value(_AUTH_COOKIE)),
-    }
-
-
-def _set_auth_cookie(name: str, value: str):
-    web.setcookie(
-        name,
-        value,
-        expires=_session_expire_seconds(),
-        path="/",
-        httponly=True,
-        samesite="Lax",
+    return auth_runtime.check_auth(
+        tenant_auth_enabled=_is_tenant_auth_enabled(),
+        tenant_session=_get_authenticated_tenant_session(),
+        password_enabled=_is_password_enabled(),
+        password_authenticated=_verify_auth_token(_get_cookie_value(_AUTH_COOKIE)),
     )
 
 
+def _check_auth_payload() -> dict[str, object]:
+    return auth_runtime.build_auth_payload(
+        tenant_auth_enabled=_is_tenant_auth_enabled(),
+        auth_service_factory=_get_auth_service,
+        tenant_session=_get_authenticated_tenant_session(),
+        password_enabled=_is_password_enabled(),
+        password_authenticated=_verify_auth_token(_get_cookie_value(_AUTH_COOKIE)),
+    )
+
+
+def _set_auth_cookie(name: str, value: str):
+    auth_runtime.set_auth_cookie(name, value, expire_seconds=_session_expire_seconds())
+
+
 def _login(data: dict[str, object]) -> dict[str, object]:
-    if _is_tenant_auth_enabled():
-        service = _get_auth_service()
-        try:
-            if data.get("account"):
-                session = service.authenticate_account(
-                    account=str(data.get("account", "") or ""),
-                    password=str(data.get("password", "") or ""),
-                )
-            else:
-                session = service.authenticate(
-                    tenant_id=str(data.get("tenant_id", "") or ""),
-                    user_id=str(data.get("user_id", "") or ""),
-                    password=str(data.get("password", "") or ""),
-                )
-        except Exception:
-            logger.warning("[WebChannel] Invalid tenant login attempt")
-            return {"status": "error", "message": "账号或密码不正确"}
-        _set_auth_cookie(_TENANT_AUTH_COOKIE, service.create_session_token(session))
-        web.setcookie(_AUTH_COOKIE, "", expires=-1, path="/")
-        return {"status": "success", "user": session.to_public_dict()}
-
-    if not _is_password_enabled():
-        return {"status": "success"}
-
-    password = str(data.get("password", "") or "")
-    expected = conf().get("web_password", "")
-    if not hmac.compare_digest(password, expected):
-        logger.warning("[WebChannel] Invalid login attempt")
-        return {"status": "error", "message": "Wrong password"}
-
-    _set_auth_cookie(_AUTH_COOKIE, _create_auth_token())
-    web.setcookie(_TENANT_AUTH_COOKIE, "", expires=-1, path="/")
-    return {"status": "success"}
+    return auth_runtime.login(
+        data,
+        tenant_auth_enabled=_is_tenant_auth_enabled(),
+        auth_service_factory=_get_auth_service,
+    )
 
 
 def _register(data: dict[str, object]) -> dict[str, object]:
-    if not _is_tenant_auth_enabled():
-        return {"status": "error", "message": "tenant auth is disabled"}
-
-    try:
-        service = _get_auth_service()
-        result = service.register_tenant(
-            tenant_id=str(data.get("tenant_id", "") or ""),
-            tenant_name=str(data.get("tenant_name", "") or data.get("name", "") or ""),
-            user_id=str(data.get("user_id", "") or ""),
-            account=str(data.get("account", "") or ""),
-            name=str(data.get("user_name", "") or data.get("name", "") or ""),
-            password=str(data.get("password", "") or ""),
-        )
-        if data.get("account"):
-            session = service.authenticate_account(
-                account=str(data.get("account", "") or ""),
-                password=str(data.get("password", "") or ""),
-            )
-        else:
-            session = service.authenticate(
-                tenant_id=result["tenant"]["tenant_id"],
-                user_id=result["tenant_user"]["user_id"],
-                password=str(data.get("password", "") or ""),
-            )
-        _set_auth_cookie(_TENANT_AUTH_COOKIE, service.create_session_token(session))
-        web.setcookie(_AUTH_COOKIE, "", expires=-1, path="/")
-        return {"status": "success", **result, "user": session.to_public_dict()}
-    except Exception as e:
-        logger.warning(f"[WebChannel] Tenant register failed: {e}")
-        return {"status": "error", "message": str(e)}
+    return auth_runtime.register(
+        data,
+        tenant_auth_enabled=_is_tenant_auth_enabled(),
+        auth_service_factory=_get_auth_service,
+    )
 
 
 def _register_platform_admin(data: dict[str, object]) -> dict[str, object]:
-    if not _is_tenant_auth_enabled():
-        return {"status": "error", "message": "tenant auth is disabled"}
-
-    try:
-        service = _get_auth_service()
-        result = service.register_platform_admin(
-            account=str(data.get("account", "") or ""),
-            name=str(data.get("name", "") or data.get("user_name", "") or ""),
-            password=str(data.get("password", "") or ""),
-        )
-        session = service.authenticate_account(
-            account=str(data.get("account", "") or ""),
-            password=str(data.get("password", "") or ""),
-        )
-        _set_auth_cookie(_TENANT_AUTH_COOKIE, service.create_session_token(session))
-        web.setcookie(_AUTH_COOKIE, "", expires=-1, path="/")
-        return {"status": "success", **result, "user": session.to_public_dict()}
-    except Exception as e:
-        logger.warning(f"[WebChannel] Platform admin register failed: {e}")
-        return {"status": "error", "message": str(e)}
+    return auth_runtime.register_platform_admin(
+        data,
+        tenant_auth_enabled=_is_tenant_auth_enabled(),
+        auth_service_factory=_get_auth_service,
+    )
 
 
 def _logout() -> None:
-    web.setcookie(_AUTH_COOKIE, "", expires=-1, path="/")
-    web.setcookie(_TENANT_AUTH_COOKIE, "", expires=-1, path="/")
+    auth_runtime.logout()
 
 
 def _require_auth():
     """Raise 401 if not authenticated. Call at the top of protected handlers."""
     if not _check_auth():
-        raise web.HTTPError("401 Unauthorized",
-                            {"Content-Type": "application/json; charset=utf-8"},
-                            json.dumps({"status": "error", "message": "Unauthorized"}))
+        auth_runtime.raise_unauthorized()
 
 
 def _require_platform_admin():
@@ -287,11 +166,7 @@ def _require_tenant_manage():
 
 
 def _raise_forbidden(message: str = "Forbidden"):
-    raise web.HTTPError(
-        "403 Forbidden",
-        {"Content-Type": "application/json; charset=utf-8"},
-        json.dumps({"status": "error", "message": message}, ensure_ascii=False),
-    )
+    auth_runtime.raise_forbidden(message)
 
 
 def _get_upload_dir(agent_id: str = "", tenant_id: str = "", binding_id: str = "") -> str:
@@ -369,90 +244,78 @@ def _parse_bool(value, default: bool = True) -> bool:
 
 
 def _get_agent_service():
-    from cow_platform.services.agent_service import AgentService
+    from channel.web import service_registry
 
-    return AgentService()
+    return service_registry.get_agent_service()
 
 
 def _get_mcp_server_service():
-    from cow_platform.services.mcp_server_service import TenantMcpServerService
+    from channel.web import service_registry
 
-    return TenantMcpServerService()
+    return service_registry.get_mcp_server_service()
 
 
 def _get_tenant_service():
-    from cow_platform.services.tenant_service import TenantService
+    from channel.web import service_registry
 
-    return TenantService()
+    return service_registry.get_tenant_service()
 
 
 def _get_tenant_user_service():
-    from cow_platform.services.tenant_user_service import TenantUserService
+    from channel.web import service_registry
 
-    return TenantUserService()
+    return service_registry.get_tenant_user_service()
 
 
 def _get_model_config_service():
-    from cow_platform.services.model_config_service import ModelConfigService
+    from channel.web import service_registry
 
-    return ModelConfigService()
+    return service_registry.get_model_config_service()
 
 
 def _get_channel_config_service():
-    from cow_platform.services.channel_config_service import ChannelConfigService
+    from channel.web import service_registry
 
-    return ChannelConfigService()
+    return service_registry.get_channel_config_service()
 
 
 def _get_binding_service():
-    from cow_platform.services.binding_service import ChannelBindingService
+    from channel.web import service_registry
 
-    return ChannelBindingService()
+    return service_registry.get_binding_service()
 
 
 def _get_usage_service():
-    from cow_platform.services.usage_service import UsageService
+    from channel.web import service_registry
 
-    return UsageService()
+    return service_registry.get_usage_service()
 
 
 def _get_session_repository():
-    from cow_platform.repositories.session_repository import SessionRepository
+    from channel.web import service_registry
 
-    return SessionRepository()
+    return service_registry.get_session_repository()
 
 
 def _get_runtime_adapter():
-    from cow_platform.adapters.cowagent_runtime_adapter import CowAgentRuntimeAdapter
+    from channel.web import service_registry
 
-    return CowAgentRuntimeAdapter()
+    return service_registry.get_runtime_adapter()
 
 
 def _restart_channel_config_runtime(channel_config_id: str):
-    try:
-        from cow_platform.runtime.channel_manager import get_channel_manager
+    from channel.web import service_registry
 
-        mgr = get_channel_manager()
-        if not mgr:
-            return
-        definition = _get_channel_config_service().resolve_channel_config(channel_config_id=channel_config_id)
-        if definition.enabled:
-            mgr.start_channel_config(definition)
-        else:
-            mgr.remove_channel_config(channel_config_id)
-    except Exception as e:
-        logger.warning(f"[WebChannel] channel config runtime refresh skipped: {e}")
+    service_registry.restart_channel_config_runtime(
+        channel_config_id,
+        channel_config_service_factory=_get_channel_config_service,
+    )
 
 
 def _stop_channel_config_runtime(channel_config_id: str):
-    try:
-        from cow_platform.runtime.channel_manager import get_channel_manager
+    from channel.web import service_registry
 
-        mgr = get_channel_manager()
-        if mgr:
-            mgr.remove_channel_config(channel_config_id)
-    except Exception as e:
-        logger.warning(f"[WebChannel] channel config runtime stop skipped: {e}")
+    service_registry.stop_channel_config_runtime(channel_config_id)
 
 
 def _is_file_access_allowed(file_path: str) -> bool:
@@ -529,39 +392,9 @@ def _get_session_store(agent_id: str = "", tenant_id: str = "", binding_id: str 
 
 
 def _generate_session_title(user_message: str, assistant_reply: str = "") -> str:
-    """
-    Generate a short session title by calling the current bot's reply_text.
-    """
-    import re
-    fallback = user_message[:50].split("\n")[0].strip() or "New Chat"
-    try:
-        from bridge.bridge import Bridge
-        from models.session_manager import Session
-        bot = Bridge().get_bot("chat")
+    from agent.chat.session_service import generate_session_title
 
-        prompt_parts = [f"User: {user_message[:300]}"]
-        if assistant_reply:
-            prompt_parts.append(f"Assistant: {assistant_reply[:300]}")
-
-        session = Session("__title_gen__", system_prompt="")
-        session.messages = [
-            {"role": "user", "content": (
-                "Generate a very short title (max 15 characters for Chinese, max 6 words for English) "
-                "summarizing this conversation. Return ONLY the title text, nothing else.\n\n"
-                + "\n".join(prompt_parts)
-            )}
-        ]
-
-        result = bot.reply_text(session)
-        raw = (result.get("content") or "").strip()
-        # Strip <think>...</think> reasoning blocks
-        title = re.sub(r'<think>.*?</think>', '', raw, flags=re.DOTALL).strip().strip('"\'')
-        logger.info(f"[WebChannel] Title generation result: '{title}' (len={len(title)})")
-        if title and len(title) <= 50:
-            return title
-    except Exception as e:
-        logger.warning(f"[WebChannel] Title generation failed: {e}")
-    return fallback
+    return generate_session_title(user_message, assistant_reply)
 
 
 class WebMessage(ChatMessage):
@@ -826,7 +659,7 @@ class WebChannel(ChatChannel):
             use_sse = json_data.get('stream', True)
             attachments = json_data.get('attachments', [])
             has_enable_thinking = 'enable_thinking' in json_data
-            enable_thinking = _parse_bool(json_data.get('enable_thinking'), True)
+            enable_thinking = _parse_bool(json_data.get('enable_thinking'), False)
             target = _resolve_runtime_target(
                 agent_id=json_data.get('agent_id', ''),
                 tenant_id=json_data.get('tenant_id', ''),

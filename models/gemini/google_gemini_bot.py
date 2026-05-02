@@ -334,6 +334,15 @@ class GoogleGeminiBot(Bot):
                 
                 # Convert role
                 gemini_role = "user" if role in ["user", "tool"] else "model"
+
+                if gemini_role == "model" and "_gemini_raw_parts" in msg:
+                    raw_parts = msg["_gemini_raw_parts"]
+                    if raw_parts:
+                        payload["contents"].append({
+                            "role": "model",
+                            "parts": raw_parts,
+                        })
+                        continue
                 
                 # Handle different content formats
                 parts = []
@@ -397,6 +406,14 @@ class GoogleGeminiBot(Bot):
                                 inline_image_count += 1
                             else:
                                 logger.warning(f"[Gemini] Skip invalid image block: {str(block)[:200]}")
+
+                        elif block_type == "tool_use":
+                            parts.append({
+                                "functionCall": {
+                                    "name": block.get("name", "unknown"),
+                                    "args": block.get("input") or {},
+                                }
+                            })
                             
                         elif block_type == "tool_result":
                             # Convert Claude tool_result to Gemini functionResponse
@@ -412,8 +429,7 @@ class GoogleGeminiBot(Bot):
                             except Exception:
                                 tool_result_data = {"result": tool_content}
                             
-                            # Find the tool name from previous messages
-                            # Look for the corresponding tool_call in model's message
+                            # Find the tool name from previous assistant tool_use blocks.
                             tool_name = None
                             for prev_msg in reversed(messages):
                                 if prev_msg.get("role") == "assistant":
@@ -427,13 +443,13 @@ class GoogleGeminiBot(Bot):
                                     if tool_name:
                                         break
                             
-                            # Gemini functionResponse format
-                            parts.append({
-                                "functionResponse": {
-                                    "name": tool_name or "unknown",
-                                    "response": tool_result_data
-                                }
-                            })
+                            fn_response = {
+                                "name": tool_name or "unknown",
+                                "response": tool_result_data,
+                            }
+                            if tool_use_id:
+                                fn_response["id"] = tool_use_id
+                            parts.append({"functionResponse": fn_response})
                             
                         elif "text" in block:
                             # Generic text field
@@ -601,10 +617,11 @@ class GoogleGeminiBot(Bot):
                 # Check for functionCall (per REST API docs)
                 if "functionCall" in part:
                     fc = part["functionCall"]
-                    logger.info(f"[Gemini] Function call detected: {fc.get('name')}")
+                    fc_id = fc.get("id") or f"call_{int(time.time() * 1000000)}"
+                    logger.info(f"[Gemini] Function call detected: {fc.get('name')} (id={fc_id})")
                     
                     tool_calls.append({
-                        "id": f"call_{int(time.time() * 1000000)}",
+                        "id": fc_id,
                         "type": "function",
                         "function": {
                             "name": fc.get("name"),
@@ -648,11 +665,14 @@ class GoogleGeminiBot(Bot):
         """Handle Gemini REST API stream response"""
         try:
             all_tool_calls = []
+            all_raw_parts = []
             has_sent_tool_calls = False
             has_content = False  # Track if any content was sent
             chunk_count = 0
             last_finish_reason = None
             last_safety_ratings = None
+            raw_chunks = []
+            non_text_part_keys = []
             
             for line in response.iter_lines():
                 if not line:
@@ -670,10 +690,15 @@ class GoogleGeminiBot(Bot):
                 try:
                     chunk_data = json.loads(line)
                     chunk_count += 1
+                    raw_chunks.append(chunk_data)
                     
                     candidates = chunk_data.get("candidates", [])
                     if not candidates:
-                        logger.debug("[Gemini] No candidates in chunk")
+                        prompt_feedback = chunk_data.get("promptFeedback")
+                        if prompt_feedback:
+                            logger.warning(f"[Gemini] promptFeedback in chunk: {prompt_feedback}")
+                        else:
+                            logger.debug(f"[Gemini] No candidates in chunk: {chunk_data}")
                         continue
                     
                     candidate = candidates[0]
@@ -688,10 +713,15 @@ class GoogleGeminiBot(Bot):
                     parts = content.get("parts", [])
                     
                     if not parts:
-                        logger.debug("[Gemini] No parts in candidate content")
+                        logger.debug(f"[Gemini] No parts in candidate content, candidate={candidate}")
                     
                     # Stream text content
                     for part in parts:
+                        if "text" not in part and "functionCall" not in part:
+                            for key in part.keys():
+                                if key not in non_text_part_keys:
+                                    non_text_part_keys.append(key)
+
                         if "text" in part and part["text"]:
                             has_content = True
                             yield {
@@ -709,23 +739,29 @@ class GoogleGeminiBot(Bot):
                         # Collect function calls
                         if "functionCall" in part:
                             fc = part["functionCall"]
-                            logger.info(f"[Gemini] Function call: {fc.get('name')}")
+                            logger.info(f"[Gemini] Function call: {fc.get('name')} (id={fc.get('id')})")
+                            fc_id = fc.get("id") or f"call_{int(time.time() * 1000000)}_{len(all_tool_calls)}"
                             all_tool_calls.append({
-                                "index": len(all_tool_calls),  # Add index to differentiate multiple tool calls
-                                "id": f"call_{int(time.time() * 1000000)}_{len(all_tool_calls)}",
+                                "index": len(all_tool_calls),
+                                "id": fc_id,
                                 "type": "function",
                                 "function": {
                                     "name": fc.get("name"),
                                     "arguments": json.dumps(fc.get("args", {}))
                                 }
                             })
+
+                    all_raw_parts.extend(parts)
                     
                 except json.JSONDecodeError as je:
-                    logger.debug(f"[Gemini] JSON decode error: {je}")
+                    logger.debug(f"[Gemini] JSON decode error: {je}, line={line[:500]}")
                     continue
             
             # Send tool calls if any were collected
             if all_tool_calls and not has_sent_tool_calls:
+                delta = {"tool_calls": all_tool_calls}
+                if all_raw_parts:
+                    delta["_gemini_raw_parts"] = all_raw_parts
                 yield {
                     "id": f"chatcmpl-{time.time()}",
                     "object": "chat.completion.chunk",
@@ -733,15 +769,40 @@ class GoogleGeminiBot(Bot):
                     "model": model_name,
                     "choices": [{
                         "index": 0,
-                        "delta": {"tool_calls": all_tool_calls},
+                        "delta": delta,
                         "finish_reason": None
                     }]
                 }
                 has_sent_tool_calls = True
+            elif not has_sent_tool_calls and all_raw_parts:
+                yield {
+                    "id": f"chatcmpl-{time.time()}",
+                    "object": "chat.completion.chunk",
+                    "created": int(time.time()),
+                    "model": model_name,
+                    "choices": [{
+                        "index": 0,
+                        "delta": {"_gemini_raw_parts": all_raw_parts},
+                        "finish_reason": None,
+                    }],
+                }
             
             # 如果返回空响应，记录详细警告
             if not has_content and not all_tool_calls:
-                logger.warning(f"[Gemini] ⚠️  Empty response detected!")
+                logger.warning(
+                    f"[Gemini] ⚠️  Empty response detected! chunks={chunk_count}, "
+                    f"finish_reason={last_finish_reason}, non_text_part_keys={non_text_part_keys}"
+                )
+                if last_safety_ratings:
+                    logger.warning(f"[Gemini] safetyRatings: {last_safety_ratings}")
+                try:
+                    for i, raw_chunk in enumerate(raw_chunks):
+                        chunk_text = json.dumps(raw_chunk, ensure_ascii=False)
+                        if len(chunk_text) > 2000:
+                            chunk_text = chunk_text[:2000] + f"...[truncated, total {len(chunk_text)} chars]"
+                        logger.warning(f"[Gemini] raw chunk[{i}]: {chunk_text}")
+                except Exception as dump_err:
+                    logger.warning(f"[Gemini] Failed to dump raw chunks: {dump_err}")
             
             # Final chunk
             yield {

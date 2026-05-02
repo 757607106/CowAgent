@@ -14,6 +14,7 @@ ZHIPU_AI = "zhipu"
 MOONSHOT = "moonshot"
 MiniMax = "minimax"
 DEEPSEEK = "deepseek"
+CUSTOM = "custom"  # custom OpenAI-compatible API; bot_type won't auto-switch on model name
 MODELSCOPE = "modelscope"
 
 # 模型列表
@@ -27,6 +28,7 @@ CLAUDE_35_SONNET = "claude-3-5-sonnet-latest"  # 带 latest 标签的模型名�
 CLAUDE_35_SONNET_1022 = "claude-3-5-sonnet-20241022"  # 带具体日期的模型名称，会固定为该日期发布的模型
 CLAUDE_35_SONNET_0620 = "claude-3-5-sonnet-20240620"
 CLAUDE_4_OPUS = "claude-opus-4-0"
+CLAUDE_4_7_OPUS = "claude-opus-4-7"      # Claude Opus 4.7
 CLAUDE_4_6_OPUS = "claude-opus-4-6"      # Claude Opus 4.6 - Agent推荐模型
 CLAUDE_4_SONNET = "claude-sonnet-4-0"    # Claude Sonnet 4.0
 CLAUDE_4_5_SONNET = "claude-sonnet-4-5"  # Claude Sonnet 4.5 - Agent推荐模型
@@ -101,6 +103,7 @@ MINIMAX_M2 = "MiniMax-M2"  # MiniMax M2
 MINIMAX_ABAB6_5 = "abab6.5-chat"  # MiniMax abab6.5
 
 # GLM (智谱AI)
+GLM_5_1 = "glm-5.1"  # 智谱 GLM-5.1 - Agent推荐模型
 GLM_5_TURBO = "glm-5-turbo"  # 智谱 GLM-5-Turbo - Latest
 GLM_5 = "glm-5"  # 智谱 GLM-5
 GLM_4 = "glm-4"
@@ -117,6 +120,7 @@ GLM_4_7 = "glm-4.7"  # 智谱 GLM-4.7 - Agent推荐模型
 MOONSHOT = "moonshot"
 KIMI_K2 = "kimi-k2"
 KIMI_K2_5 = "kimi-k2.5"
+KIMI_K2_6 = "kimi-k2.6"  # Kimi K2.6 - Agent推荐模型
 
 # Doubao (Volcengine Ark)
 DOUBAO = "doubao"
@@ -151,7 +155,7 @@ MODELSCOPE_MODEL_LIST = ["deepseek-ai/DeepSeek-R1-0528", "deepseek-ai/DeepSeek-R
 
 MODEL_LIST = [
               # Claude
-              CLAUDE3, CLAUDE_4_6_SONNET, CLAUDE_4_6_OPUS, CLAUDE_4_OPUS, CLAUDE_4_5_SONNET, CLAUDE_4_SONNET, CLAUDE_3_OPUS, CLAUDE_3_OPUS_0229, 
+              CLAUDE3, CLAUDE_4_6_SONNET, CLAUDE_4_7_OPUS, CLAUDE_4_6_OPUS, CLAUDE_4_OPUS, CLAUDE_4_5_SONNET, CLAUDE_4_SONNET, CLAUDE_3_OPUS, CLAUDE_3_OPUS_0229,
               CLAUDE_35_SONNET, CLAUDE_35_SONNET_1022, CLAUDE_35_SONNET_0620, CLAUDE_3_SONNET, CLAUDE_3_HAIKU, 
               "claude", "claude-3-haiku", "claude-3-sonnet", "claude-3-opus", "claude-3.5-sonnet",
               
@@ -179,12 +183,12 @@ MODEL_LIST = [
               MiniMax, MINIMAX_M2_7, MINIMAX_M2_7_HIGHSPEED, MINIMAX_M2_5, MINIMAX_M2_1, MINIMAX_M2_1_LIGHTNING, MINIMAX_M2, MINIMAX_ABAB6_5,
 
               # GLM
-              ZHIPU_AI, GLM_5_TURBO, GLM_5, GLM_4, GLM_4_PLUS, GLM_4_flash, GLM_4_LONG, GLM_4_ALLTOOLS,
+              ZHIPU_AI, GLM_5_1, GLM_5_TURBO, GLM_5, GLM_4, GLM_4_PLUS, GLM_4_flash, GLM_4_LONG, GLM_4_ALLTOOLS,
               GLM_4_0520, GLM_4_AIR, GLM_4_AIRX, GLM_4_7,
 
               # Kimi
               MOONSHOT, "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k",
-              KIMI_K2, KIMI_K2_5,
+              KIMI_K2_6, KIMI_K2_5, KIMI_K2,
 
               # Doubao
               DOUBAO, DOUBAO_SEED_2_CODE, DOUBAO_SEED_2_PRO, DOUBAO_SEED_2_LITE, DOUBAO_SEED_2_MINI,

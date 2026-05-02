@@ -18,10 +18,12 @@ available_setting = {
     "open_ai_api_base": "https://api.openai.com/v1",
     "claude_api_base": "https://api.anthropic.com/v1",  # claude api base
     "gemini_api_base": "https://generativelanguage.googleapis.com",  # gemini api base
+    "custom_api_key": "",  # custom OpenAI-compatible provider api key (used when bot_type is "custom")
+    "custom_api_base": "",  # custom OpenAI-compatible provider api base (used when bot_type is "custom")
     "proxy": "",  # openai使用的代理
     # chatgpt模型， 当use_azure_chatgpt为true时，其名称为Azure上model deployment名称
     "model": "gpt-3.5-turbo",  # 可选择: gpt-4o, pt-4o-mini, gpt-4-turbo, claude-3-sonnet, wenxin, moonshot, qwen-turbo, xunfei, glm-4, minimax, gemini等模型，全部可选模型详见common/const.py文件
-    "bot_type": "",  # 可选配置，使用兼容openai格式的三方服务时候，需填"openai"（历史值"chatGPT"仍兼容）。bot具体名称详见common/const.py文件，如不填根据model名称判断
+    "bot_type": "",  # 可选配置，使用兼容openai格式的三方服务时候，需填"openai"或"custom"（历史值"chatGPT"仍兼容）。bot具体名称详见common/const.py文件，如不填根据model名称判断
     "use_azure_chatgpt": False,  # 是否使用azure的chatgpt
     "azure_deployment_id": "",  # azure 模型部署名称
     "azure_api_version": "",  # azure api版本
@@ -94,6 +96,7 @@ available_setting = {
     "qwen_node_id": "",  # 流程编排模型用到的id，如果没有用到qwen_node_id，请务必保持为空字符串
     # 阿里灵积(通义新版sdk)模型api key
     "dashscope_api_key": "",
+    "dashscope_api_base": "https://dashscope.aliyuncs.com",
     # Google Gemini Api Key
     "gemini_api_key": "",
     "embedding_model": "text-embedding-3-small",  # 长期记忆向量模型
@@ -101,6 +104,7 @@ available_setting = {
     "embedding_api_base": "",  # 长期记忆向量 API base，留空时可复用安全的 open_ai_api_base
     "memory_jsonb_vector_scan_limit": 2000,  # 无 pgvector 时 JSONB 向量回退最多扫描的候选块数量
     "tools": {},  # Agent 工具配置统一命名
+    "skill": {},  # Skill runtime config; nested keys are flattened to SKILL_<NAME>_<KEY> env vars
     # 语音设置
     "speech_recognition": True,  # 是否开启语音识别
     "group_speech_recognition": False,  # 是否开启群组语音识别
@@ -222,7 +226,7 @@ available_setting = {
     "agent_max_context_tokens": 50000,  # Agent模式下最大上下文tokens
     "agent_max_context_turns": 20,  # Agent模式下最大上下文记忆轮次
     "agent_max_steps": 20,  # Agent模式下单次运行最大决策步数
-    "enable_thinking": True,  # Whether to enable deep thinking for web channel
+    "enable_thinking": False,  # Whether to enable deep thinking for web channel
     "knowledge": True,  # 是否开启知识库功能
 }
 
@@ -354,6 +358,8 @@ config = Config()
 _CONFIG_TO_ENV = {
     "open_ai_api_key": "OPENAI_API_KEY",
     "open_ai_api_base": "OPENAI_API_BASE",
+    "custom_api_key": "CUSTOM_API_KEY",
+    "custom_api_base": "CUSTOM_API_BASE",
     "linkai_api_key": "LINKAI_API_KEY",
     "linkai_api_base": "LINKAI_API_BASE",
     "claude_api_key": "CLAUDE_API_KEY",
@@ -361,14 +367,15 @@ _CONFIG_TO_ENV = {
     "gemini_api_key": "GEMINI_API_KEY",
     "gemini_api_base": "GEMINI_API_BASE",
     "dashscope_api_key": "DASHSCOPE_API_KEY",
+    "dashscope_api_base": "DASHSCOPE_API_BASE",
     "minimax_api_key": "MINIMAX_API_KEY",
     "minimax_api_base": "MINIMAX_API_BASE",
     "zhipu_ai_api_key": "ZHIPU_AI_API_KEY",
     "zhipu_ai_api_base": "ZHIPU_AI_API_BASE",
     "moonshot_api_key": "MOONSHOT_API_KEY",
-    "moonshot_api_base": "MOONSHOT_API_BASE",
+    "moonshot_base_url": "MOONSHOT_API_BASE",
     "ark_api_key": "ARK_API_KEY",
-    "ark_api_base": "ARK_API_BASE",
+    "ark_base_url": "ARK_API_BASE",
     "deepseek_api_key": "DEEPSEEK_API_KEY",
     "deepseek_api_base": "DEEPSEEK_API_BASE",
     "modelscope_api_key": "MODELSCOPE_API_KEY",
@@ -461,15 +468,49 @@ def _apply_environment_overrides():
         config[config_key] = _parse_env_value(value)
 
 
+def _iter_skill_env_values(skill_section):
+    """Yield flattened skill config env pairs."""
+    if not isinstance(skill_section, dict):
+        return
+    for skill_name, skill_conf in skill_section.items():
+        if not isinstance(skill_conf, dict):
+            continue
+        name_part = str(skill_name).replace("-", "_").upper()
+        for key, val in skill_conf.items():
+            if val is None or val == "":
+                continue
+            env_key = "SKILL_{}_{}".format(name_part, str(key).upper())
+            yield env_key, str(val)
+
+
+def build_config_environment(overrides=None) -> dict:
+    """
+    Build environment variables from effective config plus optional overrides.
+
+    Used both during startup sync and by subprocess tools under runtime-scoped
+    platform configuration. The process environment itself is not mutated here.
+    """
+    overrides = dict(overrides or {})
+    env_values = {}
+    for conf_key, env_key in _CONFIG_TO_ENV.items():
+        val = overrides[conf_key] if conf_key in overrides else config.get(conf_key, "")
+        if val:
+            env_values[env_key] = str(val)
+
+    skill_section = overrides.get("skill") if "skill" in overrides else config.get("skill", {})
+    env_values.update(dict(_iter_skill_env_values(skill_section)))
+    return env_values
+
+
 def _sync_config_to_environment(force_keys=None):
     force_keys = set(force_keys or ())
     injected = 0
-    for conf_key, env_key in _CONFIG_TO_ENV.items():
-        if env_key not in os.environ or conf_key in force_keys:
-            val = config.get(conf_key, "")
-            if val:
-                os.environ[env_key] = str(val)
-                injected += 1
+    for env_key, val in build_config_environment().items():
+        conf_key = _ENV_TO_CONFIG.get(env_key)
+        skill_forced = env_key.startswith("SKILL_") and "skill" in force_keys
+        if env_key not in os.environ or conf_key in force_keys or skill_forced:
+            os.environ[env_key] = val
+            injected += 1
     if injected:
         logger.info("[INIT] Synced {} config values to environment variables".format(injected))
 

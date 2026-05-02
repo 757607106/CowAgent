@@ -71,7 +71,7 @@ def _decode_content(raw_content: Any) -> Any:
     return raw_content
 
 
-def _group_into_display_turns(rows: List[tuple]) -> List[Dict[str, Any]]:
+def _group_into_display_turns(rows: List[tuple], include_thinking: bool = True) -> List[Dict[str, Any]]:
     groups: List[tuple] = []
     cur_user: Optional[tuple] = None
     cur_rest: List[tuple] = []
@@ -114,6 +114,8 @@ def _group_into_display_turns(rows: List[tuple]) -> List[Dict[str, Any]]:
                             continue
                         btype = block.get("type")
                         if btype == "thinking":
+                            if not include_thinking:
+                                continue
                             txt = block.get("thinking", "").strip()
                             if txt:
                                 steps.append({"type": "thinking", "content": txt})
@@ -410,8 +412,15 @@ class ConversationStore:
                     (self.tenant_id, self.agent_id, session_id),
                 ).fetchall()
 
+        try:
+            from config import conf
+
+            include_thinking = bool(conf().get("enable_thinking", False))
+        except Exception:
+            include_thinking = False
+
         plain_rows = [(row["role"], row["content"], row["created_at"]) for row in rows]
-        visible = _group_into_display_turns(plain_rows)
+        visible = _group_into_display_turns(plain_rows, include_thinking=include_thinking)
 
         visible_user_seqs: List[int] = []
         for row in rows:

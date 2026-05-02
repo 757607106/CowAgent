@@ -26,11 +26,23 @@
 - 数据库平台设置会覆盖内存配置，并同步到环境变量供子进程使用，避免旧环境变量压过平台数据库配置
 - 平台租户模式不再读取或保存全局 `user_datas.pkl`，运行期 `get_user_data()` 也返回 no-op 视图，避免不同租户的外部用户 ID 复用 legacy 用户级模型/API key
 - `platform_start_channel_runtimes` 默认关闭，用于把 Web 进程与租户渠道 runtime worker 解耦
+- `build_config_environment()` 统一生成子进程/Skill 运行时环境变量，平台 runtime scope 与数据库配置优先于宿主环境变量
+- 吸收 2.0.7 `skill` 配置结构，平台图像生成能力通过 `skill.image-generation.model` 注入内置 Skill
 
 升级关注点：
 
 - 如果上游调整全局配置读取方式，需要重新确认优先级仍是 runtime scope > platform_settings > environment > 内置默认值
 - 如果上游重新引入用户级 legacy 配置持久化，需要确认平台模式不会落回全局 pickle 文件或全局内存字典
+- 如果上游新增 Skill 运行脚本所需环境变量，需要统一接入 `build_config_environment()`，不要在调用点重复拼环境变量
+
+### `cow_platform/runtime/environment.py`
+
+- 平台子进程环境的统一构造入口，合并宿主环境、当前 runtime scope、显式覆盖和调用点额外变量
+- `bash` 工具和平台图像生成服务都复用该入口，避免各自重复拼接密钥、base URL 和 Skill env
+
+升级关注点：
+
+- 如果上游新增子进程型工具或 Skill 执行入口，应优先复用 `build_runtime_environment()`，不要在核心通道或工具内重新拼平台环境变量
 
 ### `cow_platform/db/postgres.py`
 
@@ -55,6 +67,15 @@
 
 - 如果上游调整渠道生命周期，需要确认托管渠道仍按 `channel_config_id` 获取 lease 后才能启动
 - 如果上游新增渠道 singleton 或启动约束，需要在这里统一维护，不要分散到 `app.py` 或 Web handler
+
+### `cow_platform/runtime/channel_target_resolver.py`
+
+- 托管渠道消息的外部身份、binding、tenant user 解析集中在该 runtime 模块
+- `ChatChannel` 只委托解析结果，不直接导入 binding / tenant user service，避免核心通道继续膨胀
+
+升级关注点：
+
+- 如果上游调整渠道消息字段，需要先更新这里的身份抽取和 fail-closed 策略，再验证所有非 Web 托管渠道
 
 ### `cow_platform/db/migrate.py`
 
@@ -91,6 +112,15 @@
 
 - 如果上游调整 scheduler 存储接口，需要保留 tenant/agent scope，不能重新把任务写回全局 `tasks.json`
 
+### `cow_platform/runtime/scheduler_runtime.py`
+
+- 平台 scheduler 的 DB store 创建、任务 scope 解析、渠道 runtime overrides 和结果派发集中在该模块
+- `agent/tools/scheduler/integration.py` 只保留调度执行编排；legacy JSON 回退放在 `agent/tools/scheduler/legacy_runtime.py`
+
+升级关注点：
+
+- 如果上游调整 scheduler 执行链路，需要保留平台 runtime 派发边界，避免重新在 integration 里拼 DB/channel 平台细节
+
 ### `cow_platform/services/platform_config_service.py`
 
 - `platform_settings` 表承载平台级运行时配置，替代 Web 控制台写 `config.json`
@@ -125,10 +155,12 @@
 - 增加按 `workspace_root / db_path` 维度缓存 `ConversationStore`
 - 平台模式下支持按 Agent 工作区隔离会话数据库
 - 增加测试辅助的缓存重置函数
+- 会话历史读取按 `enable_thinking` 决定是否返回 reasoning/thinking 内容，默认关闭以避免平台 Web 历史渲染大段推理文本
 
 升级关注点：
 
 - 如果上游调整会话存储实现，需要重新确认多 Agent 隔离是否仍然成立
+- 如果上游调整 thinking 存储字段，需要确认关闭展示时不会把推理内容回放到 Web 历史
 
 ### `agent/memory/storage.py`
 
@@ -144,18 +176,33 @@
 
 - 文件类工具统一限制在当前 Agent 工作区内访问，绝对路径、`~` 路径或 `..` 越界路径不能读取/写入其他租户工作区
 - `bash` 工具运行目录仍是当前 Agent 工作区，并在执行前拦截明显的跨工作区路径访问；大输出临时文件也保存到当前工作区 `tmp/`
+- `bash` 工具执行 Skill 脚本前通过 `build_runtime_environment()` 注入平台 runtime 配置，避免子进程读取旧的宿主环境变量
 
 升级关注点：
 
 - 如果上游调整 `read/write/edit/ls/send/bash` 或新增文件访问类工具，需要重新接入工作区边界校验，避免租户间通过绝对路径串读文件
+- 如果上游新增需要子进程运行的工具，需要复用统一环境构造逻辑，避免平台 DB 配置和 legacy env 分叉
 
 ### `agent/protocol/agent_stream.py`
 
 - 思考输出开关会读取当前平台 runtime context
+- 默认不展示 thinking/reasoning；开启时只清理 `<think>` 标签但保留内容，关闭时过滤整段 thinking 输出
+- 空响应重试保留工具调用结果，避免模型先返回空文本但带 `tool_calls` 时被错误降级为 fallback
+- Gemini 原生多模态/tool call 的原始 parts 会随 assistant 消息保存，供下一轮 Gemini 请求恢复
 
 升级关注点：
 
 - 如果上游调整流式输出或 thinking 控制，需要重新检查平台 Agent 策略是否仍能生效
+- 如果上游调整空响应重试、工具调用或 Gemini parts 结构，需要确认平台流式协议不会丢失 tool_calls / native parts
+
+### `agent/chat/session_service.py`
+
+- 仅吸收 2.0.7 会话标题生成辅助函数，Web 会话生命周期仍保留在平台既有 handler / store 路径
+- 不引入上游完整 `SessionService` 类，避免和平台 tenant/agent/binding aware 会话管理形成第二套生命周期逻辑
+
+升级关注点：
+
+- 如果上游继续扩展会话服务，需要优先提取可复用纯函数；会话创建、更新、分页仍应落在平台现有 scoped handler
 
 ### `bridge/agent_initializer.py`
 
@@ -177,12 +224,15 @@
 - 运行中请求取消也使用同一 scoped key，避免相同 `session_id` 在不同租户/Agent 间互相取消
 - 接入 runtime scope
 - Agent cache 记录解析时的 config_version；跨进程配置变更后，下一次请求会按 DB 版本自动重建本进程缓存
-- 接入 Phase 3 的 quota 校验和 usage 记录
+- 通过 `AgentGovernanceService` 接入 Phase 3 的 quota 校验和 usage 记录，AgentBridge 不直接拼计费/用量细节
+- 文件回复构造集中到 `bridge/file_reply.py`，AgentBridge 只保留兼容 wrapper
+- 会话消息持久化集中到 `agent/memory/conversation_persistence.py`，避免 AgentBridge 与 ChatService 各自维护一套追加逻辑
 - 平台租户模式不再把模型密钥写入全局 `~/.cow/.env`
 
 升级关注点：
 
 - 如果上游重构 `agent_reply()` 或消息持久化逻辑，需要重新验证 usage 与 quota 的接入点
+- 如果上游新增文件发送或会话持久化分支，需要优先复用 `bridge/file_reply.py` 和 `agent/memory/conversation_persistence.py`
 - 如果上游调整 preemption/cancel 逻辑，需要确认取消 key 仍与 Agent 实例缓存 key 一致
 - 如果上游新增 AgentBridge 缓存入口，需要接入 config_version 检查，不能只做进程内清理
 
@@ -190,10 +240,39 @@
 
 - 平台模式下 Agent 模型解析必须命中 DB model config；`build_legacy_model_config()` 只允许非平台 legacy 模式使用
 - 平台/租户模型配置变更会 bump platform 或 tenant config_version，触发跨进程 Agent cache 失效
+- 吸收 2.0.7 新模型枚举时，同步更新平台模型列表，避免 Web 端可选模型和运行时模型常量不一致
 
 升级关注点：
 
 - 如果上游新增模型配置 fallback，需要确认平台模式不会重新从 `config.py` / 环境变量拼出租户运行时模型配置
+
+### `cow_platform/services/capability_config_service.py`
+
+- 平台模型能力配置继续作为文生图/语音/多模态等能力路由的真源
+- 文生图能力在构造 runtime overrides 时同步写入 `skill.image-generation.model`，由 2.0.7 内置图像生成 Skill 执行
+
+升级关注点：
+
+- 如果上游新增或调整图像生成 Skill 配置字段，需要先接到 capability service，再由平台图像生成服务统一调用 Skill，不能恢复多套文生图执行路径
+
+### `cow_platform/services/vision_capability_service.py`
+
+- 平台多模态能力解析集中在该服务，负责从 runtime context 找到 `multimodal` capability 并转换为 Vision provider 配置
+- `agent/tools/vision/vision.py` 只负责 Vision 工具协议和 provider 调用，不再直接查询 capability service 或 provider 映射
+
+升级关注点：
+
+- 如果上游调整 Vision 工具或新增多模态厂商，优先更新该服务和 capability provider 映射，避免工具内部再次出现平台 DB 查询逻辑
+
+### `cow_platform/services/image_generation_service.py`
+
+- 平台 capability 文生图的唯一执行服务，负责调用 2.0.7 `skills/image-generation` 脚本、解析输出和转换错误
+- 使用 `build_runtime_environment()` 注入租户模型、URL、key、Skill model 和输出目录
+- `ChatChannel` 只负责判断是否命中平台 capability，并把服务结果转换为通道 Reply
+
+升级关注点：
+
+- 如果上游调整图像生成 Skill 入参、输出协议或错误格式，只修改该服务和对应测试，不要把 subprocess/env 逻辑放回 `channel/chat_channel.py`
 
 ### `agent/skills/manager.py`
 
@@ -256,20 +335,26 @@
 - Web 内部轮询队列改为 scoped session key
 - 租户鉴权下将历史默认值 `tenant_id=default` 解析为当前登录租户，避免 Web 缺省参数误触发跨租户拒绝
 - Route handler 已按功能拆到 `channel/web/handlers/`，`web_channel.py` 只保留 WebChannel 主类、运行时 helper 和兼容导出
+- 平台 service factory 和渠道 runtime 刷新逻辑集中到 `channel/web/service_registry.py`，`web_channel.py` 保留兼容 wrapper 供 handler 和测试注入
+- Cookie、token、登录、注册和鉴权响应构造集中到 `channel/web/auth_runtime.py`，`web_channel.py` 保留兼容 wrapper
 
 升级关注点：
 
 - 如果上游重构 web 控制台 API 或消息流处理，需要重新验证 binding 路由和 scoped queue
 - 如果上游调整租户参数默认值，需要重新确认 Web 与 FastAPI 的租户 scope 解析仍一致
 - 如果上游新增 Web API，优先放到对应 `channel/web/handlers/*` 模块，不要继续扩大 `web_channel.py`
+- 如果上游新增 Web 侧平台服务依赖，优先放到 service registry，不要在 `web_channel.py` 顶层散落 service import
+- 如果上游调整 Web 鉴权流程，应合并到 `auth_runtime.py`，不要在 route handler 或 WebChannel 里重新拼 token/cookie 逻辑
 
 ### `channel/web/handlers/configuration.py`
 
 - 多租户平台模式下 `/config` 的写入落到 PostgreSQL `platform_settings`，不再写项目根目录 `config.json`
+- `enable_thinking` 默认关闭，与平台 Agent 策略、内核流式协议和 modern 前端默认值保持一致
 
 升级关注点：
 
 - 如果上游调整 Web 配置接口，需要确认平台模式下仍不触碰根 `config.json`
+- 如果上游重新修改 thinking 默认值，需要同时复核 configuration handler、Web chat 请求和前端配置页
 
 ### `channel/web/frontend_layout.py`
 
@@ -297,11 +382,14 @@
 - 消息 context 会注入 `binding_id`、`tenant_id`、`agent_id`、租户用户身份和 config overrides
 - 对带 `channel_config_id` / `source_tenant_id` 的托管渠道强制重新解析绑定；解析不到或租户不一致时 fail-closed，禁止落回 legacy/global Agent
 - preemption 取消 key 按 `tenant_id + agent_id + session_id` 生成，避免跨租户同 session_id 互相取消
+- 平台 capability 文生图统一委托 `cow_platform/services/image_generation_service.py`，避免在核心通道内保留 subprocess/env 细节
+- 托管渠道 binding 和租户用户解析委托 `cow_platform/runtime/channel_target_resolver.py`，核心通道不直接依赖平台 service
 
 升级关注点：
 
 - 如果上游调整终端/聊天通道消息上下文，需要重新验证 binding 解析和身份映射
 - 如果上游调整消息排队/取消逻辑，需要重新验证 scoped cancel key
+- 如果上游调整图像生成 Skill 输出协议，应更新平台图像生成服务和对应测试，不要新增第二套执行逻辑
 
 ### `agent/tools/scheduler/*`
 
@@ -309,6 +397,7 @@
 - 任务创建时写入 `tenant_id`、`agent_id`、`binding_id`、`channel_config_id`、`session_id`
 - 调度执行时把任务作用域重新注入 Context，并按 `channel_config_id` 激活渠道运行时覆盖
 - legacy JSON store 保留为数据库不可用时的兼容回退
+- `skill_call` 执行完成后必须通过统一渠道派发结果，避免任务执行成功但用户收不到消息
 
 升级关注点：
 
@@ -398,11 +487,14 @@
 - `/chat` 由 `channel/web/frontend_layout.py` 固定渲染 `frontend/modern/dist/index.html`
 - `/assets/*` 仅从 `frontend/modern/dist/` 解析构建产物
 - 外部渠道 binding 表单按租户渠道配置过滤，并要求非 Web 绑定选择 `channel_config_id`
+- 吸收 2.0.7 Web 优化时只改 modern 前端：聊天区智能滚动、reasoning 渲染上限、知识库根文件/多级目录展示和能力配置图像生成选项
+- ChatPage 的会话 ID、scope storage key 和会话列表分组逻辑抽到 `src/chat/sessionState.tsx`，页面组件只保留交互编排
 
 升级关注点：
 
 - 如果上游调整 Web 控制台入口，需要重新确认 modern 前端构建目录和 `/assets/*` 路由仍一致
 - 如果上游重构渠道接入页面，需要重新验证外部渠道绑定不能保存为空 `channel_config_id`
+- 如果上游更新旧静态 UI，不要恢复 legacy 静态前端；对应能力应迁移到 modern 前端
 
 ### `pyproject.toml`
 

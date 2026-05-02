@@ -1,4 +1,5 @@
 from bridge.context import Context, ContextType
+from bridge.reply import Reply, ReplyType
 from channel.chat_channel import ChatChannel
 from cow_platform.runtime.namespaces import build_namespace
 from cow_platform.services.scheduler_task_store import PlatformSchedulerTaskStore
@@ -83,3 +84,51 @@ def test_chat_channel_cancel_key_is_tenant_agent_scoped():
     key = ChatChannel._cancel_session_key(object(), context)
 
     assert key == build_namespace("tenant-c", "agent-c", "session-c")
+
+
+def test_scheduler_skill_call_sends_agent_result(monkeypatch):
+    from agent.tools.scheduler import integration
+
+    sent = {}
+
+    class FakeAgentBridge:
+        def agent_reply(self, query, context=None, on_event=None, clear_history=False):
+            sent["query"] = query
+            sent["context"] = context
+            sent["clear_history"] = clear_history
+            return Reply(ReplyType.TEXT, "技能执行完成")
+
+    def fake_send(channel_type, reply, context, task):
+        sent["channel_type"] = channel_type
+        sent["reply"] = reply
+        sent["send_context"] = context
+        sent["task"] = task
+        return True
+
+    monkeypatch.setattr(integration, "_send_reply_via_channel", fake_send)
+
+    task = {
+        "id": "task-skill",
+        "tenant_id": "tenant-a",
+        "agent_id": "agent-a",
+        "action": {
+            "type": "skill_call",
+            "skill_name": "report",
+            "call_params": {"day": "today"},
+            "result_prefix": "日报",
+            "receiver": "session-a",
+            "is_group": False,
+            "channel_type": "web",
+        },
+    }
+
+    integration._execute_skill_call(task, FakeAgentBridge())
+
+    assert sent["query"] == "Use report skill with day=today"
+    assert sent["clear_history"] is False
+    assert sent["channel_type"] == "web"
+    assert sent["reply"].type == ReplyType.TEXT
+    assert sent["reply"].content == "日报\n\n技能执行完成"
+    assert sent["send_context"]["tenant_id"] == "tenant-a"
+    assert sent["send_context"]["agent_id"] == "agent-a"
+    assert sent["send_context"]["receiver"] == "session-a"

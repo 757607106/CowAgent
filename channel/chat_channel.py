@@ -4,6 +4,7 @@ import threading
 import time
 from asyncio import CancelledError
 from concurrent.futures import Future, ThreadPoolExecutor
+from urllib.parse import quote
 
 from bridge.bridge import Bridge
 from bridge.context import *
@@ -42,105 +43,13 @@ class ChatChannel(Channel):
 
     def _apply_platform_runtime_target(self, context: Context):
         """Best-effort binding resolution for non-web channels using channel metadata."""
-        if context is None or not conf().get("agent", False):
-            return context
+        from cow_platform.runtime.channel_target_resolver import resolve_channel_runtime_target
 
-        channel_config_id = str(context.get("channel_config_id", "") or "").strip()
-        source_tenant_id = str(context.get("source_tenant_id", "") or "").strip()
-        tenant_managed = bool(channel_config_id or source_tenant_id)
-        if (
-            not tenant_managed
-            and (context.get("binding_id") or (context.get("tenant_id") and context.get("agent_id")))
-        ):
-            return context
-
-        cmsg = context.get("msg")
-        if cmsg is None:
-            if tenant_managed:
-                logger.warning(
-                    "[chat_channel] managed channel context missing message metadata: "
-                    f"tenant={source_tenant_id}, channel_config_id={channel_config_id}"
-                )
-                return None
-            return context
-
-        external_app_id = str(getattr(cmsg, "to_user_id", "") or "").strip()
-        external_chat_id = str(getattr(cmsg, "other_user_id", "") or "").strip()
-        external_user_id = str(
-            getattr(cmsg, "actual_user_id", "") or getattr(cmsg, "from_user_id", "") or ""
-        ).strip()
-
-        if not any((external_app_id, external_chat_id, external_user_id)):
-            if tenant_managed:
-                logger.warning(
-                    "[chat_channel] managed channel context missing external identity: "
-                    f"tenant={source_tenant_id}, channel_config_id={channel_config_id}"
-                )
-                return None
-            return context
-
-        try:
-            from cow_platform.services.binding_service import ChannelBindingService
-
-            binding = ChannelBindingService().resolve_binding_for_channel(
-                channel_type=context.get("channel_type", "") or self.channel_type,
-                channel_config_id=channel_config_id,
-                external_app_id=external_app_id,
-                external_chat_id=external_chat_id,
-                external_user_id=external_user_id,
-            )
-        except Exception as e:
-            logger.warning(f"[chat_channel] binding resolution failed: {e}")
-            if tenant_managed:
-                return None
-            return context
-
-        if binding is None:
-            if tenant_managed:
-                logger.warning(
-                    "[chat_channel] no tenant binding matched for managed channel: "
-                    f"tenant={source_tenant_id}, channel_config_id={channel_config_id}, "
-                    f"channel_type={context.get('channel_type', '') or self.channel_type}, "
-                    f"app={external_app_id}, chat={external_chat_id}, user={external_user_id}"
-                )
-                return None
-            return context
-
-        if source_tenant_id and binding.tenant_id != source_tenant_id:
-            logger.error(
-                "[chat_channel] tenant binding mismatch for managed channel: "
-                f"source_tenant={source_tenant_id}, binding_tenant={binding.tenant_id}, "
-                f"binding_id={binding.binding_id}, channel_config_id={channel_config_id}"
-            )
-            return None
-
-        context["binding_id"] = binding.binding_id
-        context["tenant_id"] = binding.tenant_id
-        context["agent_id"] = binding.agent_id
-        context["binding_metadata"] = {
-            "channel_config_id": context.get("channel_config_id", ""),
-            "external_app_id": external_app_id,
-            "external_chat_id": external_chat_id,
-            "external_user_id": external_user_id,
-        }
-
-        # Best-effort tenant user resolution for governance/authorization context.
-        if external_user_id:
-            try:
-                from cow_platform.services.tenant_user_service import TenantUserService
-
-                tenant_user = TenantUserService().resolve_user_by_identity(
-                    tenant_id=binding.tenant_id,
-                    channel_type=context.get("channel_type", "") or self.channel_type,
-                    external_user_id=external_user_id,
-                )
-                if tenant_user is not None:
-                    context["tenant_user_id"] = tenant_user.user_id
-                    context["tenant_user_role"] = tenant_user.role
-                    context["tenant_user_status"] = tenant_user.status
-            except Exception as e:
-                logger.warning(f"[chat_channel] tenant user resolution failed: {e}")
-        return context
+        return resolve_channel_runtime_target(
+            context,
+            channel_type=self.channel_type,
+            agent_enabled=bool(conf().get("agent", False)),
+        )
 
     # 根据消息构造context，消息内容相关的触发项写在这里
     def _compose_context(self, ctype: ContextType, content, **kwargs):
@@ -289,8 +198,28 @@ class ChatChannel(Channel):
         if capability_config is None:
             return super().build_reply_content(context.content, context)
         try:
-            image_context = Context(ContextType.IMAGE_CREATE, context.content, kwargs=dict(context.kwargs))
-            return Bridge().fetch_reply_content(context.content, image_context)
+            from cow_platform.services.image_generation_service import (
+                ImageGenerationError,
+                ImageGenerationService,
+                ImageGenerationSkillMissing,
+            )
+        except Exception as e:
+            logger.exception(f"[chat_channel] image generation service unavailable: {e}")
+            return Reply(ReplyType.ERROR, "图片生成失败，请稍后再试")
+
+        try:
+            result = ImageGenerationService().generate(
+                context.content,
+                metadata=dict(getattr(capability_config, "metadata", {}) or {}),
+            )
+            if context.get("request_id"):
+                preview_url = f"/api/file?path={quote(result.image_path)}"
+                return Reply(ReplyType.TEXT, f"![生成图片]({preview_url})")
+            return Reply(ReplyType.IMAGE_URL, f"file://{result.image_path}")
+        except ImageGenerationSkillMissing:
+            return Reply(ReplyType.ERROR, "图片生成失败：image-generation skill 未安装")
+        except ImageGenerationError:
+            return Reply(ReplyType.ERROR, "图片生成失败，请检查文生图模型配置")
         except Exception as e:
             logger.exception(f"[chat_channel] image generation capability failed: {e}")
             return Reply(ReplyType.ERROR, "图片生成失败，请稍后再试")

@@ -43,6 +43,8 @@ Try online (no deployment needed): [CowAgent](https://link-ai.tech/cowagent/crea
 
 ## Changelog
 
+> **2026.04.22:** [v2.0.7](https://github.com/zhayujie/CowAgent/releases/tag/2.0.7) — Image Generation Skill, new model support, knowledge base enhancements, Web Console improvements and bug fixes.
+
 > **2026.04.14:** [v2.0.6](https://github.com/zhayujie/CowAgent/releases/tag/2.0.6) — Knowledge Base, Deep Dream Memory Distillation, Smart Context Compression, Web Console upgrades.
 
 > **2026.04.01:** [v2.0.5](https://github.com/zhayujie/CowAgent/releases/tag/2.0.5) — Cow CLI, Skill Hub open source, Browser tool, WeCom Bot QR scan, and more.

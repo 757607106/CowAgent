@@ -2,38 +2,27 @@
 Integration module for scheduler with AgentBridge
 """
 
-import os
-from typing import Optional
 from config import conf
 from common.log import logger
-from common.utils import expand_path
 from bridge.context import Context, ContextType
 from bridge.reply import Reply, ReplyType
+from agent.tools.scheduler.legacy_runtime import LegacySchedulerRuntime
+from cow_platform.runtime.scheduler_runtime import PlatformSchedulerRuntime
 
 # Global scheduler service instance
 _scheduler_service = None
 _task_store = None
+_platform_runtime = PlatformSchedulerRuntime()
+_legacy_runtime = LegacySchedulerRuntime()
 
 
 def _create_task_store():
     """Use PostgreSQL as scheduler source of truth when platform DB is available."""
     try:
-        from cow_platform.db import connect
-        from cow_platform.services.scheduler_task_store import PlatformSchedulerTaskStore
-
-        with connect() as conn:
-            conn.execute("SELECT 1").fetchone()
-        logger.info("[Scheduler] Using platform DB task store")
-        return PlatformSchedulerTaskStore()
+        return _platform_runtime.create_task_store()
     except Exception as e:
         logger.warning(f"[Scheduler] Platform DB task store unavailable, falling back to workspace JSON: {e}")
-
-    from agent.tools.scheduler.task_store import TaskStore
-
-    workspace_root = expand_path(conf().get("agent_workspace", "~/cow"))
-    store_path = os.path.join(workspace_root, "scheduler", "tasks.json")
-    logger.warning(f"[Scheduler] Using legacy JSON task store: {store_path}")
-    return TaskStore(store_path)
+    return _legacy_runtime.create_task_store()
 
 
 def init_scheduler(agent_bridge) -> bool:
@@ -366,7 +355,7 @@ def _execute_skill_call(task: dict, agent_bridge):
         skill_params = action.get("call_params") or action.get("skill_params", {})
         result_prefix = action.get("result_prefix", "")
         receiver = action.get("receiver")
-        is_group = action.get("isgroup", False)
+        is_group = action.get("is_group", action.get("isgroup", False))
         channel_type = action.get("channel_type", "unknown")
         
         if not skill_name:
@@ -417,8 +406,11 @@ def _execute_skill_call(task: dict, agent_bridge):
                 # Add prefix if specified
                 if result_prefix:
                     content = f"{result_prefix}\n\n{content}"
-                
-                logger.info(f"[Scheduler] Task {task['id']} executed: skill result sent to {receiver}")
+
+                if _send_reply_via_channel(channel_type, Reply(ReplyType.TEXT, content), context, task):
+                    logger.info(f"[Scheduler] Task {task['id']} executed: skill result sent to {receiver}")
+                else:
+                    raise RuntimeError("send skill result returned false")
             else:
                 raise RuntimeError("No result from skill execution")
                 
@@ -436,59 +428,19 @@ def _execute_skill_call(task: dict, agent_bridge):
 
 
 def _task_scope(task: dict) -> dict[str, str]:
-    action = task.get("action", {}) if isinstance(task.get("action"), dict) else {}
-    return {
-        "tenant_id": str(task.get("tenant_id") or action.get("tenant_id") or ""),
-        "agent_id": str(task.get("agent_id") or action.get("agent_id") or ""),
-        "binding_id": str(task.get("binding_id") or action.get("binding_id") or ""),
-        "channel_config_id": str(task.get("channel_config_id") or action.get("channel_config_id") or ""),
-        "channel_type": str(action.get("channel_type") or task.get("channel_type") or ""),
-    }
+    return _platform_runtime.task_scope(task)
 
 
 def _apply_task_scope(context: Context, task: dict) -> None:
-    scope = _task_scope(task)
-    for key, value in scope.items():
-        if value:
-            context[key] = value
+    _platform_runtime.apply_task_scope(context, task)
 
 
 def _channel_runtime_overrides(task: dict) -> dict:
-    channel_config_id = _task_scope(task).get("channel_config_id", "")
-    if not channel_config_id:
-        return {}
-    try:
-        from cow_platform.services.channel_config_service import ChannelConfigService
-
-        service = ChannelConfigService()
-        definition = service.resolve_channel_config(channel_config_id=channel_config_id)
-        return service.build_runtime_overrides(definition)
-    except Exception as e:
-        logger.warning(f"[Scheduler] Failed to resolve channel runtime overrides for {channel_config_id}: {e}")
-        return {}
+    return _platform_runtime.channel_runtime_overrides(task)
 
 
 def _send_reply_via_channel(channel_type: str, reply: Reply, context: Context, task: dict) -> bool:
-    from channel.channel_factory import create_channel
-    from cow_platform.runtime.scope import activate_config_overrides
-
-    scope = _task_scope(task)
-    channel_config_id = scope.get("channel_config_id", "")
-    overrides = _channel_runtime_overrides(task)
-    with activate_config_overrides(overrides):
-        channel = create_channel(channel_type, singleton_key=channel_config_id)
-        if channel_config_id:
-            setattr(channel, "channel_config_id", channel_config_id)
-        if scope.get("tenant_id"):
-            setattr(channel, "tenant_id", scope["tenant_id"])
-        if channel_type == "web" and hasattr(channel, "request_to_session"):
-            request_id = context.get("request_id")
-            receiver = context.get("receiver")
-            if request_id and receiver:
-                channel.request_to_session[request_id] = receiver
-                logger.debug(f"[Scheduler] Registered request_id {request_id} -> session {receiver}")
-        channel.send(reply, context)
-    return True
+    return _platform_runtime.send_reply_via_channel(channel_type, reply, context, task)
 
 
 def attach_scheduler_to_tool(tool, context: Context = None):

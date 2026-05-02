@@ -43,7 +43,7 @@ _MAIN_MODEL_PROVIDER_NAME = "MainModel"
 # Auto-discovered as fallback vision providers when their API key is configured.
 # OpenAI and LinkAI are handled separately (raw HTTP providers), so not listed here.
 _DISCOVERABLE_MODELS = [
-    ("moonshot_api_key", const.MOONSHOT, const.KIMI_K2_5, "Moonshot"),
+    ("moonshot_api_key", const.MOONSHOT, const.KIMI_K2_6, "Moonshot"),
     ("ark_api_key", const.DOUBAO, const.DOUBAO_SEED_2_PRO, "Doubao"),
     ("dashscope_api_key", const.QWEN_DASHSCOPE, const.QWEN36_PLUS, "DashScope"),
     ("claude_api_key", const.CLAUDEAPI, const.CLAUDE_4_6_SONNET, "Claude"),
@@ -304,51 +304,31 @@ class Vision(BaseTool):
 
     def _build_capability_provider(self) -> Optional[VisionProvider]:
         try:
-            from cow_platform.runtime.scope import get_current_config_overrides, get_current_runtime_context
-            from cow_platform.services.capability_config_service import CapabilityConfigService, provider_bot_type
+            from cow_platform.services.vision_capability_service import VisionCapabilityService
 
-            runtime_context = get_current_runtime_context()
-            if runtime_context is None:
+            service = VisionCapabilityService()
+            provider = service.resolve_provider()
+            if provider is None:
                 return None
-            definition = CapabilityConfigService().resolve_for_runtime(runtime_context.tenant_id, "multimodal")
-            if definition is None:
-                return None
-            service = CapabilityConfigService()
-            capability_overrides = service.build_runtime_overrides(definition)
-            overrides = {**get_current_config_overrides(), **capability_overrides}
-            provider = definition.provider
-            if provider in {"openai", "custom", "linkai"}:
-                api_key = definition.api_key
-                api_base = definition.api_base or (
-                    "https://api.link-ai.tech" if provider == "linkai" else "https://api.openai.com/v1"
-                )
-                if not api_key:
-                    return None
+            if not provider.use_bot:
                 return VisionProvider(
-                    name=definition.display_name or provider,
-                    api_key=api_key,
-                    api_base=self._ensure_v1(api_base.rstrip("/")),
-                    model_override=definition.model_name,
-                    config_overrides=overrides,
+                    name=provider.name,
+                    api_key=provider.api_key,
+                    api_base=self._ensure_v1(provider.api_base.rstrip("/")),
+                    model_override=provider.model_name,
+                    config_overrides=dict(provider.config_overrides or {}),
                 )
-            bot_type = provider_bot_type(provider)
-            if not bot_type:
-                return None
-            from models.bot_factory import create_bot
-            from cow_platform.runtime.scope import activate_config_overrides
-
-            with activate_config_overrides(overrides):
-                bot = create_bot(bot_type)
-            if not hasattr(bot, "call_vision"):
+            bot = service.create_bot(provider)
+            if bot is None:
                 return None
             return VisionProvider(
-                name=definition.display_name or provider,
+                name=provider.name,
                 api_key="",
                 api_base="",
-                model_override=definition.model_name,
+                model_override=provider.model_name,
                 use_bot=True,
                 fallback_bot=bot,
-                config_overrides=overrides,
+                config_overrides=dict(provider.config_overrides or {}),
             )
         except Exception as e:
             logger.debug(f"[Vision] capability provider unavailable: {e}")
@@ -373,9 +353,9 @@ class Vision(BaseTool):
 
         try:
             if provider and provider.config_overrides:
-                from cow_platform.runtime.scope import activate_config_overrides, get_current_config_overrides
+                from cow_platform.services.vision_capability_service import activate_vision_provider_overrides
 
-                with activate_config_overrides({**get_current_config_overrides(), **provider.config_overrides}):
+                with activate_vision_provider_overrides(provider.config_overrides):
                     response = bot.call_vision(
                         image_url=image_url,
                         question=question,

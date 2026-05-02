@@ -70,6 +70,8 @@
 
 # 🏷 更新日志
 
+>**2026.04.22：** [2.0.7版本](https://github.com/zhayujie/CowAgent/releases/tag/2.0.7)，图像生成技能、新模型支持、知识库增强、Web 控制台优化及多项修复。
+
 >**2026.04.14：** [2.0.6版本](https://github.com/zhayujie/CowAgent/releases/tag/2.0.6)，知识库系统、梦境记忆模块、上下文智能压缩、Web 控制台多会话及多项优化。
 
 >**2026.04.01：** [2.0.5版本](https://github.com/zhayujie/CowAgent/releases/tag/2.0.5)，Cow CLI 命令系统、Skill Hub 开源、浏览器工具、企微扫码创建、多项优化和修复。
@@ -216,7 +218,7 @@ cow install-browser
   "agent_max_context_tokens": 50000,                          # Agent 模式下最大上下文 tokens，超出将自动智能压缩处理
   "agent_max_context_turns": 20,                              # Agent 模式下最大上下文记忆轮次，一问一答为一轮，超出后智能压缩处理
   "agent_max_steps": 20,                                      # Agent 模式下单次任务的最大决策步数，超出后将停止继续调用工具
-  "enable_thinking": true                                     # 是否启用深度思考，开启后 Web 端展示模型推理过程，关闭后可加速响应
+  "enable_thinking": false                                    # 是否启用深度思考，开启后 Web 端展示模型推理过程，默认关闭以减少存储与渲染负担
 }
 ```
 

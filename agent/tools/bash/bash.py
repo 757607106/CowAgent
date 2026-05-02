@@ -90,7 +90,6 @@ SAFETY:
         try:
             # Prepare environment with .env file variables
             env = os.environ.copy()
-            
             # Load environment variables from ~/.cow/.env if it exists
             env_file = expand_path("~/.cow/.env")
             dotenv_vars = {}
@@ -104,6 +103,13 @@ SAFETY:
                     logger.debug("[Bash] python-dotenv not installed, skipping .env loading")
                 except Exception as e:
                     logger.debug(f"[Bash] Failed to load .env: {e}")
+
+            try:
+                from cow_platform.runtime.environment import build_runtime_environment
+
+                env = build_runtime_environment(base_env=env)
+            except Exception as e:
+                logger.debug(f"[Bash] Failed to inject runtime config environment: {e}")
 
             # getuid() only exists on Unix-like systems
             if hasattr(os, 'getuid'):
@@ -174,10 +180,16 @@ SAFETY:
                 except Exception as retry_err:
                     logger.warning(f"[Bash] Retry failed: {retry_err}")
 
-            # Combine stdout and stderr
-            output = result.stdout
-            if result.stderr:
-                output += "\n" + result.stderr
+            # Keep successful stdout clean; forward stderr only when it is needed
+            # for diagnosis or the command produced no stdout.
+            if result.returncode == 0 and result.stdout.strip():
+                output = result.stdout
+                if result.stderr:
+                    logger.info(f"[Bash] stderr (not forwarded): {result.stderr[:500]}")
+            else:
+                output = result.stdout
+                if result.stderr:
+                    output += "\n" + result.stderr
 
             # Check if we need to save full output to temp file
             temp_file_path = None

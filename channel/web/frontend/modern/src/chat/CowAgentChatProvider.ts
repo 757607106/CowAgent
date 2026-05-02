@@ -13,6 +13,7 @@ import type {
 } from '../types';
 
 const MAX_TOOL_RESULT_LENGTH = 4000;
+const REASONING_RENDER_CAP = 4 * 1024;
 const CONTEXT_CLEARED_TEXT = '— 以上内容已从上下文中移除 —';
 
 export interface CowAgentChatRequest {
@@ -154,6 +155,12 @@ function formatToolOutputMarkdown(value: unknown): string {
   return looksLikeMarkdown(sliced) ? sliced : toCodeBlock(sliced, 'text');
 }
 
+function formatReasoningMarkdown(value: unknown): string {
+  const text = asText(value);
+  if (text.length <= REASONING_RENDER_CAP) return text;
+  return `${text.slice(0, REASONING_RENDER_CAP)}\n\n...（思考内容过长，已截断）`;
+}
+
 function getToolStatusText(status: AssistantStep['status']): string {
   if (status === 'loading') return '执行中';
   if (status === 'success') return '执行完成';
@@ -241,7 +248,7 @@ function applyStreamPayload(message: CowAgentChatMessage, payload: StreamEventPa
       if (lastStep?.kind === 'reasoning' && lastStep.status === 'loading') {
         steps[steps.length - 1] = {
           ...lastStep,
-          markdown: `${lastStep.markdown || ''}${chunkText}`,
+          markdown: formatReasoningMarkdown(`${lastStep.markdown || ''}${chunkText}`),
           description: '思考中...',
         };
       } else {
@@ -250,7 +257,7 @@ function applyStreamPayload(message: CowAgentChatMessage, payload: StreamEventPa
           kind: 'reasoning',
           title: '深度思考',
           description: '思考中...',
-          markdown: chunkText,
+          markdown: formatReasoningMarkdown(chunkText),
           status: 'loading',
           startedAt: Date.now(),
         });
@@ -478,7 +485,7 @@ function parseHistoryAssistantContent(row: any): AssistantBubbleContent {
           kind: 'reasoning',
           title: '深度思考',
           description: '思考完成',
-          markdown: asText(step.content),
+          markdown: formatReasoningMarkdown(step.content),
           status: 'success',
         });
         return;
@@ -507,7 +514,7 @@ function parseHistoryAssistantContent(row: any): AssistantBubbleContent {
         kind: 'reasoning',
         title: '深度思考',
         description: '思考完成',
-        markdown: asText(row.reasoning),
+        markdown: formatReasoningMarkdown(row.reasoning),
         status: 'success',
       });
     }

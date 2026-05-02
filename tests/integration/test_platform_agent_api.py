@@ -180,21 +180,12 @@ def test_platform_agent_update_invalidates_runtime_cache(tmp_path, monkeypatch) 
     monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
     monkeypatch.setitem(conf(), "model", "legacy-model")
 
-    cleared = []
-
-    class _FakeAgentBridge:
-        def clear_agent_sessions(self, tenant_id: str, agent_id: str):
-            cleared.append((tenant_id, agent_id))
-
-    class _FakeBridge:
-        def get_agent_bridge(self):
-            return _FakeAgentBridge()
-
-    monkeypatch.setattr("bridge.bridge.Bridge", _FakeBridge)
+    from cow_platform.services.runtime_state_service import RuntimeStateService
 
     app = create_app(PlatformSettings(host="127.0.0.1", port=9931, mode="test"))
     client = TestClient(app, raise_server_exceptions=False)
     headers, _tenant_id = _register_owner(client, "cache@example.com")
+    runtime_state_service = RuntimeStateService()
 
     create_resp = client.post(
         "/api/platform/agents",
@@ -207,6 +198,10 @@ def test_platform_agent_update_invalidates_runtime_cache(tmp_path, monkeypatch) 
         },
     )
     assert create_resp.status_code == 200
+    version_before_update = runtime_state_service.get_effective_config_version(
+        tenant_id="default",
+        agent_id="cache-target",
+    )
 
     update_resp = client.put(
         "/api/platform/agents/cache-target",
@@ -218,4 +213,8 @@ def test_platform_agent_update_invalidates_runtime_cache(tmp_path, monkeypatch) 
         },
     )
     assert update_resp.status_code == 200
-    assert ("default", "cache-target") in cleared
+    version_after_update = runtime_state_service.get_effective_config_version(
+        tenant_id="default",
+        agent_id="cache-target",
+    )
+    assert version_after_update > version_before_update

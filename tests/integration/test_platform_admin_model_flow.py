@@ -127,14 +127,16 @@ def test_platform_admin_manages_tenants_and_shared_models(tmp_path, monkeypatch)
 
     tenant_provider_list = client.get("/api/platform/tenant-models", headers=tenant_headers)
     assert tenant_provider_list.status_code == 200
-    assert [item["provider"] for item in tenant_provider_list.json()["providers"]] == ["custom"]
+    tenant_providers = {item["provider"] for item in tenant_provider_list.json()["providers"]}
+    assert {"custom", "deepseek", "dashscope"}.issubset(tenant_providers)
 
     tenant_builtin = client.post(
         "/api/platform/tenant-models",
         headers=tenant_headers,
         json={"provider": "deepseek", "model_name": "deepseek-v4-pro", "api_key": "sk-tenant-secret"},
     )
-    assert tenant_builtin.status_code == 400
+    assert tenant_builtin.status_code == 200
+    assert tenant_builtin.json()["model"]["provider"] == "deepseek"
 
     other_headers, _ = _register_tenant_owner(
         client,

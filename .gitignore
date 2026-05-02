@@ -17,6 +17,7 @@ plugins.json
 *.log
 logs/
 workspace
+generated_images/
 config.yaml
 user_datas.pkl
 chatgpt_tool_hub/

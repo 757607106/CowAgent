@@ -58,7 +58,7 @@ class MCPClient:
             params={
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "cowagent", "version": "2.0.6"},
+                "clientInfo": {"name": "cowagent", "version": "2.0.7"},
             },
         )
         if "error" in init_result:

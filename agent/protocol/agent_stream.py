@@ -18,6 +18,26 @@ from agent.tools.base_tool import BaseTool, ToolResult
 from common.log import logger
 
 
+# Maximum number of characters of model reasoning / thinking content to persist
+# in conversation history. Full reasoning may still be streamed to the UI when
+# thinking display is enabled; this bound prevents DB/history bloat.
+MAX_STORED_REASONING_CHARS = 4 * 1024
+_REASONING_TRUNCATE_MARKER = "\n\n... [reasoning truncated, {omitted} chars omitted] ...\n\n"
+
+
+def _truncate_reasoning_for_storage(text: str) -> str:
+    """Trim long reasoning to head + tail with an omission marker."""
+    if not text:
+        return text
+    if len(text) <= MAX_STORED_REASONING_CHARS:
+        return text
+    half = MAX_STORED_REASONING_CHARS // 2
+    head = text[:half]
+    tail = text[-half:]
+    omitted = len(text) - len(head) - len(tail)
+    return head + _REASONING_TRUNCATE_MARKER.format(omitted=omitted) + tail
+
+
 class AgentStreamExecutor:
     """
     Agent Stream Executor
@@ -105,20 +125,24 @@ class AgentStreamExecutor:
         except Exception:
             pass
 
-        return bool(conf().get("enable_thinking", True))
+        return bool(conf().get("enable_thinking", False))
 
     def _filter_think_tags(self, text: str) -> str:
         """
-        Remove <think> and </think> tags but keep the content inside.
-        Some LLM providers (e.g., MiniMax) may return thinking process wrapped in <think> tags.
-        We only remove the tags themselves, keeping the actual thinking content.
+        Handle <think>...</think> blocks returned by some providers.
+
+        - When thinking is enabled: remove tags but keep their content.
+        - When thinking is disabled: remove the hidden thinking block entirely.
         """
         if not text:
             return text
         import re
-        # Remove only the <think> and </think> tags, keep the content
-        text = re.sub(r'<think>', '', text)
-        text = re.sub(r'</think>', '', text)
+        if self._is_thinking_enabled():
+            text = re.sub(r'<think>', '', text)
+            text = re.sub(r'</think>', '', text)
+        else:
+            text = re.sub(r'<think>[\s\S]*?</think>', '', text)
+            text = re.sub(r'<think>[\s\S]*$', '', text)
         return text
 
     def _parse_text_tool_calls(self, text: str) -> Tuple[str, List[Dict]]:
@@ -315,8 +339,8 @@ class AgentStreamExecutor:
         # Log user message with model info
         
         thinking_enabled = self._is_thinking_enabled()
-        thinking_label = "💭 thinking" if thinking_enabled else "⚡ fast"
-        logger.info(f"🤖 {self.model.model} | {thinking_label} | 👤 {user_message}")        
+        thinking_label = " | 💭 thinking" if thinking_enabled else ""
+        logger.info(f"🤖 {self.model.model}{thinking_label} | 👤 {user_message}")
 
         if self.agent:
             self.agent.last_usage = None
@@ -401,6 +425,8 @@ class AgentStreamExecutor:
                         if turn > 1:
                             logger.info(f"[Agent] Requesting explicit response from LLM...")
                             
+                            prompt_insert_idx = len(self.messages)
+
                             # 添加一条消息，明确要求回复用户
                             self.messages.append({
                                 "role": "user",
@@ -413,9 +439,18 @@ class AgentStreamExecutor:
                             # 再调用一次 LLM
                             assistant_msg, tool_calls = self._call_llm_stream(retry_on_empty=False)
                             final_response = assistant_msg
+
+                            if (prompt_insert_idx < len(self.messages)
+                                    and self.messages[prompt_insert_idx].get("role") == "user"):
+                                self.messages.pop(prompt_insert_idx)
+                                logger.debug("[Agent] Removed injected explicit-response prompt from message history")
                             
-                            # 如果还是空，才使用 fallback
-                            if not assistant_msg and not tool_calls:
+                            if tool_calls:
+                                logger.info(
+                                    "[Agent] LLM returned tool_calls in explicit-response retry, "
+                                    "continuing to execute tools instead of breaking"
+                                )
+                            elif not assistant_msg:
                                 logger.warning(f"[Agent] Still empty after explicit request")
                                 final_response = (
                                     "抱歉，我暂时无法生成回复。请尝试换一种方式描述你的需求，或稍后再试。"
@@ -430,12 +465,13 @@ class AgentStreamExecutor:
                     else:
                         logger.info(f"💭 {assistant_msg[:150]}{'...' if len(assistant_msg) > 150 else ''}")
                     
-                    logger.debug(f"✅ 完成 (无工具调用)")
-                    self._emit_event("turn_end", {
-                        "turn": turn,
-                        "has_tool_calls": False
-                    })
-                    break
+                    if not tool_calls:
+                        logger.debug(f"✅ 完成 (无工具调用)")
+                        self._emit_event("turn_end", {
+                            "turn": turn,
+                            "has_tool_calls": False
+                        })
+                        break
 
                 # Log tool calls with arguments
                 tool_calls_str = []
@@ -443,7 +479,13 @@ class AgentStreamExecutor:
                     # Safely handle None or missing arguments
                     args = tc.get('arguments') or {}
                     if isinstance(args, dict):
-                        args_str = ', '.join([f"{k}={v}" for k, v in args.items()])
+                        parts = []
+                        for k, v in args.items():
+                            v_str = str(v)
+                            if len(v_str) > 200:
+                                v_str = v_str[:200] + f"...({len(v_str)} chars)"
+                            parts.append(f"{k}={v_str}")
+                        args_str = ', '.join(parts)
                         if args_str:
                             tool_calls_str.append(f"{tc['name']}({args_str})")
                         else:
@@ -830,6 +872,8 @@ class AgentStreamExecutor:
                     # Preserve _gemini_raw_parts for Gemini thoughtSignature round-trip
                     if "_gemini_raw_parts" in delta:
                         gemini_raw_parts = delta["_gemini_raw_parts"]
+                    elif isinstance(choice, dict) and choice.get("_gemini_raw_parts"):
+                        gemini_raw_parts = choice["_gemini_raw_parts"]
 
         except CancelledError:
             # CancelledError should propagate immediately, not be caught by generic handler
@@ -1009,10 +1053,16 @@ class AgentStreamExecutor:
         # Add assistant message to history (Claude format uses content blocks)
         assistant_msg = {"role": "assistant", "content": []}
 
-        if thinking_enabled and full_reasoning:
+        if full_reasoning:
+            stored_reasoning = _truncate_reasoning_for_storage(full_reasoning)
+            if len(stored_reasoning) < len(full_reasoning):
+                logger.info(
+                    "[Agent] Truncated stored reasoning: "
+                    f"{len(full_reasoning)} -> {len(stored_reasoning)} chars"
+                )
             assistant_msg["content"].append({
                 "type": "thinking",
-                "thinking": full_reasoning
+                "thinking": stored_reasoning
             })
 
         if full_content:
