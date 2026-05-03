@@ -5,7 +5,7 @@ import { JsonBlock } from './JsonBlock';
 type Tone = 'default' | 'success' | 'processing' | 'warning' | 'error' | 'disabled';
 
 interface ConsolePageProps {
-  title: string;
+  title: ReactNode;
   description?: string;
   actions?: ReactNode;
   children: ReactNode;

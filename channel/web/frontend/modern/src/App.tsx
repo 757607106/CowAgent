@@ -21,6 +21,7 @@ import PlatformTenantsPage from './pages/PlatformTenantsPage';
 import TasksPage from './pages/TasksPage';
 import LogsPage from './pages/LogsPage';
 import UsagePage from './pages/UsagePage';
+import AgentDetailPage from './pages/AgentDetailPage';
 import { DEFAULT_AGENT_ID, DEFAULT_AGENT_NAME, WORKSPACE_AGENT_VALUE, displayAgentName, type RuntimeAgentOption, RuntimeContext } from './context/runtime';
 import { getFlatMenuItemsForRole, getMenuItemsForRole } from './app/navigation';
 import { appTheme } from './app/theme';
@@ -408,6 +409,7 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
               <Route path="/config" element={<Navigate to={isPlatformAdmin ? '/platform/models' : '/tenant-models'} replace />} />
               <Route path="/tenant-models" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <TenantModelsPage />} />
               <Route path="/agents" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <AgentsPage />} />
+              <Route path="/agents/:agentId" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <AgentDetailPage />} />
               <Route path="/tools" element={<Navigate to="/agents" replace />} />
               <Route path="/skills" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <SkillsPage />} />
               <Route path="/mcp" element={isPlatformAdmin ? <Navigate to="/platform/models" replace /> : <McpPage />} />
