@@ -12,11 +12,13 @@
 
 - 平台模式启动入口只负责加载配置、启动 Web 控制台和注册信号处理
 - `ChannelManager` 已抽离到 `cow_platform/runtime/channel_manager.py`，`app.py` 仅保留兼容导出
+- 本地源码直接执行 `python app.py` 时会自动加载 `.env.local`，让端口、数据库、Redis、Qdrant、MinIO、模型和工作区与 `scripts/start-platform-local.sh` 保持一致；可用 `COW_PLATFORM_AUTO_LOCAL_ENV=false` 关闭
 
 升级关注点：
 
 - 如果上游调整应用启动，需要确认 Web 进程不会重新默认承载长连接/轮询渠道
 - 如果上游调整 ChannelManager，需要合并到平台 runtime 层，不要重新塞回 `app.py`
+- 如果上游调整启动配置加载顺序，需要确认直接执行 `python app.py` 仍不会退回 Docker 端口 `9899` 或错误数据库凭据
 
 ### `config.py`
 
@@ -172,6 +174,16 @@
 
 - 如果上游重构长期记忆索引路径，需要重新确认租户/Agent 工作区不会串用，且向量搜索不会退回全表 JSON 扫描作为唯一生产路径
 
+### `agent/memory/manager.py`
+
+- `MemoryManager` 支持禁用宿主环境变量 embedding fallback，平台租户模式由 `AgentInitializer` 显式传入 embedding provider
+- 当 `OPENAI_API_BASE` 指向具体端点而不是 OpenAI-compatible API base 时跳过 env embedding，避免拼接 `/embeddings` 形成无效请求
+
+升级关注点：
+
+- 如果上游调整 MemoryManager embedding 初始化，需要确认平台模式不会重新读取宿主 `OPENAI_API_KEY` / `OPENAI_API_BASE`
+- 如果上游新增 embedding provider fallback，需要先确认它不会绕过租户 runtime scope 和平台数据库配置
+
 ### `agent/tools/*`
 
 - 文件类工具统一限制在当前 Agent 工作区内访问，绝对路径、`~` 路径或 `..` 越界路径不能读取/写入其他租户工作区
@@ -212,11 +224,16 @@
 - 仅平台默认 Agent 在 tools/skills 为空时继承默认能力；自定义 Agent 空 allowlist 表示不启用对应能力
 - Agent 定义的 skills allowlist 只做运行时过滤，不再反向写入 skills_config
 - 平台租户模式不再把模型密钥写入全局 `~/.cow/.env`
+- 平台租户模式不再读取全局 `~/.cow/.env`，避免宿主机旧 `OPENAI_API_BASE` 等变量污染当前租户运行时
+- 平台租户模式下长期记忆索引同步改为后台去重执行，避免首轮 Agent 回复被 memory sync 阻塞
+- 平台租户模式下 MCP server 改为 Agent 创建后后台预热，避免 MCP 启动和工具枚举阻塞上游 Agent 首轮模型调用
+- 相同 MCP server 解析配置在 Web 进程内复用同一个 `MCPManager`，每个 Agent 只创建轻量 `MCPTool` wrapper，避免每个会话重复启动相同 MCP 子进程
 
 升级关注点：
 
 - 如果上游重构 Agent 初始化顺序，需要重新检查工作区解析和 prompt 合并逻辑
 - 如果上游调整密钥初始化，需要确认平台模型配置仍只来自 runtime scope / 数据库配置，不写全局用户目录
+- 如果上游调整 memory 或 MCP 初始化，需要确认平台模式仍不把 memory sync / MCP start 放回首轮同步路径，且不要重新变成按会话启动重复 MCP 进程
 
 ### `bridge/agent_bridge.py`
 
@@ -226,6 +243,7 @@
 - Agent cache 记录解析时的 config_version；跨进程配置变更后，下一次请求会按 DB 版本自动重建本进程缓存
 - 通过 `AgentGovernanceService` 接入 Phase 3 的 quota 校验和 usage 记录，AgentBridge 不直接拼计费/用量细节
 - 文件回复构造集中到 `bridge/file_reply.py`，AgentBridge 只保留兼容 wrapper
+- AgentLLMModel 复用 Bridge 的 chat bot cache，避免每个会话新建底层模型 Bot 而偏离上游执行路径
 - 会话消息持久化集中到 `agent/memory/conversation_persistence.py`，避免 AgentBridge 与 ChatService 各自维护一套追加逻辑
 - 平台租户模式不再把模型密钥写入全局 `~/.cow/.env`
 
@@ -337,6 +355,7 @@
 - Route handler 已按功能拆到 `channel/web/handlers/`，`web_channel.py` 只保留 WebChannel 主类、运行时 helper 和兼容导出
 - 平台 service factory 和渠道 runtime 刷新逻辑集中到 `channel/web/service_registry.py`，`web_channel.py` 保留兼容 wrapper 供 handler 和测试注入
 - Cookie、token、登录、注册和鉴权响应构造集中到 `channel/web/auth_runtime.py`，`web_channel.py` 保留兼容 wrapper
+- SSE `/stream` 建连后立即发送注释帧，避免浏览器等待首个 1s keepalive 才认为 stream 已打开
 
 升级关注点：
 
@@ -345,6 +364,7 @@
 - 如果上游新增 Web API，优先放到对应 `channel/web/handlers/*` 模块，不要继续扩大 `web_channel.py`
 - 如果上游新增 Web 侧平台服务依赖，优先放到 service registry，不要在 `web_channel.py` 顶层散落 service import
 - 如果上游调整 Web 鉴权流程，应合并到 `auth_runtime.py`，不要在 route handler 或 WebChannel 里重新拼 token/cookie 逻辑
+- 如果上游调整 SSE 生成器，需要确认建连首帧不回退到固定 1s 空等
 
 ### `channel/web/handlers/configuration.py`
 
@@ -382,13 +402,14 @@
 - 消息 context 会注入 `binding_id`、`tenant_id`、`agent_id`、租户用户身份和 config overrides
 - 对带 `channel_config_id` / `source_tenant_id` 的托管渠道强制重新解析绑定；解析不到或租户不一致时 fail-closed，禁止落回 legacy/global Agent
 - preemption 取消 key 按 `tenant_id + agent_id + session_id` 生成，避免跨租户同 session_id 互相取消
+- Web 等交互通道入队后通过事件唤醒消费线程，避免新消息最长等待固定 200ms 轮询间隔
 - 平台 capability 文生图统一委托 `cow_platform/services/image_generation_service.py`，避免在核心通道内保留 subprocess/env 细节
 - 托管渠道 binding 和租户用户解析委托 `cow_platform/runtime/channel_target_resolver.py`，核心通道不直接依赖平台 service
 
 升级关注点：
 
 - 如果上游调整终端/聊天通道消息上下文，需要重新验证 binding 解析和身份映射
-- 如果上游调整消息排队/取消逻辑，需要重新验证 scoped cancel key
+- 如果上游调整消息排队/取消逻辑，需要重新验证 scoped cancel key 和入队事件唤醒，避免回退到固定轮询延迟
 - 如果上游调整图像生成 Skill 输出协议，应更新平台图像生成服务和对应测试，不要新增第二套执行逻辑
 
 ### `agent/tools/scheduler/*`

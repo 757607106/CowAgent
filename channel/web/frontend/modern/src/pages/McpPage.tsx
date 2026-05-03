@@ -74,6 +74,35 @@ function rowsToEnv(rows: EnvRow[] | undefined): Record<string, string> {
   return next;
 }
 
+function renderMcpToolGrid(
+  tools: McpToolItem[],
+  keyPrefix: string,
+  onSelect: (tool: McpToolItem) => void,
+) {
+  if (!tools.length) return null;
+  return (
+    <div className="mcp-tool-grid mcp-tool-grid-spaced">
+      {tools.map((tool) => (
+        <Card
+          key={`${keyPrefix}-${tool.name}`}
+          size="small"
+          className="mcp-tool-card"
+          onClick={() => onSelect(tool)}
+        >
+          <Space vertical size={4} className="full-width-stack">
+            <Typography.Text strong className="technical-id">
+              {tool.name}
+            </Typography.Text>
+            <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} className="compact-paragraph">
+              {tool.description || '该工具未提供描述。'}
+            </Typography.Paragraph>
+          </Space>
+        </Card>
+      ))}
+    </div>
+  );
+}
+
 export function McpServersPanel({
   tenantId,
   compact = false,
@@ -484,27 +513,9 @@ export function McpServersPanel({
                 : testResult.message || '测试失败'}
               description={testResult.status === 'success' ? '这只是连通性测试，保存后可在 AI 员工详情页绑定使用。' : undefined}
             />
-            {testResult.status === 'success' && (testResult.tools || []).length > 0 ? (
-              <div className="mcp-tool-grid mcp-tool-grid-spaced">
-                {(testResult.tools || []).map((tool) => (
-                  <Card
-                    key={`test-${tool.name}`}
-                    size="small"
-                    className="mcp-tool-card"
-                    onClick={() => setSchemaViewer({ serverName: editing?.name || 'test', tool })}
-                  >
-                    <Space vertical size={4} className="full-width-stack">
-                      <Typography.Text strong className="technical-id">
-                        {tool.name}
-                      </Typography.Text>
-                      <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} className="compact-paragraph">
-                        {tool.description || '该工具未提供描述。'}
-                      </Typography.Paragraph>
-                    </Space>
-                  </Card>
-                ))}
-              </div>
-            ) : null}
+            {testResult.status === 'success'
+              ? renderMcpToolGrid(testResult.tools || [], 'test', (tool) => setSchemaViewer({ serverName: editing?.name || 'test', tool }))
+              : null}
           </div>
         ) : null}
       </Modal>
@@ -525,27 +536,9 @@ export function McpServersPanel({
                 ? `连接成功，发现 ${(testViewer.result.tools || []).length} 个工具`
                 : testViewer.result.message || '连接失败'}
             />
-            {testViewer.result.status === 'success' && (testViewer.result.tools || []).length > 0 ? (
-              <div className="mcp-tool-grid mcp-tool-grid-spaced">
-                {(testViewer.result.tools || []).map((tool) => (
-                  <Card
-                    key={`viewer-${tool.name}`}
-                    size="small"
-                    className="mcp-tool-card"
-                    onClick={() => setSchemaViewer({ serverName: testViewer.serverName, tool })}
-                  >
-                    <Space vertical size={4} className="full-width-stack">
-                      <Typography.Text strong className="technical-id">
-                        {tool.name}
-                      </Typography.Text>
-                      <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} className="compact-paragraph">
-                        {tool.description || '该工具未提供描述。'}
-                      </Typography.Paragraph>
-                    </Space>
-                  </Card>
-                ))}
-              </div>
-            ) : null}
+            {testViewer.result.status === 'success'
+              ? renderMcpToolGrid(testViewer.result.tools || [], 'viewer', (tool) => setSchemaViewer({ serverName: testViewer.serverName, tool }))
+              : null}
           </>
         ) : null}
       </Modal>

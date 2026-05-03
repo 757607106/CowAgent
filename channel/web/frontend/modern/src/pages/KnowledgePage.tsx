@@ -4,10 +4,10 @@ import { Button, Card, Empty, Input, Space, Spin, Tabs, Tree, Typography } from 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { DataNode } from 'antd/es/tree';
 import { consoleThemeTokens } from '../app/theme';
-import { useRuntimeScope } from '../context/runtime';
 import { PageTitle } from '../components/PageTitle';
 import { api } from '../services/api';
 import type { RuntimeScope } from '../types';
+import { formatBytes } from '../utils/format';
 
 interface KnowledgeFile {
   name: string;
@@ -60,13 +60,6 @@ const GRAPH_THEME = {
   nodeStroke: consoleThemeTokens.palette.neutral[0],
   label: consoleThemeTokens.palette.neutral[500],
 };
-
-function formatBytes(size: number): string {
-  if (!Number.isFinite(size) || size <= 0) return '0 B';
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
-}
 
 function asString(value: unknown): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -586,9 +579,4 @@ export function KnowledgePanel({
       />
     </Card>
   );
-}
-
-export default function KnowledgePage() {
-  const { scope } = useRuntimeScope();
-  return <KnowledgePanel scope={scope} />;
 }

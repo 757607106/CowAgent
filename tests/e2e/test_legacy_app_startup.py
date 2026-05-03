@@ -28,6 +28,7 @@ def test_web_app_starts_with_temp_config_and_serves_modern_chat_page(tmp_path: P
             "VOICE_REPLY_VOICE": "False",
             "AGENT_WORKSPACE": str(tmp_path / "workspace"),
             "APPDATA_DIR": str(tmp_path / "appdata"),
+            "COW_PLATFORM_AUTO_LOCAL_ENV": "false",
         }
     )
     process = subprocess.Popen(

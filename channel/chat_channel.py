@@ -37,6 +37,7 @@ class ChatChannel(Channel):
         self.futures = {}
         self.sessions = {}
         self.lock = threading.Lock()
+        self._consume_event = threading.Event()
         _thread = threading.Thread(target=self.consume)
         _thread.daemon = True
         _thread.start()
@@ -525,6 +526,9 @@ class ChatChannel(Channel):
                 Bridge().cancel_running_agent(self._cancel_session_key(context))
             except Exception:
                 pass  # Agent bridge may not be initialised yet
+        consume_event = getattr(self, "_consume_event", None)
+        if consume_event is not None:
+            consume_event.set()
 
     def _cancel_session_key(self, context: Context) -> str:
         session_id = context.get("session_id") or ""
@@ -564,7 +568,8 @@ class ChatChannel(Channel):
                             del self.sessions[session_id]
                     else:
                         semaphore.release()
-            time.sleep(0.2)
+            self._consume_event.wait(timeout=0.2)
+            self._consume_event.clear()
 
     # 取消session_id对应的所有任务，只能取消排队的消息和已提交线程池但未执行的任务
     def cancel_session(self, session_id):

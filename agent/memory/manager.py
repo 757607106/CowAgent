@@ -9,12 +9,25 @@ from typing import List, Optional, Dict, Any
 from pathlib import Path
 import hashlib
 from datetime import datetime, timedelta
+from urllib.parse import urlparse
 
 from agent.memory.config import MemoryConfig, get_default_memory_config
 from agent.memory.storage import MemoryStorage, MemoryChunk, SearchResult
 from agent.memory.chunker import TextChunker
 from agent.memory.embedding import create_embedding_provider, EmbeddingProvider
 from agent.memory.summarizer import MemoryFlushManager, create_memory_files_if_needed
+
+
+def _is_endpoint_specific_api_base(api_base: str) -> bool:
+    path = urlparse(api_base or "").path.rstrip("/")
+    endpoint_suffixes = (
+        "/images/generations",
+        "/chat/completions",
+        "/audio/transcriptions",
+        "/audio/speech",
+        "/embeddings",
+    )
+    return any(path.endswith(suffix) for suffix in endpoint_suffixes)
 
 
 class MemoryManager:
@@ -28,7 +41,8 @@ class MemoryManager:
         self,
         config: Optional[MemoryConfig] = None,
         embedding_provider: Optional[EmbeddingProvider] = None,
-        llm_model: Optional[Any] = None
+        llm_model: Optional[Any] = None,
+        allow_env_embedding: bool = True,
     ):
         """
         Initialize memory manager
@@ -37,6 +51,7 @@ class MemoryManager:
             config: Memory configuration (uses global config if not provided)
             embedding_provider: Custom embedding provider (optional)
             llm_model: LLM model for summarization (optional)
+            allow_env_embedding: Whether to fall back to host OPENAI/LINKAI env vars
         """
         self.config = config or get_default_memory_config()
         
@@ -54,12 +69,18 @@ class MemoryManager:
         self.embedding_provider = None
         if embedding_provider:
             self.embedding_provider = embedding_provider
-        else:
+        elif allow_env_embedding:
             # Try OpenAI first
             try:
                 api_key = os.environ.get('OPENAI_API_KEY')
                 api_base = os.environ.get('OPENAI_API_BASE')
-                if api_key:
+                if api_key and _is_endpoint_specific_api_base(api_base or ""):
+                    from common.log import logger
+                    logger.warning(
+                        f"[MemoryManager] Skip OpenAI embedding: OPENAI_API_BASE points "
+                        f"to an endpoint, not an API base: {api_base}"
+                    )
+                elif api_key:
                     self.embedding_provider = create_embedding_provider(
                         provider="openai",
                         model=self.config.embedding_model,
@@ -93,6 +114,9 @@ class MemoryManager:
             if self.embedding_provider is None:
                 from common.log import logger
                 logger.info(f"[MemoryManager] Memory will work with keyword search only (no vector search)")
+        else:
+            from common.log import logger
+            logger.info("[MemoryManager] Env embedding fallback disabled; memory will use keyword search only")
         
         # Initialize memory flush manager
         workspace_dir = self.config.get_workspace()

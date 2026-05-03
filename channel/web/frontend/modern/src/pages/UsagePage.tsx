@@ -268,6 +268,19 @@ export default function UsagePage() {
     </span>
   );
 
+  const renderSummaryCard = (title: string, value: number, mode: 'number' | 'cost' = 'number') => (
+    <Card className="operations-summary-card">
+      <Statistic
+        title={title}
+        value={value}
+        loading={loading}
+        {...(mode === 'cost'
+          ? { precision: 6 }
+          : { formatter: (statValue: unknown) => formatNumber(Number(statValue)) })}
+      />
+    </Card>
+  );
+
   const loadAgents = async () => {
     setAgentsLoaded(false);
     try {
@@ -368,24 +381,12 @@ export default function UsagePage() {
       {panelKey === 'reports' ? (
         <section className="usage-report-panel">
           <div className="operations-summary-grid usage-summary-grid">
-            <Card className="operations-summary-card">
-              <Statistic title="租户总 Token" value={tenantSummary.total_tokens} formatter={(value) => formatNumber(Number(value))} loading={loading} />
-            </Card>
-            <Card className="operations-summary-card">
-              <Statistic title="租户总费用" value={tenantSummary.estimated_cost} precision={6} loading={loading} />
-            </Card>
-            <Card className="operations-summary-card">
-              <Statistic title={agentId ? 'AI 员工 Token' : '筛选 Token'} value={scopeSummary.total_tokens} formatter={(value) => formatNumber(Number(value))} loading={loading} />
-            </Card>
-            <Card className="operations-summary-card">
-              <Statistic title="请求数" value={scopeSummary.request_count} formatter={(value) => formatNumber(Number(value))} loading={loading} />
-            </Card>
-            <Card className="operations-summary-card">
-              <Statistic title="工具调用" value={scopeSummary.tool_call_count} formatter={(value) => formatNumber(Number(value))} loading={loading} />
-            </Card>
-            <Card className="operations-summary-card">
-              <Statistic title="MCP 调用" value={scopeSummary.mcp_call_count} formatter={(value) => formatNumber(Number(value))} loading={loading} />
-            </Card>
+            {renderSummaryCard('租户总 Token', tenantSummary.total_tokens)}
+            {renderSummaryCard('租户总费用', tenantSummary.estimated_cost, 'cost')}
+            {renderSummaryCard(agentId ? 'AI 员工 Token' : '筛选 Token', scopeSummary.total_tokens)}
+            {renderSummaryCard('请求数', scopeSummary.request_count)}
+            {renderSummaryCard('工具调用', scopeSummary.tool_call_count)}
+            {renderSummaryCard('MCP 调用', scopeSummary.mcp_call_count)}
           </div>
 
           <section className="usage-report-grid">

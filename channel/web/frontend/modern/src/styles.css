@@ -6,49 +6,49 @@
 
 /* ── Design Tokens ───────────────────────────────────────────── */
 :root {
-  /* Brand palette */
-  --brand-50: #eff4ff;
-  --brand-100: #dbe6ff;
-  --brand-200: #bdd0ff;
-  --brand-300: #8fb3f7;
-  --brand-400: #5a8de8;
-  --brand-500: #1a6ff5;    /* primary */
-  --brand-600: #1558cc;
-  --brand-700: #1042a3;
-  --brand-800: #0c2e7a;
+  /* Brand palette - Sleek Deep Blue */
+  --brand-50: #F0F5FF;
+  --brand-100: #E5EDFF;
+  --brand-200: #CDDBFF;
+  --brand-300: #B4C6FF;
+  --brand-400: #94AFFF;
+  --brand-500: #688AF8;
+  --brand-600: #4D6BFE;    /* primary */
+  --brand-700: #3A52D9;
+  --brand-800: #2A3B9F;
 
-  /* Neutral palette */
+  /* Neutral palette - Clean Slate */
   --neutral-0: #ffffff;
   --neutral-25: #fafbfc;
-  --neutral-50: #f5f7fa;
-  --neutral-75: #eef1f6;
-  --neutral-100: #e4e8ee;
-  --neutral-200: #cdd3dc;
-  --neutral-300: #aeb5c0;
-  --neutral-400: #8891a0;
-  --neutral-500: #636c7c;
-  --neutral-600: #4b5362;
-  --neutral-700: #343b48;
-  --neutral-800: #1f2430;
-  --neutral-900: #10141c;
+  --neutral-50: #f7f8fa;
+  --neutral-75: #f1f3f5;
+  --neutral-100: #eceef1;
+  --neutral-200: #e0e3e8;
+  --neutral-300: #cfd4dc;
+  --neutral-400: #9ba3af;
+  --neutral-500: #6d7684;
+  --neutral-600: #4b5563;
+  --neutral-700: #374151;
+  --neutral-800: #1f2937;
+  --neutral-900: #111827;
 
   /* Semantic shortcuts */
   --bg-body: var(--neutral-50);
   --bg-surface: var(--neutral-0);
   --bg-surface-raised: var(--neutral-0);
   --bg-subtle: var(--neutral-25);
-  --text-primary: var(--neutral-800);
+  --text-primary: var(--neutral-900);
   --text-secondary: var(--neutral-600);
   --text-tertiary: var(--neutral-400);
   --text-disabled: var(--neutral-300);
-  --border-default: var(--neutral-100);
-  --border-light: var(--neutral-75);
-  --border-strong: var(--neutral-200);
+  --border-default: var(--neutral-200);
+  --border-light: var(--neutral-100);
+  --border-strong: var(--neutral-300);
 
   /* Accent semantics */
-  --color-primary: var(--brand-500);
-  --color-primary-hover: var(--brand-600);
-  --color-primary-pressed: var(--brand-700);
+  --color-primary: var(--brand-600);
+  --color-primary-hover: var(--brand-700);
+  --color-primary-pressed: var(--brand-800);
   --color-primary-light: var(--brand-50);
   --color-primary-border: var(--brand-100);
   --color-success: #10b981;
@@ -58,15 +58,15 @@
   --color-error: #ef4444;
   --color-error-light: #fef2f2;
 
-  /* Shadows — systematic elevation */
+  /* Shadows — Premium Elevation (Linear/Vercel inspired) */
   --shadow-none: none;
   --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.03);
   --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.04), 0 1px 2px -1px rgba(0, 0, 0, 0.03);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
-  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.05), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -2px rgba(0, 0, 0, 0.02), 0 0 0 1px rgba(0,0,0,0.03);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.06), 0 4px 6px -4px rgba(0, 0, 0, 0.03), 0 0 0 1px rgba(0,0,0,0.03);
+  --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0,0,0,0.03);
   --shadow-card: 0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 3px 0 rgba(0, 0, 0, 0.04);
-  --shadow-card-hover: 0 4px 12px -2px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+  --shadow-card-hover: 0 4px 12px -2px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.04), 0 0 0 1px rgba(0,0,0,0.03);
 
   /* Border radius */
   --radius-xs: 4px;
@@ -100,12 +100,12 @@
   --spacing-xl: var(--space-7);
   --spacing-xxl: var(--space-9);
 
-  /* Typography */
-  --font-sans: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  /* Typography - Clean Inter-like feel */
+  --font-sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', ui-monospace, 'Cascadia Code', Menlo, Monaco, monospace;
   --font-size-xs: 0.6875rem;
   --font-size-sm: 0.75rem;
-  --font-size-base: 0.8125rem;
+  --font-size-base: 0.875rem;
   --font-size-md: 0.875rem;
   --font-size-lg: 1rem;
   --font-size-xl: 1.125rem;
@@ -116,14 +116,14 @@
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
 
-  /* Transitions */
-  --transition-fast: 0.12s ease;
-  --transition-base: 0.18s ease;
-  --transition-smooth: 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Transitions - Smoother */
+  --transition-fast: 0.1s ease;
+  --transition-base: 0.2s ease;
+  --transition-smooth: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
   /* Layout */
-  --sidebar-width: 13.75rem;
-  --header-height: 3.25rem;
+  --sidebar-width: 14.5rem;
+  --header-height: 3.5rem;
   --content-max-width: 100%;
   --content-available-height: 100vh;
   --page-workspace-min-height: clamp(30rem, 72vh, 56rem);
@@ -174,8 +174,12 @@ body,
 }
 
 .app-sider {
-  border-right: 1px solid var(--border-light) !important;
-  background: var(--bg-surface) !important;
+  background: rgba(255, 255, 255, 0.75) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-right: none !important;
+  box-shadow: 1px 0 0 0 rgba(0, 0, 0, 0.04);
+  z-index: 10;
 }
 
 .app-sider .ant-layout-sider-children {
@@ -194,10 +198,10 @@ body,
   height: var(--header-height);
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 0 var(--space-4) 0 22px;
+  gap: 12px;
+  padding: 0 var(--space-5) 0 24px;
   color: var(--text-primary);
-  border-bottom: 1px solid var(--border-light);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
   user-select: none;
   flex-shrink: 0;
 }
@@ -209,26 +213,26 @@ body,
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--color-primary);
+  background: linear-gradient(135deg, var(--color-primary), var(--brand-400));
   color: #fff;
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 8px 18px rgba(22, 93, 255, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.2), 0 4px 12px rgba(77, 107, 254, 0.25);
   font-size: 15px;
   font-weight: 800;
   line-height: 1;
 }
 
 .app-logo-word {
-  font-size: 17px;
-  font-weight: 750;
-  letter-spacing: 0;
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
   line-height: 1;
 }
 
 /* Tenant session info */
 .app-tenant-session {
-  min-height: 3.75rem;
-  border-bottom: 1px solid var(--border-light);
-  padding: var(--spacing-xs);
+  min-height: 4.5rem;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+  padding: var(--spacing-sm);
   display: flex;
   align-items: center;
   flex-shrink: 0;
@@ -246,7 +250,7 @@ body,
   max-width: 100%;
   color: var(--text-primary);
   display: block;
-  font-size: var(--font-size-sm);
+  font-size: var(--font-size-md);
   font-weight: var(--font-weight-semibold);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -256,7 +260,7 @@ body,
 .app-tenant-user {
   max-width: 100%;
   font-size: var(--font-size-sm);
-  color: var(--text-secondary);
+  color: var(--text-tertiary);
   display: block;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -264,55 +268,67 @@ body,
 }
 
 .app-sidebar-footer {
-  border-top: 1px solid var(--border-light);
+  border-top: 1px solid rgba(0, 0, 0, 0.04);
   flex-shrink: 0;
-  padding: var(--spacing-xs);
+  padding: var(--spacing-sm);
 }
 
 /* Navigation menu */
 .app-nav-menu {
   flex: 1;
   border-inline-end: 0 !important;
-  padding: var(--space-2);
+  padding: var(--space-3) var(--space-2);
   overflow-y: auto;
   overscroll-behavior: contain;
+  background: transparent !important;
 }
 
 .app-nav-menu .ant-menu-item {
-  height: 2.25rem;
-  line-height: 2.25rem;
-  margin: 1px 0;
+  height: 2.375rem;
+  line-height: 2.375rem;
+  margin: 2px 0;
   border-radius: var(--radius-md);
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-medium);
   color: var(--text-secondary);
-  transition: all var(--transition-fast);
+  transition: all var(--transition-base);
 }
 
 .app-nav-menu .ant-menu-item:hover {
   color: var(--text-primary);
-  background: var(--neutral-50);
+  background: rgba(0, 0, 0, 0.03);
 }
 
 .app-nav-menu .ant-menu-item-selected {
   color: var(--color-primary) !important;
   background: var(--color-primary-light) !important;
   font-weight: var(--font-weight-semibold);
+  box-shadow: inset 2px 0 0 0 var(--color-primary);
 }
 
 .app-nav-menu .ant-menu-item .anticon {
   font-size: var(--font-size-lg);
+  opacity: 0.8;
+}
+
+.app-nav-menu .ant-menu-item-selected .anticon {
+  opacity: 1;
 }
 
 /* Page header */
 .app-header {
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-light);
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
   display: flex;
   align-items: center;
-  padding: 0 var(--space-4);
-  min-height: 3.25rem;
+  padding: 0 var(--space-5);
+  min-height: var(--header-height);
   height: auto;
+  position: sticky;
+  top: 0;
+  z-index: 20;
 }
 
 /* Mobile header */
@@ -359,25 +375,179 @@ body,
 /* ── Login Page ───────────────────────────────────────────────── */
 .app-login-wrap {
   width: 100%;
-  height: 100%;
+  height: 100vh;
+  min-height: 100vh;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  background: var(--neutral-25);
+  overflow: hidden;
+}
+
+/* Left Brand Side */
+.app-login-brand {
+  position: relative;
+  background: linear-gradient(135deg, #09090b 0%, #18181b 100%);
+  color: white;
+  display: flex;
+  align-items: center;
+  padding: 6rem;
+  overflow: hidden;
+}
+
+.app-login-brand-bg {
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image: radial-gradient(circle at 100% 0%, rgba(22, 119, 255, 0.15) 0%, transparent 40%),
+                    radial-gradient(circle at 0% 100%, rgba(107, 76, 255, 0.2) 0%, transparent 50%);
+  z-index: 1;
+}
+
+.app-login-brand-bg::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background: url('data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+CjxyZWN0IHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCIgZmlsbD0ibm9uZSI+PC9yZWN0Pgo8Y2lyY2xlIGN4PSIyIiBjeT0iMiIgcj0iMSIgZmlsbD0icmdiYSgyNTUsMjU1LDI1NSwwLjA1KSI+PC9jaXJjbGU+Cjwvc3ZnPg==') repeat;
+  z-index: 2;
+}
+
+.app-login-brand-content {
+  position: relative;
+  z-index: 10;
+  max-width: 520px;
+  animation: login-fade-in 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes login-fade-in {
+  from { opacity: 0; transform: translateX(-24px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.app-login-logo {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 3rem;
+  font-size: 1.5rem;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  color: white;
+}
+
+.app-login-logo .app-logo-mark {
+  background: var(--brand-500);
+  color: white;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--neutral-25);
+  border-radius: 8px;
+}
+
+.app-login-slogan {
+  font-size: 3.5rem;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  margin-bottom: 1.5rem;
+  background: linear-gradient(to right, #ffffff, #a1a1aa);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.app-login-desc {
+  font-size: 1.25rem;
+  line-height: 1.6;
+  color: #a1a1aa;
+  max-width: 420px;
+}
+
+/* Right Form Side */
+.app-login-form-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% -20%, var(--brand-50) 0%, var(--neutral-25) 60%, var(--neutral-25) 100%);
+  position: relative;
 }
 
 .app-login-panel {
-  width: min(26.25rem, calc(100vw - 2rem));
-  max-width: calc(100vw - 2rem);
-  background: var(--bg-surface);
-  border-radius: var(--radius-xl);
-  border: 1px solid var(--border-default);
-  box-shadow: var(--shadow-xl);
-  padding: var(--space-6);
+  width: 100%;
+  max-width: 440px;
+  background: rgba(255, 255, 255, 0.6); /* Glassmorphism base */
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border-radius: var(--radius-2xl);
+  border: 1px solid rgba(255, 255, 255, 0.8);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.04);
+  padding: var(--space-8);
+  animation: login-slide-up-fade 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes login-slide-up-fade {
+  from { opacity: 0; transform: translateY(24px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .app-login-title {
   margin-top: 0;
+  text-align: center;
+  font-weight: 700 !important;
+  letter-spacing: -0.02em;
+  background: linear-gradient(135deg, var(--neutral-900), var(--neutral-500));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: var(--space-6) !important;
+}
+
+/* Make Tabs look more premium in the login panel */
+.app-login-panel .ant-tabs-nav {
+  margin-bottom: var(--space-6);
+}
+
+.app-login-panel .ant-tabs-tab {
+  font-size: 1.05rem;
+  padding-bottom: 12px;
+}
+
+/* Make inputs slightly larger for login */
+.app-login-panel .ant-input,
+.app-login-panel .ant-input-password,
+.app-login-panel .ant-input-affix-wrapper {
+  padding: 10px 14px;
+  font-size: 1rem;
+  border-radius: var(--radius-lg);
+  background: rgba(255, 255, 255, 0.8);
+  border-color: rgba(0, 0, 0, 0.08);
+}
+
+.app-login-panel .ant-input:focus,
+.app-login-panel .ant-input-password:focus-within,
+.app-login-panel .ant-input-affix-wrapper:focus-within {
+  background: #ffffff;
+}
+
+.app-login-panel .ant-btn-primary {
+  height: 3rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  border-radius: var(--radius-lg);
+  margin-top: var(--space-4);
+  box-shadow: 0 4px 14px var(--brand-200);
+}
+
+/* Responsive */
+@media (max-width: 992px) {
+  .app-login-wrap {
+    grid-template-columns: 1fr;
+  }
+  .app-login-brand {
+    display: none;
+  }
+  .app-login-panel {
+    margin: 1rem;
+    padding: var(--space-6);
+  }
 }
 
 /* ── Chat Page ────────────────────────────────────────────────── */
@@ -394,10 +564,10 @@ body,
 .chat-session-pane,
 .chat-main-pane {
   min-height: 0;
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
+  border: none;
+  border-radius: var(--radius-xl);
   background: var(--bg-surface);
-  box-shadow: var(--shadow-card);
+  box-shadow: var(--shadow-md);
 }
 
 /* Session pane */
@@ -596,6 +766,26 @@ body,
   gap: var(--space-2);
 }
 
+.user-bubble {
+  background: linear-gradient(135deg, var(--color-primary), var(--brand-400));
+  color: white;
+  border-radius: 20px 20px 4px 20px;
+  box-shadow: 0 4px 12px rgba(77, 107, 254, 0.25);
+  padding: var(--space-2) var(--space-3);
+  display: inline-block;
+}
+
+.user-bubble.markdown-body,
+.user-bubble .markdown-body,
+.user-bubble .markdown-body p,
+.user-bubble .markdown-body code {
+  color: white !important;
+}
+
+.user-bubble .markdown-body pre {
+  background: rgba(0, 0, 0, 0.2) !important;
+}
+
 .chat-user-attachments {
   display: flex;
   flex-wrap: wrap;
@@ -637,16 +827,25 @@ body,
 /* Sender / input area */
 .chat-sender-shell {
   position: relative;
-  padding: var(--space-3) var(--space-4) var(--space-4);
-  border-top: 1px solid var(--border-light);
-  background: var(--bg-surface);
-  transition: background var(--transition-base), box-shadow var(--transition-base);
+  padding: var(--space-3) var(--space-4);
+  margin: 0 var(--space-4) var(--space-4);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+  border-radius: var(--radius-2xl);
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: var(--shadow-xl);
+  transition: all var(--transition-smooth);
   flex-shrink: 0;
+}
+
+.chat-sender-shell:focus-within {
+  box-shadow: var(--shadow-xl), 0 0 0 2px var(--brand-100);
 }
 
 .chat-sender-shell.drag-over {
   background: var(--color-primary-light);
-  box-shadow: inset 0 0 0 1px var(--color-primary-border);
+  box-shadow: inset 0 0 0 2px var(--color-primary), var(--shadow-xl);
 }
 
 /* Command suggestion popup */

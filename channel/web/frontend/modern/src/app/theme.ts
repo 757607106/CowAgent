@@ -1,29 +1,29 @@
 const palette = {
   brand: {
-    50: '#eff4ff',
-    100: '#dbe6ff',
-    200: '#bdd0ff',
-    300: '#8fb3f7',
-    400: '#5a8de8',
-    500: '#1a6ff5',
-    600: '#1558cc',
-    700: '#1042a3',
-    800: '#0c2e7a',
+    50: '#F0F5FF',
+    100: '#E5EDFF',
+    200: '#CDDBFF',
+    300: '#B4C6FF',
+    400: '#94AFFF',
+    500: '#688AF8',
+    600: '#4D6BFE',
+    700: '#3A52D9',
+    800: '#2A3B9F',
   },
   neutral: {
     0: '#ffffff',
     25: '#fafbfc',
-    50: '#f5f7fa',
-    75: '#eef1f6',
-    100: '#e4e8ee',
-    200: '#cdd3dc',
-    300: '#aeb5c0',
-    400: '#8891a0',
-    500: '#636c7c',
-    600: '#4b5362',
-    700: '#343b48',
-    800: '#1f2430',
-    900: '#10141c',
+    50: '#f7f8fa',
+    75: '#f1f3f5',
+    100: '#eceef1',
+    200: '#e0e3e8',
+    300: '#cfd4dc',
+    400: '#9ba3af',
+    500: '#6d7684',
+    600: '#4b5563',
+    700: '#374151',
+    800: '#1f2937',
+    900: '#111827',
   },
   semantic: {
     success: '#10b981',
@@ -31,7 +31,6 @@ const palette = {
     error: '#ef4444',
   },
 };
-
 const radius = {
   sm: 6,
   md: 8,
@@ -41,21 +40,22 @@ const radius = {
 
 const controlHeight = {
   sm: 28,
-  md: 34,
-  lg: 40,
+  md: 36,
+  lg: 44,
 };
 
 const typography = {
-  fontFamily: '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  fontFamily: '"Inter", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   fontSize: 14,
   fontSizeLG: 16,
   fontSizeSM: 12,
-  lineHeight: 1.5,
+  lineHeight: 1.5714285714285714,
 };
 
 const shadow = {
   card: '0 1px 2px 0 rgba(0, 0, 0, 0.03), 0 1px 3px 0 rgba(0, 0, 0, 0.04)',
-  raised: '0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -2px rgba(0, 0, 0, 0.04)',
+  raised: '0 4px 6px -1px rgba(0, 0, 0, 0.04), 0 2px 4px -2px rgba(0, 0, 0, 0.02), 0 0 0 1px rgba(0,0,0,0.03)',
+  floating: '0 10px 15px -3px rgba(0, 0, 0, 0.06), 0 4px 6px -4px rgba(0, 0, 0, 0.03), 0 0 0 1px rgba(0,0,0,0.03)',
 };
 
 export const consoleThemeTokens = {
@@ -68,11 +68,11 @@ export const consoleThemeTokens = {
 
 export const appTheme = {
   token: {
-    colorPrimary: palette.brand[500],
+    colorPrimary: palette.brand[600],
     colorSuccess: palette.semantic.success,
     colorWarning: palette.semantic.warning,
     colorError: palette.semantic.error,
-    colorInfo: palette.brand[500],
+    colorInfo: palette.brand[600],
     borderRadius: radius.md,
     borderRadiusLG: radius.lg,
     borderRadiusSM: radius.sm,
@@ -85,34 +85,35 @@ export const appTheme = {
     colorBgContainer: palette.neutral[0],
     colorBgElevated: palette.neutral[0],
     colorBgLayout: palette.neutral[50],
-    colorBorder: palette.neutral[100],
-    colorBorderSecondary: palette.neutral[75],
-    colorText: palette.neutral[800],
+    colorBorder: palette.neutral[200],
+    colorBorderSecondary: palette.neutral[100],
+    colorText: palette.neutral[900],
     colorTextSecondary: palette.neutral[600],
-    colorTextTertiary: '#8891a0',
+    colorTextTertiary: palette.neutral[400],
     boxShadow: shadow.card,
     boxShadowSecondary: shadow.raised,
+    boxShadowTertiary: shadow.floating,
     wireframe: false,
   },
   components: {
     Menu: {
       itemBorderRadius: radius.md,
-      itemHeight: 36,
-      itemMarginInline: 8,
-      itemHoverBg: palette.neutral[50],
+      itemHeight: 38,
+      itemMarginInline: 12,
+      itemHoverBg: palette.neutral[75],
       itemSelectedBg: palette.brand[50],
-      itemSelectedColor: palette.brand[500],
+      itemSelectedColor: palette.brand[600],
       itemActiveBg: palette.brand[50],
       iconSize: 18,
       collapsedIconSize: 18,
     },
     Card: {
-      paddingLG: 20,
+      paddingLG: 24,
       borderRadiusLG: radius.lg,
     },
     Button: {
       borderRadius: radius.md,
-      borderRadiusLG: 10,
+      borderRadiusLG: radius.lg,
       borderRadiusSM: radius.sm,
       controlHeight: controlHeight.md,
       controlHeightLG: controlHeight.lg,
@@ -121,24 +122,24 @@ export const appTheme = {
     },
     Tag: {
       borderRadiusSM: radius.sm,
-      fontSizeSM: 11,
-      lineHeightSM: 1.4,
+      fontSizeSM: 12,
+      lineHeightSM: 1.5,
     },
     Table: {
       borderRadius: radius.md,
       borderColor: palette.neutral[100],
-      headerBg: '#f8fafc',
+      headerBg: palette.neutral[50],
       headerColor: palette.neutral[600],
-      rowHoverBg: palette.neutral[50],
+      rowHoverBg: palette.neutral[25],
     },
     Input: {
       borderRadius: radius.md,
-      borderRadiusLG: 10,
+      borderRadiusLG: radius.lg,
       borderRadiusSM: radius.sm,
     },
     Select: {
       borderRadius: radius.md,
-      borderRadiusLG: 10,
+      borderRadiusLG: radius.lg,
       borderRadiusSM: radius.sm,
     },
     Modal: {
@@ -154,7 +155,7 @@ export const appTheme = {
       headerPadding: '14px 20px',
     },
     Form: {
-      itemMarginBottom: 16,
+      itemMarginBottom: 20,
       labelFontSize: 13,
     },
     Switch: {

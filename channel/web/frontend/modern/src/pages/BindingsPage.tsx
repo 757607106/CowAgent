@@ -1,7 +1,6 @@
 import { Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Tag, Typography, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
-import { PageTitle } from '../components/PageTitle';
-import { DataTableShell, PageToolbar, StatusTag } from '../components/console';
+import { ConsolePage, DataTableShell, PageToolbar, StatusTag } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
 import { api, formatBindingPayload } from '../services/api';
 import type { AgentItem, BindingItem, ChannelConfigItem, TenantItem } from '../types';
@@ -185,18 +184,8 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
     </PageToolbar>
   );
 
-  return (
-    <div className={embedded ? 'channel-tab-panel' : undefined}>
-      {embedded ? (
-        <div className="channel-tab-toolbar">{toolbar}</div>
-      ) : (
-        <PageTitle
-          title="渠道绑定管理"
-          description="将渠道入口绑定到指定智能体。"
-          extra={toolbar}
-        />
-      )}
-
+  const content = (
+    <>
       <DataTableShell<BindingItem>
         compact={embedded}
         className="channel-table-shell"
@@ -350,6 +339,24 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
           </Form.Item>
         </Form>
       </Modal>
-    </div>
+    </>
+  );
+
+  if (embedded) {
+    return (
+      <div className="channel-tab-panel">
+        <div className="channel-tab-toolbar">{toolbar}</div>
+        {content}
+      </div>
+    );
+  }
+
+  return (
+    <ConsolePage
+      title="渠道绑定管理"
+      actions={toolbar}
+    >
+      {content}
+    </ConsolePage>
   );
 }

@@ -1,8 +1,16 @@
 import { Button, Form, Input, Modal, Popconfirm, Select, Space, message } from 'antd';
 import { useEffect, useState } from 'react';
-import { AdvancedJsonPanel, ConsolePage, DataTableShell, PageToolbar, StatusTag } from '../components/console';
+import { ConsolePage, DataTableShell, PageToolbar } from '../components/console';
 import { api } from '../services/api';
 import type { TenantItem } from '../types';
+import {
+  parseTenantMetadata,
+  renderTenantMetadata,
+  renderTenantStatus,
+  renderTenantTitle,
+  serializeTenantMetadata,
+  TENANT_STATUS_OPTIONS,
+} from './tenantShared';
 
 interface TenantFormValues {
   tenant_id: string;
@@ -41,24 +49,18 @@ export default function PlatformTenantsPage() {
       tenant_id: row.tenant_id,
       name: row.name,
       status: row.status,
-      metadata: JSON.stringify(row.metadata || {}, null, 2),
+      metadata: serializeTenantMetadata(row.metadata),
     });
     setOpen(true);
   };
 
-  const parseMetadata = (text: string) => {
-    try {
-      return text ? JSON.parse(text) : {};
-    } catch {
-      message.error('metadata 必须是合法 JSON');
-      return null;
-    }
-  };
-
   const submit = async () => {
     const values = await form.validateFields();
-    const metadata = parseMetadata(values.metadata);
-    if (metadata === null) return;
+    const metadata = parseTenantMetadata(values.metadata);
+    if (metadata === null) {
+      message.error('metadata 必须是合法 JSON');
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -97,14 +99,14 @@ export default function PlatformTenantsPage() {
 
   return (
     <ConsolePage
-        title="租户管理"
-        actions={(
-          <PageToolbar>
-            <Button onClick={() => void load()}>刷新</Button>
-            <Button type="primary" onClick={openCreate}>新建租户</Button>
-          </PageToolbar>
-        )}
-      >
+      title="租户管理"
+      actions={(
+        <PageToolbar>
+          <Button onClick={() => void load()}>刷新</Button>
+          <Button type="primary" onClick={openCreate}>新建租户</Button>
+        </PageToolbar>
+      )}
+    >
       <DataTableShell<TenantItem>
         title="平台租户"
         rowKey="tenant_id"
@@ -115,14 +117,9 @@ export default function PlatformTenantsPage() {
           {
             title: '租户',
             dataIndex: 'name',
-            render: (value: string, row) => (
-              <span className="entity-title-cell">
-                <span className="entity-title-cell-main">{value}</span>
-                <span className="entity-title-cell-meta">{row.tenant_id}</span>
-              </span>
-            ),
+            render: renderTenantTitle,
           },
-          { title: '状态', dataIndex: 'status', render: (value: string) => <StatusTag status={value}>{value}</StatusTag> },
+          { title: '状态', dataIndex: 'status', render: renderTenantStatus },
           {
             title: '操作',
             render: (_, row) => (
@@ -135,7 +132,7 @@ export default function PlatformTenantsPage() {
             ),
           },
         ]}
-        expandable={{ expandedRowRender: (row) => <AdvancedJsonPanel title="租户 metadata" value={row.metadata || {}} defaultOpen /> }}
+        expandable={{ expandedRowRender: renderTenantMetadata }}
       />
 
       <Modal
@@ -154,11 +151,7 @@ export default function PlatformTenantsPage() {
             <Input aria-label="名称" />
           </Form.Item>
           <Form.Item name="status" label="状态" rules={[{ required: true }]}>
-            <Select aria-label="状态" options={[
-              { label: 'active', value: 'active' },
-              { label: 'disabled', value: 'disabled' },
-              { label: 'deleted', value: 'deleted' },
-            ]} />
+            <Select aria-label="状态" options={TENANT_STATUS_OPTIONS} />
           </Form.Item>
           <Form.Item name="metadata" label="高级配置(JSON)" htmlFor="platform-tenant-metadata">
             <Input.TextArea id="platform-tenant-metadata" rows={6} aria-label="高级配置 JSON" />

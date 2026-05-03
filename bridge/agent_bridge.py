@@ -140,7 +140,10 @@ class AgentLLMModel(LLMModel):
             or getattr(self, '_bot_type', None) != cur_bot_type
             or self._bot_model_config_id != cur_model_config_id
         ):
-            self._bot = create_bot(cur_bot_type)
+            if self.bridge.get_bot_type("chat") == cur_bot_type:
+                self._bot = self.bridge.get_bot("chat")
+            else:
+                self._bot = create_bot(cur_bot_type)
             self._bot = add_openai_compatible_support(self._bot)
             self._bot_model = cur_model
             self._bot_type = cur_bot_type

@@ -2,11 +2,9 @@
 Session helpers shared by the platform-aware web handlers.
 
 The project keeps session lifecycle operations in channel/web/handlers/workspace.py
-because they need tenant/agent/binding scoping. Title generation is shared here
-so web code and future non-web callers do not duplicate the LLM fallback logic.
+because they need tenant/agent/binding scoping. Title generation is intentionally
+local and deterministic so creating a new chat never triggers a second LLM call.
 """
-
-import re
 
 from common.log import logger
 
@@ -30,47 +28,14 @@ def _truncate_fallback_title(user_message: str, max_len: int = 30) -> str:
 
 def generate_session_title(user_message: str, assistant_reply: str = "") -> str:
     """
-    Generate a short session title by calling the current bot.
+    Generate a short session title without calling the model.
 
-    Falls back to the first meaningful line of the user message when the model
-    call fails or returns a zero-token error sentinel.
+    The title endpoint runs after the assistant response. Calling the LLM here
+    creates a visible post-answer delay and consumes an HTTP worker, so title
+    generation uses the first meaningful user line instead. ``assistant_reply``
+    is accepted to preserve the existing API contract.
     """
-    fallback = _truncate_fallback_title(user_message)
-    try:
-        from bridge.bridge import Bridge
-        from models.session_manager import Session
-
-        bot = Bridge().get_bot("chat")
-        prompt_parts = [f"User: {user_message[:300]}"]
-        if assistant_reply:
-            prompt_parts.append(f"Assistant: {assistant_reply[:300]}")
-
-        session = Session("__title_gen__", system_prompt="")
-        session.messages = [
-            {
-                "role": "user",
-                "content": (
-                    "Generate a very short title (max 15 characters for Chinese, max 6 words for English) "
-                    "summarizing this conversation. Return ONLY the title text, nothing else.\n\n"
-                    + "\n".join(prompt_parts)
-                ),
-            }
-        ]
-
-        result = bot.reply_text(session) or {}
-        completion_tokens = result.get("completion_tokens", 0) or 0
-        raw = (result.get("content") or "").strip()
-        if completion_tokens <= 0:
-            logger.warning(
-                "[SessionService] Title generation got empty completion "
-                f"(completion_tokens={completion_tokens}, content='{raw[:50]}'), using fallback"
-            )
-            return fallback
-
-        title = re.sub(r"<think>.*?</think>", "", raw, flags=re.DOTALL).strip().strip('"\'')
-        logger.info(f"[SessionService] Title generation result: '{title}' (len={len(title)})")
-        if title and len(title) <= 50:
-            return title
-    except Exception as e:
-        logger.warning(f"[SessionService] Title generation failed: {e}")
-    return fallback
+    del assistant_reply
+    title = _truncate_fallback_title(user_message)
+    logger.debug(f"[SessionService] Local title generation result: '{title}' (len={len(title)})")
+    return title

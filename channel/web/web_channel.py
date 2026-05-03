@@ -768,6 +768,11 @@ class WebChannel(ChatChannel):
         deadline = time.time() + idle_timeout
         done = False
 
+        # Open the SSE response immediately. Without this initial frame the
+        # first write waits for the 1s keepalive timeout when the model has not
+        # produced a token yet, making every stream look slower in browsers.
+        yield b": connected\n\n"
+
         try:
             while time.time() < deadline:
                 try:

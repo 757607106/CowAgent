@@ -2,10 +2,10 @@ import { XMarkdown } from '@ant-design/x-markdown';
 import { Button, Card, Segmented, Space, Spin, Table, Tag, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import type { ColumnsType } from 'antd/es/table';
-import { useRuntimeScope } from '../context/runtime';
 import { PageTitle } from '../components/PageTitle';
 import { api } from '../services/api';
 import type { RuntimeScope } from '../types';
+import { formatBytes } from '../utils/format';
 
 type MemoryCategory = 'memory' | 'dream';
 
@@ -23,13 +23,6 @@ interface MemoryPanelProps {
   title?: string;
   description?: string;
   embedded?: boolean;
-}
-
-function formatBytes(size: number): string {
-  if (!Number.isFinite(size) || size <= 0) return '0 B';
-  if (size < 1024) return `${size} B`;
-  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
-  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 function typeTag(type: string) {
@@ -173,9 +166,4 @@ export function MemoryPanel({
       </div>
     </Card>
   );
-}
-
-export default function MemoryPage() {
-  const { scope } = useRuntimeScope();
-  return <MemoryPanel scope={scope} />;
 }

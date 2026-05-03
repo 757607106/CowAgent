@@ -11,11 +11,20 @@ import type {
 } from '../types';
 import {
   apiKeyKeepValueExtra,
+  buildCapabilityLabels,
+  buildCapabilityOptions,
+  buildCapabilityPayload,
+  buildCapabilityProviderOptions,
+  capabilityColor,
   capabilityFallbacks,
   capabilityProviderFallbacks,
+  findDefaultBaseForProvider,
+  findFirstProviderForCapability,
   filterSelectOption,
+  getEffectiveCapabilityProviders,
   providerOptionLabel,
 } from './modelConfigShared';
+import { CapabilityConfigForm } from './CapabilityConfigForm';
 
 interface ModelFormValues {
   provider: string;
@@ -54,43 +63,6 @@ function modelPayload(values: ModelFormValues, editing: ModelConfigItem | null) 
   return payload;
 }
 
-function capabilityPayload(values: CapabilityFormValues, editing: CapabilityConfigItem | null) {
-  const metadata: Record<string, unknown> = {};
-  if (supportsVoiceField(values.capability) && values.voice?.trim()) metadata.voice = values.voice.trim();
-  if (supportsImageSizeField(values.capability) && values.image_size?.trim()) metadata.image_size = values.image_size.trim();
-  const payload: Record<string, unknown> = {
-    capability: values.capability,
-    provider: values.provider,
-    model_name: values.model_name,
-    display_name: values.model_name,
-    api_base: values.api_base || '',
-    enabled: values.enabled ?? true,
-    is_public: values.is_public ?? true,
-    is_default: values.is_default ?? false,
-    metadata,
-  };
-  if (!editing || values.api_key?.trim()) {
-    payload.api_key = values.api_key || '';
-  }
-  return payload;
-}
-
-function capabilityColor(capability: string) {
-  if (capability === 'image_generation') return 'magenta';
-  if (capability === 'speech_to_text') return 'geekblue';
-  if (capability === 'text_to_speech') return 'cyan';
-  if (capability === 'multimodal') return 'purple';
-  return 'blue';
-}
-
-function supportsVoiceField(capability?: string) {
-  return capability === 'text_to_speech';
-}
-
-function supportsImageSizeField(capability?: string) {
-  return capability === 'image_generation';
-}
-
 export default function PlatformModelsPage() {
   const [loading, setLoading] = useState(false);
   const [activeKind, setActiveKind] = useState<ConfigKind>('model');
@@ -111,27 +83,21 @@ export default function PlatformModelsPage() {
   const selectedProviderDef = providers.find((item) => item.provider === selectedProvider);
   const selectedCapability = Form.useWatch('capability', capabilityForm);
   const selectedCapabilityProviderKey = Form.useWatch('provider', capabilityForm);
-  const effectiveCapabilityProviders = capabilityProviders.length ? capabilityProviders : capabilityProviderFallbacks;
+  const effectiveCapabilityProviders = getEffectiveCapabilityProviders(capabilityProviders);
   const selectedCapabilityProvider = effectiveCapabilityProviders.find((item) => item.provider === selectedCapabilityProviderKey);
   const providerOptions = providers.map((item) => ({
     label: providerOptionLabel(item),
     value: item.provider,
   }));
   const modelOptions = (selectedProviderDef?.models || []).map((model) => ({ label: model, value: model }));
-  const capabilityLabels = useMemo(
-    () => Object.fromEntries(capabilities.map((item) => [item.capability, item.label])),
-    [capabilities],
+  const capabilityLabels = useMemo(() => buildCapabilityLabels(capabilities), [capabilities]);
+  const capabilityOptions = useMemo(() => buildCapabilityOptions(capabilities), [capabilities]);
+  const capabilityProviderOptions = useMemo(
+    () => buildCapabilityProviderOptions(effectiveCapabilityProviders, selectedCapability),
+    [effectiveCapabilityProviders, selectedCapability],
   );
-  const capabilityOptions = capabilities.map((item) => ({ label: item.label, value: item.capability }));
-  const capabilityProviderOptions = effectiveCapabilityProviders
-    .filter((item) => !selectedCapability || item.capabilities.includes(selectedCapability))
-    .map((item) => ({ label: providerOptionLabel(item), value: item.provider }));
-  const firstProviderForCapability = (capability: string) => (
-    effectiveCapabilityProviders.find((item) => item.capabilities.includes(capability))?.provider || 'custom'
-  );
-  const defaultBaseForProvider = (provider: string) => (
-    effectiveCapabilityProviders.find((item) => item.provider === provider)?.default_api_base || ''
-  );
+  const firstProviderForCapability = (capability: string) => findFirstProviderForCapability(effectiveCapabilityProviders, capability);
+  const defaultBaseForProvider = (provider: string) => findDefaultBaseForProvider(effectiveCapabilityProviders, provider);
 
   const load = async () => {
     setLoading(true);
@@ -241,11 +207,11 @@ export default function PlatformModelsPage() {
       if (capabilityEditing) {
         await api.updatePlatformCapabilityConfig(
           capabilityEditing.capability_config_id,
-          capabilityPayload(values, capabilityEditing),
+          buildCapabilityPayload(values, capabilityEditing, { is_public: values.is_public ?? true }),
         );
         message.success('平台能力已更新');
       } else {
-        await api.createPlatformCapabilityConfig(capabilityPayload(values, null));
+        await api.createPlatformCapabilityConfig(buildCapabilityPayload(values, null, { is_public: values.is_public ?? true }));
         message.success('平台能力已创建');
       }
       setCapabilityOpen(false);
@@ -418,74 +384,18 @@ export default function PlatformModelsPage() {
         confirmLoading={capabilitySubmitting}
         destroyOnClose
       >
-        <Form form={capabilityForm} layout="vertical">
-          <Form.Item name="capability" label="能力类型" rules={[{ required: true }]}>
-            <Select
-              options={capabilityOptions}
-              showSearch
-              optionFilterProp="label"
-              filterOption={filterSelectOption}
-              aria-label="能力类型"
-              onChange={(value) => {
-                const provider = firstProviderForCapability(String(value));
-                capabilityForm.setFieldsValue({
-                  provider,
-                  api_base: defaultBaseForProvider(provider),
-                  voice: '',
-                  image_size: '',
-                });
-              }}
-            />
-          </Form.Item>
-          <Form.Item name="provider" label="厂商" rules={[{ required: true }]}>
-            <Select
-              options={capabilityProviderOptions}
-              showSearch
-              optionFilterProp="label"
-              filterOption={filterSelectOption}
-              aria-label="厂商"
-              onChange={(value) => capabilityForm.setFieldValue('api_base', defaultBaseForProvider(String(value)))}
-            />
-          </Form.Item>
-          <Form.Item name="model_name" label="Model" rules={[{ required: true }]}>
-            <Input aria-label="Model" />
-          </Form.Item>
-          <Form.Item
-            name="api_base"
-            label={selectedCapabilityProvider?.custom ? 'Base URL（自定义厂商必填）' : 'Base URL'}
-            rules={selectedCapabilityProvider?.custom ? [{ required: true, message: '请输入 Base URL' }] : []}
-          >
-            <Input aria-label="Base URL" />
-          </Form.Item>
-          <Form.Item
-            name="api_key"
-            label="API Key"
-            extra={apiKeyKeepValueExtra(capabilityEditing)}
-          >
-            <Input.Password autoComplete="new-password" aria-label="API Key" />
-          </Form.Item>
-          {supportsVoiceField(selectedCapability) ? (
-            <Form.Item name="voice" label="Voice / 音色">
-              <Input aria-label="Voice / 音色" />
-            </Form.Item>
-          ) : null}
-          {supportsImageSizeField(selectedCapability) ? (
-            <Form.Item name="image_size" label="图片尺寸">
-              <Input aria-label="图片尺寸" placeholder="1024x1024" />
-            </Form.Item>
-          ) : null}
-          <Space size={32}>
-            <Form.Item name="enabled" label="启用" htmlFor="platform-capability-enabled" valuePropName="checked">
-              <Switch id="platform-capability-enabled" aria-label="启用平台能力" />
-            </Form.Item>
-            <Form.Item name="is_public" label="租户可见" htmlFor="platform-capability-public" valuePropName="checked">
-              <Switch id="platform-capability-public" aria-label="租户可见" />
-            </Form.Item>
-            <Form.Item name="is_default" label="默认" htmlFor="platform-capability-default" valuePropName="checked">
-              <Switch id="platform-capability-default" aria-label="默认平台能力" />
-            </Form.Item>
-          </Space>
-        </Form>
+        <CapabilityConfigForm
+          form={capabilityForm}
+          editing={capabilityEditing}
+          capabilityOptions={capabilityOptions}
+          capabilityProviderOptions={capabilityProviderOptions}
+          effectiveCapabilityProviders={effectiveCapabilityProviders}
+          selectedCapability={selectedCapability}
+          selectedCapabilityProvider={selectedCapabilityProvider}
+          idPrefix="platform-capability"
+          scopeLabel="平台能力"
+          showPublicToggle
+        />
       </Modal>
     </ConsolePage>
   );

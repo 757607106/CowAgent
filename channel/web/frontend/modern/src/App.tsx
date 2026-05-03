@@ -197,8 +197,24 @@ function LoginScreen({
 
   return (
     <div className="app-login-wrap">
-      <div className="app-login-panel">
-        <Typography.Title level={3} className="app-login-title">agent 控制台</Typography.Title>
+      <div className="app-login-brand">
+        <div className="app-login-brand-content">
+          <div className="app-login-logo">
+            <span className="app-logo-mark">a</span>
+            <span className="app-logo-word">agent</span>
+          </div>
+          <h1 className="app-login-slogan">
+            新一代企业级<br />智能体引擎
+          </h1>
+          <p className="app-login-desc">
+            统一编排、随处运行。<br />连接企业知识与业务流，释放 AI 的无限潜能。
+          </p>
+        </div>
+        <div className="app-login-brand-bg"></div>
+      </div>
+      <div className="app-login-form-container">
+        <div className="app-login-panel">
+          <Typography.Title level={3} className="app-login-title">欢迎登录</Typography.Title>
         <Tabs
           activeKey={activeKey}
           onChange={setActiveKey}
@@ -267,6 +283,7 @@ function LoginScreen({
             }] : []),
           ]}
         />
+        </div>
       </div>
     </div>
   );
@@ -316,8 +333,17 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
   }, [tenantId]);
 
   useEffect(() => {
-    setScope((current) => ({ ...current, tenantId }));
+    setScope((current) => current.tenantId === tenantId ? current : { ...current, tenantId });
   }, [tenantId]);
+
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      message.error('登录状态已失效，请重新登录');
+      void onLogout();
+    };
+    window.addEventListener('app:unauthorized', handleUnauthorized);
+    return () => window.removeEventListener('app:unauthorized', handleUnauthorized);
+  }, [onLogout]);
 
   const selectedMenu = useMemo(() => {
     if (location.pathname.startsWith('/bindings')) return ['/channels'];

@@ -1,9 +1,16 @@
 import { Button, Form, Input, Modal, Space, message } from 'antd';
 import { useEffect, useState } from 'react';
-import { AdvancedJsonPanel, ConsolePage, DataTableShell, PageToolbar, StatusTag } from '../components/console';
+import { ConsolePage, DataTableShell, PageToolbar } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type { TenantItem } from '../types';
+import {
+  parseTenantMetadata,
+  renderTenantMetadata,
+  renderTenantStatus,
+  renderTenantTitle,
+  serializeTenantMetadata,
+} from './tenantShared';
 
 interface TenantFormValues {
   name: string;
@@ -42,17 +49,15 @@ export default function TenantsPage() {
     form.setFieldsValue({
       name: row.name,
       status: row.status,
-      metadata: JSON.stringify(row.metadata || {}, null, 2),
+      metadata: serializeTenantMetadata(row.metadata),
     });
     setOpen(true);
   };
 
   const onSubmit = async () => {
     const values = await form.validateFields();
-    let metadata: Record<string, unknown> = {};
-    try {
-      metadata = values.metadata ? JSON.parse(values.metadata) : {};
-    } catch {
+    const metadata = parseTenantMetadata(values.metadata);
+    if (metadata === null) {
       message.error('metadata 必须是合法 JSON');
       return;
     }
@@ -87,14 +92,14 @@ export default function TenantsPage() {
 
   return (
     <ConsolePage
-        title="租户管理"
-        actions={(
-          <PageToolbar>
-            <Button onClick={() => void load()}>刷新</Button>
-            {canCreateTenant && <Button type="primary" onClick={openCreate}>新建租户</Button>}
-          </PageToolbar>
-        )}
-      >
+      title="租户管理"
+      actions={(
+        <PageToolbar>
+          <Button onClick={() => void load()}>刷新</Button>
+          {canCreateTenant && <Button type="primary" onClick={openCreate}>新建租户</Button>}
+        </PageToolbar>
+      )}
+    >
       <DataTableShell<TenantItem>
         title="租户列表"
         rowKey={(row) => row.tenant_id}
@@ -105,14 +110,9 @@ export default function TenantsPage() {
           {
             title: '租户',
             dataIndex: 'name',
-            render: (value: string, row) => (
-              <span className="entity-title-cell">
-                <span className="entity-title-cell-main">{value}</span>
-                <span className="entity-title-cell-meta">{row.tenant_id}</span>
-              </span>
-            ),
+            render: renderTenantTitle,
           },
-          { title: '状态', dataIndex: 'status', render: (value: string) => <StatusTag status={value}>{value}</StatusTag> },
+          { title: '状态', dataIndex: 'status', render: renderTenantStatus },
           {
             title: '操作',
             render: (_, row) => (
@@ -123,7 +123,7 @@ export default function TenantsPage() {
           },
         ]}
         expandable={{
-          expandedRowRender: (row) => <AdvancedJsonPanel title="租户 metadata" value={row.metadata || {}} defaultOpen />,
+          expandedRowRender: renderTenantMetadata,
         }}
       />
 

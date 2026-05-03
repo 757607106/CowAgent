@@ -23,9 +23,9 @@ export interface ConsoleNavItem {
 export const tenantNavItems: ConsoleNavItem[] = [
   { key: '/chat', icon: <MessageOutlined />, label: '对话' },
   { key: '/agents', icon: <AppstoreOutlined />, label: 'AI 员工' },
-  { key: '/tenant-models', icon: <SettingOutlined />, label: '租户模型' },
+  { key: '/tenant-models', icon: <SettingOutlined />, label: '模型' },
   { key: '/skills', icon: <BuildOutlined />, label: '技能' },
-  { key: '/mcp', icon: <ApiOutlined />, label: 'MCP 连接' },
+  { key: '/mcp', icon: <ApiOutlined />, label: 'MCP' },
   { key: '/channels', icon: <ClusterOutlined />, label: '渠道接入' },
   { key: '/usage', icon: <BarChartOutlined />, label: '用量分析' },
   { key: '/tasks', icon: <ScheduleOutlined />, label: '任务调度' },

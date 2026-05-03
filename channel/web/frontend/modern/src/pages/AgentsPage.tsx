@@ -23,6 +23,7 @@ import {
   Checkbox,
   Empty,
   Form,
+  Drawer,
   Input,
   Modal,
   Popconfirm,
@@ -683,15 +684,24 @@ export default function AgentsPage() {
     void loadCapabilities(tenantId);
   }, [tenantId]);
 
-  if (selectedAgent) {
+  const renderDetailDrawer = () => {
+    if (!selectedAgent) return null;
     const selectedAgentName = displayAgentName(selectedAgent.agent_id, selectedAgent.name);
     const selectedAgentPosition = agentPosition(selectedAgent);
     const selectedToolCount = effectiveToolNames(selectedAgent, tools).length;
     const selectedSkillCount = effectiveSkillNames(selectedAgent, skills).length;
 
     return (
-      <Form form={detailForm} layout="vertical" className="agent-detail-page">
-        <Card className="agent-detail-hero" loading={detailLoading}>
+      <Drawer
+        open={!!selectedAgent}
+        onClose={() => setSelectedAgent(null)}
+        width="min(100vw, 960px)"
+        title={<span style={{ fontWeight: 600 }}>{selectedAgentName} - 员工配置</span>}
+        styles={{ body: { padding: '24px', background: 'var(--bg-body)' } }}
+        destroyOnClose
+      >
+        <Form form={detailForm} layout="vertical" className="agent-detail-page">
+          <Card className="agent-detail-hero" loading={detailLoading}>
           <div className="agent-detail-hero-main">
             <Form.Item name="avatar_key" rules={[{ required: true, message: '请选择员工头像' }]} noStyle>
               <AgentAvatarTrigger name={selectedAgentName} size="large" />
@@ -928,9 +938,10 @@ export default function AgentsPage() {
             },
           ]}
         />
-      </Form>
+        </Form>
+      </Drawer>
     );
-  }
+  };
 
   const agentColumns = [
     {
@@ -1218,6 +1229,7 @@ export default function AgentsPage() {
           <Form.Item name="knowledge_enabled" label="启用知识库" htmlFor="agent-create-knowledge-enabled" valuePropName="checked"><Switch id="agent-create-knowledge-enabled" aria-label="启用知识库" /></Form.Item>
         </Form>
       </Modal>
+      {renderDetailDrawer()}
     </ConsolePage>
   );
 }

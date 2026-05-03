@@ -1,8 +1,11 @@
 # encoding:utf-8
 
+import os
 import signal
+import subprocess
 import sys
 import time
+from pathlib import Path
 
 from common.log import logger
 from config import conf, load_config
@@ -19,6 +22,67 @@ from cow_platform.runtime.channel_manager import (
 # Backward-compatible module attributes used by legacy helpers and tests.
 channel_factory = _channel_manager_module.channel_factory
 _channel_mgr = None
+
+
+_LOCAL_PLATFORM_ENV_KEYS = {
+    "AGENT_WORKSPACE",
+    "MODEL",
+    "WEB_PORT",
+    "WEB_TENANT_AUTH",
+}
+
+
+def _is_false_env(value: str) -> bool:
+    return value.strip().lower() in {"0", "false", "no", "off"}
+
+
+def _should_import_local_platform_env(root: Path) -> bool:
+    if _is_false_env(os.environ.get("COW_PLATFORM_AUTO_LOCAL_ENV", "true")):
+        return False
+    return (root / ".env.local").is_file()
+
+
+def _parse_null_separated_env(raw_env: bytes) -> dict[str, str]:
+    values: dict[str, str] = {}
+    for item in raw_env.split(b"\0"):
+        if not item or b"=" not in item:
+            continue
+        key, value = item.split(b"=", 1)
+        values[key.decode("utf-8")] = value.decode("utf-8")
+    return values
+
+
+def _import_local_platform_env(root: Path | None = None) -> None:
+    root = root or Path(__file__).resolve().parent
+    if not _should_import_local_platform_env(root):
+        return
+
+    result = subprocess.run(
+        ["/bin/bash", "-lc", "set -a; source .env.local; set +a; env -0"],
+        cwd=root,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode != 0:
+        message = result.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(f"Failed to load local platform env from .env.local: {message}")
+
+    loaded_env = _parse_null_separated_env(result.stdout)
+    imported = 0
+    for key, value in loaded_env.items():
+        if key.startswith(("COW_PLATFORM_", "PLATFORM_")) or key in _LOCAL_PLATFORM_ENV_KEYS:
+            os.environ[key] = value
+            imported += 1
+
+    logger.info(
+        "[App] Loaded local platform env from .env.local: WEB_PORT={}, MODEL={}, AGENT_WORKSPACE={}".format(
+            os.environ.get("WEB_PORT", ""),
+            os.environ.get("MODEL", ""),
+            os.environ.get("AGENT_WORKSPACE", ""),
+        )
+    )
+    logger.debug("[App] Imported {} local platform environment variables".format(imported))
 
 
 def get_channel_manager():
@@ -41,6 +105,7 @@ def sigterm_handler_wrap(_signo):
 def run():
     global _channel_mgr
     try:
+        _import_local_platform_env()
         load_config()
         sigterm_handler_wrap(signal.SIGINT)
         sigterm_handler_wrap(signal.SIGTERM)

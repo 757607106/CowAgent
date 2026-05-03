@@ -21,15 +21,7 @@ export function scopeQuery(scope: RuntimeScope): Record<string, string> {
   return scope.tenantId ? { tenant_id: scope.tenantId, agent_id: DEFAULT_AGENT_ID } : {};
 }
 
-export function scopeBody(scope: RuntimeScope): Record<string, string> {
-  if (scope.bindingId) {
-    return { tenant_id: scope.tenantId, binding_id: scope.bindingId };
-  }
-  if (scope.agentId) {
-    return { tenant_id: scope.tenantId, agent_id: scope.agentId };
-  }
-  return scope.tenantId ? { tenant_id: scope.tenantId, agent_id: DEFAULT_AGENT_ID } : {};
-}
+export const scopeBody = scopeQuery;
 
 export async function requestJson<T = any>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, {
@@ -55,6 +47,9 @@ export async function requestJson<T = any>(url: string, init?: RequestInit): Pro
   }
 
   if (!res.ok) {
+    if (res.status === 401 || res.status === 403) {
+      window.dispatchEvent(new CustomEvent('app:unauthorized'));
+    }
     const message = typeof payload === 'object' && payload && 'message' in payload
       ? String((payload as Record<string, unknown>).message)
       : `请求失败：${res.status}`;

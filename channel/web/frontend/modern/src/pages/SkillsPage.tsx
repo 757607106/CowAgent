@@ -23,7 +23,7 @@ import {
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { useRuntimeScope } from '../context/runtime';
-import { PageTitle } from '../components/PageTitle';
+import { ConsolePage, PageToolbar } from '../components/console';
 import { api } from '../services/api';
 import type { SkillItem } from '../types';
 
@@ -144,16 +144,15 @@ export default function SkillsPage() {
   }, [scope.agentId, scope.bindingId]);
 
   return (
-    <div className="skills-page">
-      <PageTitle
-        title="技能库"
-        description="管理当前员工可调用的技能能力，控制启用状态与本地技能边界。"
-        extra={(
-          <Space wrap>
-            <Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>
-          </Space>
-        )}
-      />
+    <ConsolePage
+      className="skills-page"
+      title="技能库"
+      actions={(
+        <PageToolbar>
+          <Button icon={<ReloadOutlined />} onClick={() => void load()}>刷新</Button>
+        </PageToolbar>
+      )}
+    >
 
       <div className="skills-overview-grid">
         <Card className="skills-overview-card">
@@ -264,6 +263,6 @@ export default function SkillsPage() {
           })}
         </div>
       )}
-    </div>
+    </ConsolePage>
   );
 }

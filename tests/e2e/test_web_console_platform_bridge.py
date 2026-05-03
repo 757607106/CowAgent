@@ -31,6 +31,7 @@ def test_web_console_platform_routes_work_in_real_process(tmp_path: Path) -> Non
             "channel_type": "web",
             "web_port": str(port),
             "web_password": "",
+            "COW_PLATFORM_AUTO_LOCAL_ENV": "false",
         }
     )
 

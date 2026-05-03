@@ -1,4 +1,16 @@
-import type { CapabilityProviderOption, CapabilityTypeOption } from '../types';
+import type { CapabilityConfigItem, CapabilityProviderOption, CapabilityTypeOption } from '../types';
+
+export interface CapabilityFormBaseValues {
+  capability: string;
+  provider: string;
+  model_name: string;
+  api_base: string;
+  api_key: string;
+  enabled: boolean;
+  is_default: boolean;
+  voice: string;
+  image_size: string;
+}
 
 export const capabilityFallbacks: CapabilityTypeOption[] = [
   { capability: 'multimodal', label: '多模态理解' },
@@ -63,4 +75,84 @@ export function providerOptionLabel(item: { label?: string; provider: string }) 
 
 export function apiKeyKeepValueExtra(editing?: { api_key_set?: boolean; api_key_masked?: string } | null) {
   return editing?.api_key_set ? `留空保持 ${editing.api_key_masked || '当前值'}` : undefined;
+}
+
+export function capabilityColor(capability: string) {
+  if (capability === 'image_generation') return 'magenta';
+  if (capability === 'speech_to_text') return 'geekblue';
+  if (capability === 'text_to_speech') return 'cyan';
+  if (capability === 'multimodal') return 'purple';
+  return 'blue';
+}
+
+export function supportsVoiceField(capability?: string) {
+  return capability === 'text_to_speech';
+}
+
+export function supportsImageSizeField(capability?: string) {
+  return capability === 'image_generation';
+}
+
+export function buildCapabilityLabels(capabilities: CapabilityTypeOption[]) {
+  return Object.fromEntries(capabilities.map((item) => [item.capability, item.label]));
+}
+
+export function buildCapabilityOptions(capabilities: CapabilityTypeOption[]) {
+  return capabilities.map((item) => ({ label: item.label, value: item.capability }));
+}
+
+export function getEffectiveCapabilityProviders(providers: CapabilityProviderOption[]) {
+  return providers.length ? providers : capabilityProviderFallbacks;
+}
+
+export function buildCapabilityProviderOptions(
+  providers: CapabilityProviderOption[],
+  capability?: string,
+) {
+  return providers
+    .filter((item) => !capability || item.capabilities.includes(capability))
+    .map((item) => ({ label: providerOptionLabel(item), value: item.provider }));
+}
+
+export function findFirstProviderForCapability(
+  providers: CapabilityProviderOption[],
+  capability: string,
+) {
+  return providers.find((item) => item.capabilities.includes(capability))?.provider || 'custom';
+}
+
+export function findDefaultBaseForProvider(
+  providers: CapabilityProviderOption[],
+  provider: string,
+) {
+  return providers.find((item) => item.provider === provider)?.default_api_base || '';
+}
+
+export function buildCapabilityMetadata(values: CapabilityFormBaseValues) {
+  const metadata: Record<string, unknown> = {};
+  if (supportsVoiceField(values.capability) && values.voice?.trim()) metadata.voice = values.voice.trim();
+  if (supportsImageSizeField(values.capability) && values.image_size?.trim()) metadata.image_size = values.image_size.trim();
+  return metadata;
+}
+
+export function buildCapabilityPayload(
+  values: CapabilityFormBaseValues,
+  editing: CapabilityConfigItem | null,
+  extra: Record<string, unknown> = {},
+) {
+  const payload: Record<string, unknown> = {
+    capability: values.capability,
+    provider: values.provider,
+    model_name: values.model_name,
+    display_name: values.model_name,
+    api_base: values.api_base || '',
+    enabled: values.enabled ?? true,
+    is_default: values.is_default ?? false,
+    metadata: buildCapabilityMetadata(values),
+    ...extra,
+  };
+  if (!editing || values.api_key?.trim()) {
+    payload.api_key = values.api_key || '';
+  }
+  return payload;
 }

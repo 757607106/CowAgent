@@ -5,7 +5,9 @@ Agent Initializer - Handles agent initialization logic
 import os
 import asyncio
 import datetime
+import json
 import time
+import threading
 from typing import Optional, List, Any
 from urllib.parse import urlparse
 
@@ -23,6 +25,14 @@ class AgentInitializer:
     - Tool loading
     - System prompt building
     """
+
+    _memory_sync_lock = threading.Lock()
+    _memory_sync_inflight = set()
+    _memory_sync_last_finished = {}
+    _memory_sync_interval_seconds = 300
+    _mcp_cache_lock = threading.Lock()
+    _mcp_cache = {}
+    _mcp_cache_events = {}
     
     def __init__(self, bridge, agent_bridge):
         """
@@ -94,8 +104,13 @@ class AgentInitializer:
         # Load tools
         tools = self._load_tools(workspace_root, memory_manager, memory_tools, session_id, agent_definition=agent_definition)
 
-        # Setup MCP servers and tools
-        mcp_manager = self._setup_mcp_tools(tools, session_id, agent_definition=agent_definition)
+        # Setup MCP servers and tools. Platform mode warms MCP in the background
+        # so a slow server start does not block the first assistant token.
+        mcp_servers = self._resolve_mcp_servers(agent_definition)
+        defer_mcp_setup = bool(mcp_servers) and self._should_defer_mcp_setup()
+        mcp_manager = None
+        if mcp_servers and not defer_mcp_setup:
+            mcp_manager = self._setup_mcp_tools(tools, session_id, mcp_servers=mcp_servers)
         
         # Initialize scheduler if needed
         self._initialize_scheduler(tools, session_id)
@@ -148,6 +163,8 @@ class AgentInitializer:
         # Attach MCP manager for lifecycle management
         if mcp_manager:
             agent.mcp_manager = mcp_manager
+        elif defer_mcp_setup:
+            self._warm_mcp_tools_in_background(agent, mcp_servers, session_id)
         
         # Attach memory manager and share LLM model for summarization
         if memory_manager:
@@ -281,6 +298,12 @@ class AgentInitializer:
     
     def _load_env_file(self):
         """Load environment variables from .env file"""
+        from config import conf
+
+        if conf().get("web_tenant_auth", True):
+            logger.debug("[AgentInitializer] Skip global .env load in platform tenant mode")
+            return
+
         env_file = expand_path("~/.cow/.env")
         if os.path.exists(env_file):
             try:
@@ -369,7 +392,11 @@ class AgentInitializer:
             
             # Create memory manager
             memory_config = MemoryConfig(workspace_root=workspace_root)
-            memory_manager = MemoryManager(memory_config, embedding_provider=embedding_provider)
+            memory_manager = MemoryManager(
+                memory_config,
+                embedding_provider=embedding_provider,
+                allow_env_embedding=not conf().get("web_tenant_auth", True),
+            )
             
             # Sync memory
             self._sync_memory(memory_manager, session_id)
@@ -390,6 +417,12 @@ class AgentInitializer:
     
     def _sync_memory(self, memory_manager, session_id: Optional[str] = None):
         """Sync memory database"""
+        from config import conf
+
+        if conf().get("web_tenant_auth", True):
+            self._sync_memory_in_background(memory_manager, session_id)
+            return
+
         try:
             loop = asyncio.get_event_loop()
             if loop.is_closed():
@@ -405,6 +438,40 @@ class AgentInitializer:
                 loop.run_until_complete(memory_manager.sync())
         except Exception as e:
             logger.warning(f"[AgentInitializer] Memory sync failed: {e}")
+
+    def _sync_memory_in_background(self, memory_manager, session_id: Optional[str] = None):
+        """Schedule memory sync without blocking the request path."""
+        try:
+            key = str(memory_manager.config.get_workspace())
+        except Exception:
+            key = str(id(memory_manager))
+
+        now = time.monotonic()
+        with self._memory_sync_lock:
+            if key in self._memory_sync_inflight:
+                logger.debug(f"[AgentInitializer] Memory sync already running for {key}")
+                return
+            last_finished = self._memory_sync_last_finished.get(key)
+            if last_finished and now - last_finished < self._memory_sync_interval_seconds:
+                logger.debug(f"[AgentInitializer] Memory sync skipped by throttle for {key}")
+                return
+            self._memory_sync_inflight.add(key)
+
+        def _runner():
+            started = time.perf_counter()
+            try:
+                asyncio.run(memory_manager.sync())
+                elapsed = time.perf_counter() - started
+                logger.info(f"[AgentInitializer] Memory sync completed in background ({elapsed:.2f}s)")
+            except Exception as e:
+                logger.warning(f"[AgentInitializer] Background memory sync failed: {e}")
+            finally:
+                with self._memory_sync_lock:
+                    self._memory_sync_inflight.discard(key)
+                    self._memory_sync_last_finished[key] = time.monotonic()
+
+        thread_name = f"cow-memory-sync-{session_id or 'default'}"
+        threading.Thread(target=_runner, name=thread_name, daemon=True).start()
     
     def _load_tools(self, workspace_root: str, memory_manager, memory_tools: List, session_id: Optional[str] = None, agent_definition=None):
         """Load all tools"""
@@ -555,41 +622,42 @@ class AgentInitializer:
             and not getattr(agent_definition, field_name, ())
         )
     
-    def _setup_mcp_tools(self, tools: List, session_id: Optional[str] = None, agent_definition=None) -> Optional[Any]:
-        """Start MCP servers and register their tools as MCPTool instances.
-
-        Returns the MCPManager if any servers were started, else None.
-        """
+    @staticmethod
+    def _resolve_mcp_servers(agent_definition) -> dict:
         if not agent_definition or not agent_definition.mcp_servers:
-            return None
+            return {}
 
-        mcp_servers = {
+        return {
             name: config
             for name, config in dict(agent_definition.mcp_servers).items()
             if not isinstance(config, dict) or config.get("enabled", True)
         }
+
+    @staticmethod
+    def _should_defer_mcp_setup() -> bool:
+        from config import conf
+
+        return bool(conf().get("web_tenant_auth", True))
+
+    def _setup_mcp_tools(
+        self,
+        tools: List,
+        session_id: Optional[str] = None,
+        agent_definition=None,
+        mcp_servers: Optional[dict] = None,
+    ) -> Optional[Any]:
+        """Start MCP servers and register their tools as MCPTool instances.
+
+        Returns the MCPManager if any servers were started, else None.
+        """
+        if mcp_servers is None:
+            mcp_servers = self._resolve_mcp_servers(agent_definition)
         if not mcp_servers:
             return None
 
         try:
-            from agent.tools.mcp.mcp_manager import MCPManager
-            from agent.tools.mcp.mcp_tool import MCPTool
-
-            mcp_manager = MCPManager()
-
-            mcp_manager.start_servers_sync(mcp_servers, timeout=60)
-            all_tools = mcp_manager.get_all_tools_sync(timeout=30)
-
-            # Wrap each MCP tool as a BaseTool
-            for tool_info in all_tools:
-                mcp_tool = MCPTool(
-                    server_name=tool_info["server_name"],
-                    tool_name=tool_info["tool_name"],
-                    description=tool_info["description"],
-                    input_schema=tool_info["input_schema"],
-                    mcp_manager=mcp_manager,
-                )
-                tools.append(mcp_tool)
+            mcp_manager, all_tools = self._get_or_start_mcp_manager(mcp_servers)
+            self._append_mcp_tools(tools, mcp_manager, all_tools)
 
             if session_id is None:
                 logger.info(
@@ -601,6 +669,92 @@ class AgentInitializer:
         except Exception as e:
             logger.warning(f"[AgentInitializer] MCP setup failed: {e}")
             return None
+
+    @classmethod
+    def _mcp_cache_key(cls, mcp_servers: dict) -> str:
+        """Build a stable cache key for an MCP server set."""
+        return json.dumps(mcp_servers, sort_keys=True, separators=(",", ":"), default=str)
+
+    @classmethod
+    def _get_or_start_mcp_manager(cls, mcp_servers: dict):
+        """Start MCP servers once per process for the same resolved config."""
+        cache_key = cls._mcp_cache_key(mcp_servers)
+
+        with cls._mcp_cache_lock:
+            cached = cls._mcp_cache.get(cache_key)
+            if cached is not None:
+                return cached["manager"], cached["tools"]
+
+            event = cls._mcp_cache_events.get(cache_key)
+            if event is None:
+                event = threading.Event()
+                cls._mcp_cache_events[cache_key] = event
+                owner = True
+            else:
+                owner = False
+
+        if not owner:
+            if not event.wait(timeout=90):
+                raise TimeoutError("Timed out waiting for MCP server cache warmup")
+            with cls._mcp_cache_lock:
+                cached = cls._mcp_cache.get(cache_key)
+                if cached is None:
+                    raise RuntimeError("MCP server cache warmup failed")
+                return cached["manager"], cached["tools"]
+
+        try:
+            from agent.tools.mcp.mcp_manager import MCPManager
+
+            mcp_manager = MCPManager()
+            mcp_manager.start_servers_sync(mcp_servers, timeout=60)
+            all_tools = mcp_manager.get_all_tools_sync(timeout=30)
+
+            with cls._mcp_cache_lock:
+                cls._mcp_cache[cache_key] = {
+                    "manager": mcp_manager,
+                    "tools": all_tools,
+                }
+            return mcp_manager, all_tools
+        finally:
+            with cls._mcp_cache_lock:
+                cls._mcp_cache_events.pop(cache_key, None)
+                event.set()
+
+    @staticmethod
+    def _append_mcp_tools(tools: List, mcp_manager, all_tools: list[dict]) -> None:
+        from agent.tools.mcp.mcp_tool import MCPTool
+
+        # Tool instances keep per-Agent execution context, so create fresh
+        # wrappers while sharing the long-lived MCPManager subprocesses.
+        for tool_info in all_tools:
+            tools.append(MCPTool(
+                server_name=tool_info["server_name"],
+                tool_name=tool_info["tool_name"],
+                description=tool_info["description"],
+                input_schema=tool_info["input_schema"],
+                mcp_manager=mcp_manager,
+            ))
+
+    def _warm_mcp_tools_in_background(self, agent, mcp_servers: dict, session_id: Optional[str] = None) -> None:
+        """Start MCP servers after the agent is ready; tools attach to later turns."""
+        if not mcp_servers:
+            return
+
+        def _runner():
+            tools = []
+            manager = self._setup_mcp_tools(tools, session_id, mcp_servers=mcp_servers)
+            if not manager:
+                return
+            for tool in tools:
+                agent.add_tool(tool)
+            agent.mcp_manager = manager
+            logger.info(
+                f"[AgentInitializer] MCP tools warmed in background: "
+                f"{len(tools)} tool(s) from {len(manager.clients)} server(s)"
+            )
+
+        thread_name = f"cow-mcp-warm-{session_id or 'default'}"
+        threading.Thread(target=_runner, name=thread_name, daemon=True).start()
 
     def _get_runtime_info(self, workspace_root: str):
         """Get runtime information with dynamic time support"""

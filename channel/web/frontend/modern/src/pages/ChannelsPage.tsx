@@ -1,7 +1,6 @@
 import { Alert, Button, Form, Input, InputNumber, Modal, Popconfirm, QRCode, Select, Space, Spin, Switch, Tag, Typography, message } from 'antd';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { PageTitle } from '../components/PageTitle';
-import { DataTableShell, PageToolbar } from '../components/console';
+import { ConsolePage, DataTableShell, PageToolbar } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type { ChannelConfigItem, ChannelField, ChannelTypeItem, WeixinQrInfo } from '../types';
@@ -302,25 +301,6 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
 
   const content = (
     <>
-      {!embedded ? (
-        <PageTitle
-          title="渠道配置"
-          description="维护本租户自己的飞书、公众号、QQ 等渠道接入密钥。"
-          extra={(
-            <Space>
-              <Button onClick={() => void load()}>刷新</Button>
-              {canManage && <Button type="primary" onClick={openCreate}>新增渠道配置</Button>}
-            </Space>
-          )}
-        />
-      ) : (
-        <div className="channel-tab-toolbar">
-          <PageToolbar>
-            <Button onClick={() => void load()}>刷新</Button>
-            {canManage && <Button type="primary" onClick={openCreate}>新增渠道配置</Button>}
-          </PageToolbar>
-        </div>
-      )}
 
       <DataTableShell<ChannelConfigItem>
         compact={embedded}
@@ -511,9 +491,32 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
     </>
   );
 
+  if (embedded) {
+    return (
+      <div className="channels-page-embedded channel-tab-panel">
+        <div className="channel-tab-toolbar">
+          <PageToolbar>
+            <Button onClick={() => void load()}>刷新</Button>
+            {canManage && <Button type="primary" onClick={openCreate}>新增渠道配置</Button>}
+          </PageToolbar>
+        </div>
+        {content}
+      </div>
+    );
+  }
+
   return (
-    <div className={embedded ? 'channels-page-embedded channel-tab-panel' : 'channels-page'}>
+    <ConsolePage
+      className="channels-page"
+      title="渠道配置"
+      actions={(
+        <PageToolbar>
+          <Button onClick={() => void load()}>刷新</Button>
+          {canManage && <Button type="primary" onClick={openCreate}>新增渠道配置</Button>}
+        </PageToolbar>
+      )}
+    >
       {content}
-    </div>
+    </ConsolePage>
   );
 }
