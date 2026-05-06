@@ -330,7 +330,7 @@ export default function TasksPage() {
         </PageToolbar>
       )}
     >
-      <div className="tasks-filter-bar">
+      <div className="console-filter-strip tasks-filter-bar">
         <Segmented
           value={statusFilter}
           onChange={(value) => setStatusFilter(String(value))}
@@ -366,6 +366,11 @@ export default function TasksPage() {
         dataSource={filteredTasks}
         pagination={{ pageSize: 12 }}
         scroll={{ x: 'max-content' }}
+        emptyState={{
+          title: keyword ? '没有匹配的任务' : '暂无调度任务',
+          description: '创建任务后，可在这里查看执行状态、触发方式和历史记录。',
+          action: canManage ? <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新建任务</Button> : undefined,
+        }}
         columns={[
           {
             title: '任务',

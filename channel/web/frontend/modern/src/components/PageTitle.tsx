@@ -8,12 +8,12 @@ interface PageTitleProps {
 
 export function PageTitle({ title, description, extra }: PageTitleProps) {
   return (
-    <div className="console-page-header page-title-compat">
-      <div className="console-page-heading">
-        <Typography.Title level={4} className="console-page-title">{title}</Typography.Title>
-        {description ? <Typography.Text className="console-page-description">{description}</Typography.Text> : null}
+    <div className="console-embedded-header">
+      <div className="console-embedded-heading">
+        <Typography.Title level={4} className="console-embedded-title">{title}</Typography.Title>
+        {description ? <Typography.Text className="console-embedded-description">{description}</Typography.Text> : null}
       </div>
-      {extra}
+      {extra ? <div className="console-embedded-actions">{extra}</div> : null}
     </div>
   );
 }

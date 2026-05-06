@@ -331,53 +331,55 @@ export default function UsagePage() {
       title="用量统计"
       actions={(
         <PageToolbar>
-          <Segmented
-            className="usage-view-filter"
-            value={panelKey}
-            options={[
-              { label: '统计报表', value: 'reports' },
-              { label: '用量明细', value: 'details' },
-            ]}
-            onChange={(value) => setPanelKey(value as UsagePanelKey)}
-          />
-          {panelKey === 'reports' ? (
-            <Segmented
-              className="usage-bucket-filter"
-              value={bucket}
-              options={BUCKET_OPTIONS}
-              onChange={(value) => setBucket(value as UsageBucket)}
-            />
-          ) : null}
-          <Select
-            allowClear
-            showSearch
-            className="usage-agent-filter"
-            value={agentId || undefined}
-            placeholder="全部 AI 员工"
-            labelRender={(item) => formatAgentName(String(item.value || ''))}
-            onChange={(value) => setAgentId(value || '')}
-            options={agentOptions}
-          />
-          <Select
-            allowClear
-            showSearch
-            className="usage-model-filter"
-            value={model || undefined}
-            placeholder="全部模型"
-            onChange={(value) => setModel(value || '')}
-            options={modelOptions}
-          />
-          <RangePicker
-            allowClear
-            className="usage-range-filter"
-            placeholder={['开始日期', '结束日期']}
-            onChange={(_dates, dateStrings) => setDateRange(normalizeDateRange(dateStrings as [string, string]))}
-            format="YYYY-MM-DD"
-          />
           <Button onClick={() => void loadUsage()}>刷新</Button>
         </PageToolbar>
       )}
     >
+      <div className="console-filter-strip usage-filter-strip">
+        <Segmented
+          className="usage-view-filter"
+          value={panelKey}
+          options={[
+            { label: '统计报表', value: 'reports' },
+            { label: '用量明细', value: 'details' },
+          ]}
+          onChange={(value) => setPanelKey(value as UsagePanelKey)}
+        />
+        {panelKey === 'reports' ? (
+          <Segmented
+            className="usage-bucket-filter"
+            value={bucket}
+            options={BUCKET_OPTIONS}
+            onChange={(value) => setBucket(value as UsageBucket)}
+          />
+        ) : null}
+        <Select
+          allowClear
+          showSearch
+          className="usage-agent-filter"
+          value={agentId || undefined}
+          placeholder="全部 AI 员工"
+          labelRender={(item) => formatAgentName(String(item.value || ''))}
+          onChange={(value) => setAgentId(value || '')}
+          options={agentOptions}
+        />
+        <Select
+          allowClear
+          showSearch
+          className="usage-model-filter"
+          value={model || undefined}
+          placeholder="全部模型"
+          onChange={(value) => setModel(value || '')}
+          options={modelOptions}
+        />
+        <RangePicker
+          allowClear
+          className="usage-range-filter"
+          placeholder={['开始日期', '结束日期']}
+          onChange={(_dates, dateStrings) => setDateRange(normalizeDateRange(dateStrings as [string, string]))}
+          format="YYYY-MM-DD"
+        />
+      </div>
       {panelKey === 'reports' ? (
         <section className="usage-report-panel">
           <div className="operations-summary-grid usage-summary-grid">
@@ -442,6 +444,10 @@ export default function UsagePage() {
             dataSource={records}
             pagination={{ pageSize: 20, showSizeChanger: false }}
             scroll={{ x: 'max-content', y: 'clamp(24rem, calc(100vh - 18rem), 42rem)' }}
+            emptyState={{
+              title: '暂无用量明细',
+              description: '当前筛选范围内没有调用记录，切换 AI 员工、模型或时间范围后再查看。',
+            }}
             columns={[
               { title: '时间', dataIndex: 'created_at', width: 170 },
               { title: 'AI 员工', dataIndex: 'agent_id', width: 140, render: renderAgentName },

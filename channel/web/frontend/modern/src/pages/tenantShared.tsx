@@ -7,21 +7,6 @@ export const TENANT_STATUS_OPTIONS = [
   { label: 'deleted', value: 'deleted' },
 ];
 
-export function parseTenantMetadata(text: string): Record<string, unknown> | null {
-  try {
-    const parsed = text ? JSON.parse(text) : {};
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? parsed as Record<string, unknown>
-      : {};
-  } catch {
-    return null;
-  }
-}
-
-export function serializeTenantMetadata(metadata?: Record<string, unknown>) {
-  return JSON.stringify(metadata || {}, null, 2);
-}
-
 export function renderTenantTitle(value: string, row: TenantItem) {
   return (
     <span className="entity-title-cell">
@@ -36,5 +21,5 @@ export function renderTenantStatus(value: string) {
 }
 
 export function renderTenantMetadata(row: TenantItem) {
-  return <AdvancedJsonPanel title="租户 metadata" value={row.metadata || {}} defaultOpen />;
+  return <AdvancedJsonPanel title="租户扩展信息" value={row.metadata || {}} />;
 }

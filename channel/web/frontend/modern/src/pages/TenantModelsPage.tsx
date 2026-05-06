@@ -21,7 +21,6 @@ import {
   capabilityProviderFallbacks,
   findDefaultBaseForProvider,
   findFirstProviderForCapability,
-  filterSelectOption,
   getEffectiveCapabilityProviders,
   providerOptionLabel,
 } from './modelConfigShared';
@@ -351,6 +350,13 @@ export default function TenantModelsPage() {
           dataSource={activeModels}
           pagination={{ pageSize: 12 }}
           locale={{ emptyText: activeScope === 'platform' ? '暂无平台对话模型' : '暂无自有对话模型' }}
+          emptyState={{
+            title: activeScope === 'platform' ? '暂无平台对话模型' : '暂无自有对话模型',
+            description: activeScope === 'platform'
+              ? '平台模型会在管理员开放后显示在这里。'
+              : '新增自有模型后，可在 AI 员工配置中选择使用。',
+            action: canManage && activeScope === 'tenant' ? <Button type="primary" onClick={openCreate}>新增自有对话模型</Button> : undefined,
+          }}
           columns={activeColumns}
           scroll={{ x: 'max-content' }}
         />
@@ -363,6 +369,13 @@ export default function TenantModelsPage() {
           dataSource={activeCapabilities}
           pagination={{ pageSize: 12 }}
           locale={{ emptyText: activeScope === 'platform' ? '暂无平台专项能力' : '暂无自有专项能力' }}
+          emptyState={{
+            title: activeScope === 'platform' ? '暂无平台专项能力' : '暂无自有专项能力',
+            description: activeScope === 'platform'
+              ? '平台专项能力会在管理员开放后显示在这里。'
+              : '新增自有专项能力后，可用于文生图、语音、多模态等能力路由。',
+            action: canManage && activeScope === 'tenant' ? <Button type="primary" onClick={openCapabilityCreate}>新增自有专项能力</Button> : undefined,
+          }}
           columns={activeCapabilityColumns}
           scroll={{ x: 'max-content' }}
         />
@@ -381,8 +394,6 @@ export default function TenantModelsPage() {
             <Select
               options={modelProviderOptions}
               showSearch
-              optionFilterProp="label"
-              filterOption={filterSelectOption}
               aria-label="厂商"
               onChange={() => form.setFieldValue('api_base', '')}
             />

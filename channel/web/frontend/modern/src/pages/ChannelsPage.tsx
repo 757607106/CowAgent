@@ -314,6 +314,11 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
           hideOnSinglePage: configs.length <= (embedded ? 10 : 12),
         }}
         tableLayout="fixed"
+        emptyState={{
+          title: '暂无渠道配置',
+          description: '接入微信、企微或 Web 渠道后，可在这里维护回调、密钥与授权状态。',
+          action: canManage ? <Button type="primary" onClick={openCreate}>新增渠道配置</Button> : undefined,
+        }}
         columns={[
           {
             title: '名称',

@@ -1,13 +1,14 @@
 import {
   ApiOutlined,
-  AppstoreOutlined,
   BuildOutlined,
   EditOutlined,
+  MessageOutlined,
   PlusOutlined,
   ReloadOutlined,
   SearchOutlined,
   SettingOutlined,
   ToolOutlined,
+  DeleteOutlined,
 } from '@ant-design/icons';
 import {
   Avatar,
@@ -20,18 +21,17 @@ import {
   Modal,
   Popconfirm,
   Popover,
-  Segmented,
   Select,
-  Space,
   Statistic,
   Switch,
   Tag,
+  Tooltip,
   Typography,
   message,
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ConsolePage, DataTableShell, PageToolbar } from '../components/console';
+import { ConsolePage, PageToolbar } from '../components/console';
 import { displayAgentName, useRuntimeScope } from '../context/runtime';
 import { api, formatAgentPayload } from '../services/api';
 import type { AgentItem, ModelConfigItem, SkillItem, TenantItem, ToolItem } from '../types';
@@ -50,7 +50,6 @@ interface AgentFormValues {
   knowledge_enabled: boolean;
 }
 
-type AgentViewMode = 'table' | 'cards';
 type AgentBadgeStatus = 'success' | 'processing' | 'default' | 'warning' | 'error';
 
 const LEGACY_MODEL_PREFIX = 'legacy-model:';
@@ -139,7 +138,6 @@ const AGENT_AVATAR_OPTIONS = [
 const DEFAULT_AGENT_AVATAR_KEY = AGENT_AVATAR_OPTIONS[0].key;
 const AGENT_AVATAR_KEYS = new Set<string>(AGENT_AVATAR_OPTIONS.map((option) => option.key));
 const DEFAULT_AGENT_POSITION = 'AI 业务专员';
-const EMPTY_ROLE_INTRO = '暂无角色简介';
 type AgentAvatarOption = (typeof AGENT_AVATAR_OPTIONS)[number];
 
 function isDefaultAgent(agent: AgentItem | null | undefined): boolean {
@@ -183,12 +181,6 @@ function agentAvatarOption(agent: AgentItem | null | undefined): AgentAvatarOpti
   return avatarOptionByKey(metadata.avatar_key || metadata.avatar);
 }
 
-function agentPosition(agent: AgentItem): string {
-  const value = agentMetadata(agent).position;
-  if (typeof value === 'string' && value.trim()) return value.trim();
-  return DEFAULT_AGENT_POSITION;
-}
-
 function mcpServerCount(agent: AgentItem): number {
   return Object.keys(agent.mcp_servers || {}).length;
 }
@@ -201,12 +193,6 @@ function agentOperationalState(agent: AgentItem, capabilityCount: number): { sta
   if (!agent.model) return { status: 'warning', label: '待配置' };
   if (capabilityCount === 0 && !agent.knowledge_enabled) return { status: 'default', label: '基础对话' };
   return { status: 'success', label: '可服务' };
-}
-
-function agentRoleIntro(agent: AgentItem): string {
-  const value = agentMetadata(agent).role_intro;
-  if (typeof value === 'string' && value.trim()) return value.trim();
-  return EMPTY_ROLE_INTRO;
 }
 
 function buildAgentMetadata(
@@ -245,7 +231,7 @@ function AgentAvatarTrigger({ value, onChange, name = 'AI 员工', size = 'norma
   const content = (
     <div className="agent-avatar-popover">
       <Typography.Title level={5} className="agent-avatar-popover-title">
-        选择数字员工形象
+        选择 AI 员工形象
       </Typography.Title>
       <div className="agent-avatar-popover-grid">
         {AGENT_AVATAR_OPTIONS.map((option) => (
@@ -301,7 +287,6 @@ export default function AgentsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
-  const [agentView, setAgentView] = useState<AgentViewMode>('cards');
   const [createForm] = Form.useForm<AgentFormValues>();
 
   const modelOptions = useMemo(() => {
@@ -330,10 +315,7 @@ export default function AgentsPage() {
     };
   };
 
-  const tenantNameById = useMemo(
-    () => new Map(tenants.map((tenant) => [tenant.tenant_id, tenant.name])),
-    [tenants],
-  );
+
 
   const filteredAgents = useMemo(() => {
     const keyword = search.trim().toLowerCase();
@@ -433,7 +415,7 @@ export default function AgentsPage() {
     setSubmitting(true);
     try {
       await api.createAgent(payload);
-      message.success('数字员工已创建');
+      message.success('AI 员工已创建');
       setCreateOpen(false);
       await loadAgents(effectiveTenantId);
       await refreshAgentOptions();
@@ -444,7 +426,7 @@ export default function AgentsPage() {
 
   const onDelete = async (row: AgentItem) => {
     await api.deleteAgent(row.tenant_id, row.agent_id);
-    message.success('数字员工已删除');
+    message.success('AI 员工已删除');
 
     await loadAgents(row.tenant_id);
     await refreshAgentOptions();
@@ -470,206 +452,115 @@ export default function AgentsPage() {
 
 
 
-  const agentColumns = [
-    {
-      title: '员工',
-      key: 'agent',
-      width: 260,
-      render: (_: unknown, agent: AgentItem) => {
-        const agentName = displayAgentName(agent.agent_id, agent.name);
-        const avatar = agentAvatarOption(agent);
-        const toolCount = effectiveToolNames(agent, tools).length;
-        const skillCount = effectiveSkillNames(agent, skills).length;
-        const capabilityCount = toolCount + skillCount + mcpServerCount(agent);
-        const state = agentOperationalState(agent, capabilityCount);
-        return (
-          <div className="agent-table-name">
-            <Avatar size={40} src={avatar.src} className="agent-avatar">{agentInitial(agentName)}</Avatar>
-            <div className="agent-table-title">
-              <Space size={8} wrap>
-                <Typography.Text strong>{agentName}</Typography.Text>
-                <Badge status={state.status} text={state.label} />
-              </Space>
-              <Typography.Text type="secondary">{agent.agent_id}</Typography.Text>
-            </div>
-          </div>
-        );
-      },
-    },
-    {
-      title: '模型',
-      dataIndex: 'model',
-      width: 180,
-      render: (value: string) => value ? <Tag color="blue">{value}</Tag> : <Tag>未配置</Tag>,
-    },
-    {
-      title: '能力',
-      key: 'capabilities',
-      width: 260,
-      render: (_: unknown, agent: AgentItem) => {
-        const toolCount = effectiveToolNames(agent, tools).length;
-        const skillCount = effectiveSkillNames(agent, skills).length;
-        const enabledMcpCount = enabledMcpServerCount(agent);
-        return (
-          <div className="agent-table-ability">
-            <Tag icon={<ToolOutlined />}>工具 {toolCount}</Tag>
-            <Tag icon={<BuildOutlined />}>技能 {skillCount}</Tag>
-            <Tag icon={<ApiOutlined />}>MCP {enabledMcpCount}</Tag>
-          </div>
-        );
-      },
-    },
-    {
-      title: '知识库',
-      dataIndex: 'knowledge_enabled',
-      width: 120,
-      render: (enabled: boolean) => enabled ? <Tag color="green">已启用</Tag> : <Tag>未启用</Tag>,
-    },
-    {
-      title: '租户',
-      dataIndex: 'tenant_id',
-      width: 180,
-      ellipsis: true,
-      render: (value: string) => tenantNameById.get(value) || value,
-    },
-    {
-      title: '操作',
-      key: 'actions',
-      width: 170,
-      fixed: 'right' as const,
-      render: (_: unknown, agent: AgentItem) => (
-        <Space size={4}>
-          <Button type="link" icon={<AppstoreOutlined />} onClick={() => void openDetail(agent)}>
-            配置
-          </Button>
-          <Popconfirm
-            title={isDefaultAgent(agent) ? '通用 Agent 不能删除' : '确认删除该数字员工？'}
-            onConfirm={() => void onDelete(agent)}
-            disabled={isDefaultAgent(agent)}
-          >
-            <Button type="link" danger disabled={isDefaultAgent(agent)}>删除</Button>
-          </Popconfirm>
-        </Space>
-      ),
-    },
-  ];
-
   return (
     <ConsolePage
       className="agents-page"
       title="AI 员工"
       actions={(
-          <PageToolbar>
-            <Segmented
-              value={agentView}
-              onChange={(value) => setAgentView(value as AgentViewMode)}
-              options={[
-                { label: '员工视图', value: 'cards' },
-                { label: '运营表格', value: 'table' },
-              ]}
-            />
-            <Select
-              value={tenantId}
-              className="agent-tenant-filter"
-              aria-label="租户"
-              onChange={(value) => setTenantId(value)}
-              options={(tenants.length > 0 ? tenants : [{ tenant_id: 'default', name: 'default' }]).map((tenant) => ({
-                label: tenant.name,
-                value: tenant.tenant_id,
-              }))}
-            />
-            <Input
-              allowClear
-              prefix={<SearchOutlined />}
-              placeholder="搜索员工..."
-              aria-label="搜索员工"
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-              className="agent-search"
-            />
-            <Button icon={<ReloadOutlined />} onClick={() => void loadAgents(tenantId)}>刷新</Button>
-            <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新员工入职</Button>
-          </PageToolbar>
-        )}
+        <PageToolbar>
+          <Button icon={<ReloadOutlined />} onClick={() => void loadAgents(tenantId)}>刷新</Button>
+          <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新员工入职</Button>
+        </PageToolbar>
+      )}
     >
 
-      {agentView === 'table' ? (
-        <div className="agent-overview-grid">
-          <Card className="agent-overview-card">
-            <Statistic title="在岗员工" value={agentOverview.total} loading={loading} />
-          </Card>
-          <Card className="agent-overview-card">
-            <Statistic title="可独立服务" value={agentOverview.serviceable} loading={loading} />
-          </Card>
-          <Card className="agent-overview-card">
-            <Statistic title="带知识库" value={agentOverview.knowledgeEnabled} loading={loading} />
-          </Card>
-          <Card className="agent-overview-card">
-            <Statistic title="能力连接" value={agentOverview.capabilityTotal} loading={loading} />
-          </Card>
-        </div>
-      ) : null}
+      <div className="agent-overview-grid">
+        <Card className="agent-overview-card">
+          <Statistic title="在岗员工" value={agentOverview.total} loading={loading} />
+        </Card>
+        <Card className="agent-overview-card">
+          <Statistic title="可独立服务" value={agentOverview.serviceable} loading={loading} />
+        </Card>
+        <Card className="agent-overview-card">
+          <Statistic title="带知识库" value={agentOverview.knowledgeEnabled} loading={loading} />
+        </Card>
+        <Card className="agent-overview-card">
+          <Statistic title="能力连接" value={agentOverview.capabilityTotal} loading={loading} />
+        </Card>
+      </div>
+
+      <div className="console-filter-strip agent-filter-strip">
+        <Select
+          value={tenantId}
+          className="agent-tenant-filter"
+          aria-label="租户"
+          onChange={(value) => setTenantId(value)}
+          options={(tenants.length > 0 ? tenants : [{ tenant_id: 'default', name: 'default' }]).map((tenant) => ({
+            label: tenant.name,
+            value: tenant.tenant_id,
+          }))}
+        />
+        <Input
+          allowClear
+          prefix={<SearchOutlined />}
+          placeholder="搜索员工..."
+          aria-label="搜索员工"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          className="agent-search"
+        />
+      </div>
 
       {filteredAgents.length === 0 && !loading ? (
         <Card className="agent-empty-card">
-          <Empty description={search ? '没有匹配的数字员工。' : '暂无数字员工。'}>
+          <Empty description={search ? '没有匹配的 AI 员工。' : '暂无 AI 员工。'}>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新员工入职</Button>
           </Empty>
         </Card>
-      ) : agentView === 'table' ? (
-        <DataTableShell<AgentItem>
-            title="员工列表"
-            rowKey={(agent) => `${agent.tenant_id}/${agent.agent_id}`}
-            loading={loading}
-            columns={agentColumns}
-            dataSource={filteredAgents}
-            pagination={{ pageSize: 8, showSizeChanger: false }}
-            scroll={{ x: 'max-content' }}
-          />
       ) : (
-        <div className="agent-card-grid">
-          {filteredAgents.map((agent, index) => {
+        <div className="agent-vivid-grid">
+          {filteredAgents.map(agent => {
             const agentName = displayAgentName(agent.agent_id, agent.name);
+            const avatar = agentAvatarOption(agent);
             const toolCount = effectiveToolNames(agent, tools).length;
             const skillCount = effectiveSkillNames(agent, skills).length;
-            const mcpCount = mcpServerCount(agent);
-            const state = agentOperationalState(agent, toolCount + skillCount + mcpCount);
-            const avatar = agentAvatarOption(agent);
-            const position = agentPosition(agent);
-            const roleIntro = agentRoleIntro(agent);
+            const capabilityCount = toolCount + skillCount + mcpServerCount(agent);
+            const state = agentOperationalState(agent, capabilityCount);
+            const isDefault = isDefaultAgent(agent);
+
             return (
-              <Card
-                key={`${agent.tenant_id}/${agent.agent_id}`}
-                hoverable
-                className="agent-card agent-employee-card"
-                loading={loading}
-              >
-                <div className={`agent-employee-cover agent-cover-tone-${index % 6}`}>
-                  <img src={avatar.src} alt={`${agentName} 头像`} className="agent-employee-portrait" draggable={false} />
-                  <span className={`agent-status-pulse agent-status-${state.status}`} title={state.label} />
+              <div key={agent.agent_id} className="agent-vivid-card">
+                <div className="agent-vivid-cover">
+                  <Badge status={state.status} text={state.label} className="agent-vivid-status-badge" />
                 </div>
-                <div className="agent-employee-body">
-                  <Typography.Title level={5} className="agent-card-heading" ellipsis>
-                    {agentName}
-                  </Typography.Title>
-                  <Typography.Text className="agent-position-text">
-                    {position}
-                  </Typography.Text>
-                  <Typography.Paragraph className="agent-market-desc" type="secondary" ellipsis={{ rows: 2 }}>
-                    {roleIntro}
-                  </Typography.Paragraph>
+                <div className="agent-vivid-avatar-wrapper">
+                  <Avatar src={avatar.src}>{agentInitial(agentName)}</Avatar>
                 </div>
-                <div className="agent-market-footer agent-employee-footer">
-                  <Space size={8} wrap>
-                    <Button type="text" icon={<SettingOutlined />} onClick={() => void openDetail(agent)}>
-                      配置
-                    </Button>
-                    <Button type="primary" icon={<AppstoreOutlined />} onClick={() => startChatWithAgent(agent)}>
-                      应用
-                    </Button>
-                  </Space>
+                <div className="agent-vivid-body">
+                  <div className="agent-vivid-title">
+                    <Typography.Title level={5} className="agent-vivid-name" title={agentName}>
+                      {agentName}
+                    </Typography.Title>
+                  </div>
+                  <div className="agent-vivid-model">
+                    {agent.model ? <Tag color="blue">{agent.model}</Tag> : <Tag>模型待配置</Tag>}
+                    {agent.knowledge_enabled && <Tag color="green">知识库</Tag>}
+                  </div>
+                  <div className="agent-vivid-capabilities">
+                    <Tooltip title={`挂载了 ${toolCount} 个工具`}><Tag icon={<ToolOutlined />}>{toolCount}</Tag></Tooltip>
+                    <Tooltip title={`挂载了 ${skillCount} 个技能`}><Tag icon={<BuildOutlined />}>{skillCount}</Tag></Tooltip>
+                    <Tooltip title={`启用了 ${enabledMcpServerCount(agent)} 个 MCP`}><Tag icon={<ApiOutlined />}>{enabledMcpServerCount(agent)}</Tag></Tooltip>
+                  </div>
                 </div>
-              </Card>
+                <div className="agent-vivid-actions">
+                  <button className="agent-vivid-action-btn" onClick={() => void openDetail(agent)} aria-label="配置">
+                    <SettingOutlined />
+                  </button>
+                  <button className="agent-vivid-action-btn" onClick={() => startChatWithAgent(agent)} aria-label="对话">
+                    <MessageOutlined />
+                  </button>
+                  <Popconfirm
+                    title={isDefault ? '通用 AI 员工不能删除' : '确认删除该 AI 员工？'}
+                    onConfirm={() => void onDelete(agent)}
+                    disabled={isDefault}
+                    placement="topRight"
+                  >
+                    <button className="agent-vivid-action-btn" disabled={isDefault} aria-label="删除" style={{ color: isDefault ? 'var(--text-tertiary)' : 'var(--color-error)' }}>
+                      <DeleteOutlined />
+                    </button>
+                  </Popconfirm>
+                </div>
+              </div>
             );
           })}
         </div>
@@ -691,7 +582,7 @@ export default function AgentsPage() {
             </Form.Item>
             <div className="agent-create-profile-copy">
               <Typography.Title level={4}>新员工</Typography.Title>
-              <Typography.Text type="secondary">设置该数字员工的基础资料、角色简介与响应模型</Typography.Text>
+              <Typography.Text type="secondary">设置该 AI 员工的基础资料、角色简介与响应模型</Typography.Text>
             </div>
           </div>
           <Form.Item name="tenant_id" label="租户" hidden={tenants.length <= 1}>
@@ -724,10 +615,10 @@ export default function AgentsPage() {
             </Form.Item>
           </div>
           <Form.Item name="role_intro" label="角色简介">
-            <Input.TextArea rows={3} placeholder="用一两句话描述该数字员工的角色、擅长领域和服务边界。" aria-label="角色简介" />
+            <Input.TextArea rows={3} placeholder="用一两句话描述该 AI 员工的角色、擅长领域和服务边界。" aria-label="角色简介" />
           </Form.Item>
           <Form.Item name="system_prompt" label="核心指令" htmlFor="agent-create-system-prompt">
-            <Input.TextArea id="agent-create-system-prompt" rows={5} placeholder="设置该数字员工的身份、边界、语气和工作流程。" aria-label="核心指令" />
+            <Input.TextArea id="agent-create-system-prompt" rows={5} placeholder="设置该 AI 员工的身份、边界、语气和工作流程。" aria-label="核心指令" />
           </Form.Item>
           <Form.Item name="tools" label="工具">
             <Select

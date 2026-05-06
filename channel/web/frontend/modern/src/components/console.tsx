@@ -1,4 +1,4 @@
-import { Card, Collapse, Space, Table, Tag, Typography, type TableProps } from 'antd';
+import { Card, Collapse, Empty, Space, Table, Tag, Typography, type TableProps } from 'antd';
 import type { ReactNode } from 'react';
 import { JsonBlock } from './JsonBlock';
 
@@ -21,6 +21,11 @@ interface DataTableShellProps<T extends object> extends Omit<TableProps<T>, 'tit
   title?: ReactNode;
   toolbar?: ReactNode;
   compact?: boolean;
+  emptyState?: {
+    title?: ReactNode;
+    description?: ReactNode;
+    action?: ReactNode;
+  };
 }
 
 interface EntityDetailLayoutProps {
@@ -79,7 +84,7 @@ export function ConsolePage({ title, description, actions, children, className }
 
 export function PageToolbar({ children, align = 'end' }: PageToolbarProps) {
   return (
-    <div className={`page-toolbar page-toolbar-${align}`}>
+    <div className={`page-toolbar page-toolbar-${align}`} role="group" aria-label="页面操作">
       <Space wrap size={0}>
         {children}
       </Space>
@@ -93,7 +98,46 @@ function fallbackRowKey<T extends object>(record: T, index?: number) {
   return typeof key === 'string' || typeof key === 'number' ? key : String(index ?? 0);
 }
 
-export function DataTableShell<T extends object>({ title, toolbar, compact, className, rowKey, ...tableProps }: DataTableShellProps<T>) {
+export function DataTableShell<T extends object>({
+  title,
+  toolbar,
+  compact,
+  className,
+  rowKey,
+  emptyState,
+  ...tableProps
+}: DataTableShellProps<T>) {
+  const dataCount = Array.isArray(tableProps.dataSource) ? tableProps.dataSource.length : undefined;
+  const hasRows = typeof dataCount === 'number' ? dataCount > 0 : true;
+  let normalizedScroll = tableProps.scroll;
+
+  if (!hasRows && normalizedScroll?.x === 'max-content') {
+    const restScroll = { ...normalizedScroll };
+    delete restScroll.x;
+    normalizedScroll = Object.keys(restScroll).length > 0 ? restScroll : undefined;
+  }
+
+  const localeEmptyText = tableProps.locale?.emptyText;
+  const emptyTitle = emptyState?.title ?? (typeof localeEmptyText === 'function' ? undefined : localeEmptyText) ?? '暂无数据';
+  const emptyDescription = emptyState?.description ?? '调整筛选条件或完成创建后，数据会显示在这里。';
+  const locale = {
+    ...tableProps.locale,
+    emptyText: (
+      <Empty
+        image={Empty.PRESENTED_IMAGE_SIMPLE}
+        className="data-table-empty"
+        description={(
+          <span className="data-table-empty-copy">
+            <Typography.Text strong>{emptyTitle}</Typography.Text>
+            <Typography.Text type="secondary">{emptyDescription}</Typography.Text>
+          </span>
+        )}
+      >
+        {emptyState?.action}
+      </Empty>
+    ),
+  };
+
   return (
     <Card className={['data-table-shell', compact ? 'data-table-shell-compact' : '', className].filter(Boolean).join(' ')}>
       {title || toolbar ? (
@@ -102,7 +146,13 @@ export function DataTableShell<T extends object>({ title, toolbar, compact, clas
           {toolbar}
         </div>
       ) : null}
-      <Table<T> rowKey={rowKey ?? fallbackRowKey} size={compact ? 'small' : undefined} {...tableProps} />
+      <Table<T>
+        rowKey={rowKey ?? fallbackRowKey}
+        size={compact ? 'small' : undefined}
+        {...tableProps}
+        locale={locale}
+        scroll={normalizedScroll}
+      />
     </Card>
   );
 }

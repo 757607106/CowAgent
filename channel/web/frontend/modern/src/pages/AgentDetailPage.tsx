@@ -136,7 +136,7 @@ export default function AgentDetailPage() {
       }
       setMcpEnabledMap(initialMcpMap);
     } catch {
-      message.error('加载数字员工失败');
+      message.error('加载 AI 员工失败');
       navigate('/agents');
     } finally {
       setLoading(false);
@@ -212,7 +212,7 @@ export default function AgentDetailPage() {
       title={
         <Breadcrumb
           items={[
-            { title: <Link to="/agents">数字员工</Link> },
+            { title: <Link to="/agents">AI 员工</Link> },
             { title: agentName },
           ]}
         />
@@ -232,10 +232,9 @@ export default function AgentDetailPage() {
       }
     >
       <Form form={form} layout="vertical" className="agent-detail-form-container">
-        {/* HERO SECTION */}
         <div className="agent-detail-full-hero">
           <div className="agent-detail-hero-info">
-            <Typography.Title level={2} style={{ margin: 0 }}>{agentName}</Typography.Title>
+            <Typography.Title level={2} className="agent-detail-hero-name">{agentName}</Typography.Title>
             <Space size={12}>
               <StatusTag status="active">{agentPos}</StatusTag>
               <Typography.Text type="secondary">ID: {agent.agent_id}</Typography.Text>
@@ -275,7 +274,7 @@ export default function AgentDetailPage() {
                             <div className="agent-kb-toggle-info">
                               <Typography.Text strong>启用知识库检索</Typography.Text>
                               <Typography.Text type="secondary" className="agent-kb-toggle-desc">
-                                允许数字员工在回答前自动检索工作区内相关知识库文档。
+                                允许 AI 员工在回答前自动检索工作区内相关知识库文档。
                               </Typography.Text>
                             </div>
                             <Form.Item name="knowledge_enabled" valuePropName="checked" noStyle>
@@ -291,7 +290,7 @@ export default function AgentDetailPage() {
                     <Form.Item name="system_prompt" className="agent-system-prompt-field">
                       <Input.TextArea
                         rows={16}
-                        placeholder="在此设定数字员工的深度人设、回答边界、工作流以及必须遵循的规则..."
+                        placeholder="在此设定 AI 员工的身份、回答边界、工作流以及必须遵循的规则..."
                       />
                     </Form.Item>
                   </Card>
@@ -300,28 +299,27 @@ export default function AgentDetailPage() {
             },
             {
               key: 'capabilities',
-              label: `外接能力 (${selectedTools.length + selectedSkills.length})`,
+              label: `能力绑定 (${selectedTools.length + selectedSkills.length})`,
               icon: <BranchesOutlined />,
               children: (
                 <div className="agent-capability-stack">
-                  {/* Tools Section */}
-                  <Card className="agent-section-card" title={<Space><ToolOutlined />基础工具 (Tools)</Space>}>
+                  <Card className="agent-section-card" title={<Space><ToolOutlined />工具能力</Space>}>
                     {tools.length === 0 ? (
                       <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可用的基础工具" />
                     ) : (
-                      <div className="app-store-grid">
+                      <div className="agent-binding-grid">
                         {tools.map((tool) => (
-                          <label key={tool.name} className={`app-store-card ${selectedTools.includes(tool.name) ? 'active' : ''}`}>
-                            <div className="app-store-card-header">
-                              <div className="app-store-icon"><ToolOutlined /></div>
-                              <Typography.Text strong className="app-store-title">{tool.name}</Typography.Text>
+                          <label key={tool.name} className={`agent-binding-card ${selectedTools.includes(tool.name) ? 'active' : ''}`}>
+                            <div className="agent-binding-card-header">
+                              <div className="agent-binding-icon"><ToolOutlined /></div>
+                              <Typography.Text strong className="agent-binding-title">{tool.name}</Typography.Text>
                               <Switch
                                 size="small"
                                 checked={selectedTools.includes(tool.name)}
                                 onChange={(checked) => setSelectedTools((prev) => toggleListItem(prev, tool.name, checked))}
                               />
                             </div>
-                            <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} className="app-store-desc">
+                            <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} className="agent-binding-desc">
                               {tool.description || '无详细描述'}
                             </Typography.Paragraph>
                           </label>
@@ -330,24 +328,23 @@ export default function AgentDetailPage() {
                     )}
                   </Card>
 
-                  {/* Skills Section */}
-                  <Card className="agent-section-card" title={<Space><BuildOutlined />高级技能 (Skills)</Space>}>
+                  <Card className="agent-section-card" title={<Space><BuildOutlined />技能能力</Space>}>
                     {skills.length === 0 ? (
-                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无高级技能" />
+                      <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无可绑定技能" />
                     ) : (
-                      <div className="app-store-grid">
+                      <div className="agent-binding-grid">
                         {skills.map((skill) => (
-                          <label key={skill.name} className={`app-store-card ${selectedSkills.includes(skill.name) ? 'active' : ''}`}>
-                            <div className="app-store-card-header">
-                              <div className="app-store-icon skill-icon"><BuildOutlined /></div>
-                              <Typography.Text strong className="app-store-title">{skill.name}</Typography.Text>
+                          <label key={skill.name} className={`agent-binding-card ${selectedSkills.includes(skill.name) ? 'active' : ''}`}>
+                            <div className="agent-binding-card-header">
+                              <div className="agent-binding-icon skill-icon"><BuildOutlined /></div>
+                              <Typography.Text strong className="agent-binding-title">{skill.name}</Typography.Text>
                               <Switch
                                 size="small"
                                 checked={selectedSkills.includes(skill.name)}
                                 onChange={(checked) => setSelectedSkills((prev) => toggleListItem(prev, skill.name, checked))}
                               />
                             </div>
-                            <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} className="app-store-desc">
+                            <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} className="agent-binding-desc">
                               {skill.description || '无详细描述'}
                             </Typography.Paragraph>
                           </label>
@@ -356,26 +353,25 @@ export default function AgentDetailPage() {
                     )}
                   </Card>
 
-                  {/* MCP Section */}
-                  <Card className="agent-section-card" title={<Space><ApiOutlined />MCP 微服务</Space>}>
+                  <Card className="agent-section-card" title={<Space><ApiOutlined />MCP 服务</Space>}>
                     {tenantMcpServers.length === 0 ? (
                       <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前租户还没有可绑定的 MCP 服务" />
                     ) : (
-                      <div className="app-store-grid">
+                      <div className="agent-binding-grid">
                         {tenantMcpServers.map((server) => {
                           const bound = Boolean(mcpEnabledMap[server.name]);
                           return (
-                            <label key={server.name} className={`app-store-card ${bound ? 'active' : ''}`}>
-                              <div className="app-store-card-header">
-                                <div className="app-store-icon mcp-icon"><ApiOutlined /></div>
-                                <Typography.Text strong className="app-store-title">{server.name}</Typography.Text>
+                            <label key={server.name} className={`agent-binding-card ${bound ? 'active' : ''}`}>
+                              <div className="agent-binding-card-header">
+                                <div className="agent-binding-icon mcp-icon"><ApiOutlined /></div>
+                                <Typography.Text strong className="agent-binding-title">{server.name}</Typography.Text>
                                 <Switch
                                   size="small"
                                   checked={bound}
                                   onChange={(checked) => setMcpEnabledMap((prev) => ({ ...prev, [server.name]: checked }))}
                                 />
                               </div>
-                              <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} className="app-store-desc">
+                              <Typography.Paragraph type="secondary" ellipsis={{ rows: 2 }} className="agent-binding-desc">
                                 {server.command ? `命令: ${server.command}` : '未配置启动命令'}
                               </Typography.Paragraph>
                             </label>
@@ -393,7 +389,7 @@ export default function AgentDetailPage() {
               icon: <DatabaseOutlined />,
               children: scope ? (
                 <div className="agent-memory-shell">
-                  <Typography.Paragraph type="secondary" style={{ marginBottom: 24 }}>
+                  <Typography.Paragraph type="secondary" className="agent-memory-intro">
                     这里管理 <b>{agentName}</b> 的专属独立记忆与知识图谱。
                   </Typography.Paragraph>
                   <Tabs

@@ -505,7 +505,7 @@ export function KnowledgePanel({
                     <Typography.Text type="secondary">
                       {listData.enabled
                         ? `${listData.stats.pages} 篇文档 · ${formatBytes(listData.stats.size)}`
-                        : '当前智能体未启用知识库'}
+                        : '当前 AI 员工未启用知识库'}
                     </Typography.Text>
                     <Input.Search
                       allowClear

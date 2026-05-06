@@ -42,7 +42,7 @@ export function buildConversationKey(scope: RuntimeScope, sessionId: string): st
 export function getScopeLabel(scope: RuntimeScope): string {
   if (scope.bindingId) return `绑定 ${scope.bindingId}`;
   if (scope.agentId === DEFAULT_AGENT_ID) return DEFAULT_AGENT_NAME;
-  if (scope.agentId) return `智能体 ${scope.agentId}`;
+  if (scope.agentId) return `AI 员工 ${scope.agentId}`;
   return DEFAULT_AGENT_NAME;
 }
 

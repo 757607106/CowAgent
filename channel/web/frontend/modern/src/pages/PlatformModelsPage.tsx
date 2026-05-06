@@ -20,7 +20,6 @@ import {
   capabilityProviderFallbacks,
   findDefaultBaseForProvider,
   findFirstProviderForCapability,
-  filterSelectOption,
   getEffectiveCapabilityProviders,
   providerOptionLabel,
 } from './modelConfigShared';
@@ -270,6 +269,11 @@ export default function PlatformModelsPage() {
           loading={loading}
           dataSource={models}
           pagination={{ pageSize: 12 }}
+          emptyState={{
+            title: '暂无平台对话模型',
+            description: '新增平台模型后，租户可按可见性继承或配置自己的模型。',
+            action: <Button type="primary" onClick={openCreate}>新增平台对话模型</Button>,
+          }}
           columns={[
             {
               title: '名称',
@@ -307,6 +311,11 @@ export default function PlatformModelsPage() {
           dataSource={capabilityConfigs}
           pagination={{ pageSize: 12 }}
           scroll={{ x: 'max-content' }}
+          emptyState={{
+            title: '暂无平台专项能力',
+            description: '配置文生图、语音识别、语音合成等能力后，可供租户按需启用。',
+            action: <Button type="primary" onClick={openCapabilityCreate}>新增平台专项能力</Button>,
+          }}
           columns={[
             { title: '能力类型', dataIndex: 'capability', render: (value: string) => <Tag color={capabilityColor(value)}>{capabilityLabels[value] || value}</Tag> },
             { title: '模型', dataIndex: 'model_name', render: (value: string) => <Tag color="blue">{value}</Tag> },
@@ -344,8 +353,6 @@ export default function PlatformModelsPage() {
             <Select
               options={providerOptions}
               showSearch
-              optionFilterProp="label"
-              filterOption={filterSelectOption}
               aria-label="厂商"
               disabled={Boolean(editing)}
               onChange={(value) => {
@@ -355,7 +362,7 @@ export default function PlatformModelsPage() {
             />
           </Form.Item>
           <Form.Item name="model_name" label="模型" rules={[{ required: true }]}>
-            <Select options={modelOptions} showSearch optionFilterProp="label" filterOption={filterSelectOption} aria-label="模型" />
+            <Select options={modelOptions} showSearch aria-label="模型" />
           </Form.Item>
           <Form.Item
             name="api_key"

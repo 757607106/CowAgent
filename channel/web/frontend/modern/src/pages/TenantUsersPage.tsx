@@ -215,22 +215,24 @@ export default function TenantUsersPage() {
 
   return (
     <ConsolePage
-        title="租户成员管理"
-        actions={(
-          <PageToolbar>
-            <Select
-              allowClear
-              placeholder="按租户过滤"
-              className="tenant-filter"
-              value={tenantId || undefined}
-              onChange={(value) => setTenantId(value || '')}
-              options={tenantOptions}
-            />
-            <Button onClick={() => void loadUsers()}>刷新</Button>
-            <Button type="primary" onClick={openCreate}>新建成员</Button>
-          </PageToolbar>
-        )}
-      >
+      title="租户成员管理"
+      actions={(
+        <PageToolbar>
+          <Button onClick={() => void loadUsers()}>刷新</Button>
+          <Button type="primary" onClick={openCreate}>新建成员</Button>
+        </PageToolbar>
+      )}
+    >
+      <div className="console-filter-strip">
+        <Select
+          allowClear
+          placeholder="按租户过滤"
+          className="tenant-filter"
+          value={tenantId || undefined}
+          onChange={(value) => setTenantId(value || '')}
+          options={tenantOptions}
+        />
+      </div>
       <DataTableShell<TenantUserItem>
         title="成员列表"
         rowKey={(row) => `${row.tenant_id}/${row.user_id}`}
@@ -238,6 +240,11 @@ export default function TenantUsersPage() {
         dataSource={users}
         pagination={{ pageSize: 20 }}
         scroll={{ x: 'max-content' }}
+        emptyState={{
+          title: '暂无租户成员',
+          description: '新建成员后，可在这里管理登录身份、角色权限和渠道映射。',
+          action: <Button type="primary" onClick={openCreate}>新建成员</Button>,
+        }}
         columns={[
           {
             title: '租户',

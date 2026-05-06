@@ -195,6 +195,11 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
         dataSource={bindings}
         pagination={{ pageSize: 20 }}
         tableLayout="fixed"
+        emptyState={{
+          title: '暂无渠道绑定',
+          description: '创建绑定后，可把外部渠道会话路由到指定 AI 员工。',
+          action: <Button type="primary" onClick={openCreate}>新建绑定</Button>,
+        }}
         columns={[
           {
             title: '绑定',
@@ -231,7 +236,7 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
             },
           },
           {
-            title: '智能体',
+            title: 'AI 员工',
             dataIndex: 'agent_id',
             width: '14%',
             ellipsis: true,
@@ -325,13 +330,13 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
               placeholder="选择租户自有渠道配置"
             />
           </Form.Item>
-          <Form.Item name="agent_id" label="智能体" rules={[{ required: true }]}>
+          <Form.Item name="agent_id" label="AI 员工" rules={[{ required: true }]}>
             <Select
               showSearch
               allowClear
-              aria-label="智能体"
+              aria-label="AI 员工"
               options={tenantAgentOptions}
-              placeholder="选择智能体"
+              placeholder="选择 AI 员工"
             />
           </Form.Item>
           <Form.Item name="enabled" label="启用" htmlFor="binding-enabled" valuePropName="checked">

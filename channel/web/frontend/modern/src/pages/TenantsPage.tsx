@@ -5,17 +5,14 @@ import { useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type { TenantItem } from '../types';
 import {
-  parseTenantMetadata,
   renderTenantMetadata,
   renderTenantStatus,
   renderTenantTitle,
-  serializeTenantMetadata,
 } from './tenantShared';
 
 interface TenantFormValues {
   name: string;
   status: string;
-  metadata: string;
 }
 
 export default function TenantsPage() {
@@ -40,7 +37,7 @@ export default function TenantsPage() {
 
   const openCreate = () => {
     setEditing(null);
-    form.setFieldsValue({ name: '', status: 'active', metadata: '{}' });
+    form.setFieldsValue({ name: '', status: 'active' });
     setOpen(true);
   };
 
@@ -49,18 +46,13 @@ export default function TenantsPage() {
     form.setFieldsValue({
       name: row.name,
       status: row.status,
-      metadata: serializeTenantMetadata(row.metadata),
     });
     setOpen(true);
   };
 
   const onSubmit = async () => {
     const values = await form.validateFields();
-    const metadata = parseTenantMetadata(values.metadata);
-    if (metadata === null) {
-      message.error('metadata 必须是合法 JSON');
-      return;
-    }
+    const metadata = editing?.metadata || {};
 
     setSubmitting(true);
     try {
@@ -106,6 +98,11 @@ export default function TenantsPage() {
         loading={loading}
         dataSource={tenants}
         pagination={{ pageSize: 20 }}
+        emptyState={{
+          title: '暂无租户',
+          description: '租户信息会在这里展示，用于区分成员、模型和渠道资源边界。',
+          action: canCreateTenant ? <Button type="primary" onClick={openCreate}>新建租户</Button> : undefined,
+        }}
         columns={[
           {
             title: '租户',
@@ -141,9 +138,6 @@ export default function TenantsPage() {
           </Form.Item>
           <Form.Item name="status" label="状态" rules={[{ required: true }]}>
             <Input aria-label="状态" />
-          </Form.Item>
-          <Form.Item name="metadata" label="高级配置(JSON)" htmlFor="tenant-metadata">
-            <Input.TextArea id="tenant-metadata" rows={6} aria-label="高级配置 JSON" />
           </Form.Item>
         </Form>
       </Modal>

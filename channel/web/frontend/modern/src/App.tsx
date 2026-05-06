@@ -2,7 +2,7 @@ import {
   LogoutOutlined,
   MenuOutlined,
 } from '@ant-design/icons';
-import { App as AntdApp, Button, ConfigProvider, Drawer, Form, Input, Layout, Menu, Spin, Tabs, Tag, Typography, message } from 'antd';
+import { App as AntdApp, Button, ConfigProvider, Drawer, Form, Input, Layout, Menu, Spin, Tabs, Tag, Typography, message, Dropdown } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
@@ -66,22 +66,10 @@ function SidebarContent({
 
   return (
     <>
-      <div className="app-logo" aria-label="agent">
-        <span className="app-logo-mark">a</span>
-        <span className="app-logo-word">agent</span>
+      <div className="app-logo" aria-label="CowAgent">
+        <span className="app-logo-mark">C</span>
+        <span className="app-logo-word">CowAgent</span>
       </div>
-      {authUser && (
-        <div className="app-tenant-session">
-          <div className="app-tenant-session-meta">
-            <Typography.Text className="app-tenant-name" title={teamLabel}>
-              {teamLabel}
-            </Typography.Text>
-            <Typography.Text className="app-tenant-user" title={accountLabel}>
-              {accountLabel}
-            </Typography.Text>
-          </div>
-        </div>
-      )}
       <Menu
         mode="inline"
         selectedKeys={selectedMenu}
@@ -91,14 +79,31 @@ function SidebarContent({
       />
       {authUser && (
         <div className="app-sidebar-footer">
-          <Button
-            block
-            size="middle"
-            icon={<LogoutOutlined />}
-            onClick={() => void onLogout()}
+          <Dropdown
+            menu={{
+              items: [
+                {
+                  key: 'logout',
+                  icon: <LogoutOutlined />,
+                  label: '退出登录',
+                  onClick: () => void onLogout(),
+                },
+              ],
+            }}
+            trigger={['click']}
+            placement="topRight"
           >
-            退出登录
-          </Button>
+            <button type="button" className="app-tenant-session-btn">
+              <span className="app-tenant-session-meta">
+                <Typography.Text className="app-tenant-name" title={teamLabel}>
+                  {teamLabel}
+                </Typography.Text>
+                <Typography.Text className="app-tenant-user" title={accountLabel} type="secondary">
+                  {accountLabel}
+                </Typography.Text>
+              </span>
+            </button>
+          </Dropdown>
         </div>
       )}
     </>
@@ -201,21 +206,20 @@ function LoginScreen({
       <div className="app-login-brand">
         <div className="app-login-brand-content">
           <div className="app-login-logo">
-            <span className="app-logo-mark">a</span>
-            <span className="app-logo-word">agent</span>
+            <span className="app-logo-mark">C</span>
+            <span className="app-logo-word">CowAgent</span>
           </div>
           <h1 className="app-login-slogan">
-            新一代企业级<br />智能体引擎
+            AI 员工管理台
           </h1>
           <p className="app-login-desc">
-            统一编排、随处运行。<br />连接企业知识与业务流，释放 AI 的无限潜能。
+            管理模型、员工、渠道与运行观测。让每个 AI 员工有清晰职责、可追踪状态和可控边界。
           </p>
         </div>
-        <div className="app-login-brand-bg"></div>
       </div>
       <div className="app-login-form-container">
         <div className="app-login-panel">
-          <Typography.Title level={3} className="app-login-title">欢迎登录</Typography.Title>
+          <Typography.Title level={3} className="app-login-title">登录控制台</Typography.Title>
         <Tabs
           activeKey={activeKey}
           onChange={setActiveKey}
@@ -394,7 +398,7 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
               onClick={() => setMobileMenuOpen(true)}
             />
             <div className="app-mobile-title">
-              <Typography.Text strong>agent</Typography.Text>
+              <Typography.Text strong>CowAgent</Typography.Text>
               <Typography.Text type="secondary">{currentMenuLabel}</Typography.Text>
             </div>
             {authUser ? <Tag color={isPlatformAdmin ? 'purple' : 'blue'}>{isPlatformAdmin ? '平台超管' : authUser.tenant_name || '当前团队'}</Tag> : null}
@@ -428,7 +432,7 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
         </Layout>
         <Drawer
           className="app-mobile-drawer"
-          title="agent"
+          title="CowAgent"
           placement="left"
           width="17.5rem"
           open={mobileMenuOpen}

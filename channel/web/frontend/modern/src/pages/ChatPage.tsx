@@ -2,28 +2,24 @@ import {
   Attachments,
   Bubble,
   Conversations,
-  Prompts,
   Sender,
   Welcome,
   type BubbleItemType,
 } from '@ant-design/x';
 import {
-  AntDesignOutlined,
   CheckOutlined,
   BulbOutlined,
-  CompassOutlined,
   CopyOutlined,
   DeleteOutlined,
-  DeploymentUnitOutlined,
   LoadingOutlined,
-  OpenAIOutlined,
+  AntDesignOutlined,
   PaperClipOutlined,
   PlusOutlined,
   ReloadOutlined,
   RobotOutlined,
   StopOutlined,
-  UnorderedListOutlined,
   UserOutlined,
+  SmileOutlined,
 } from '@ant-design/icons';
 import { App, Avatar, Button, Dropdown, Empty, Flex, Space, Spin, Tag, Tooltip, Typography } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
@@ -196,26 +192,7 @@ function buildBubbleItems(
   });
 }
 
-const promptItems = [
-  {
-    key: 'capability',
-    label: '介绍你当前可用的能力',
-    description: '快速确认当前智能体的角色、工具和边界',
-    icon: <CompassOutlined />,
-  },
-  {
-    key: 'workspace',
-    label: '梳理一下这个项目的核心模块',
-    description: '结合当前工作区给出目录和职责划分',
-    icon: <DeploymentUnitOutlined />,
-  },
-  {
-    key: 'toolchain',
-    label: '列出当前工作区可用的工具链',
-    description: '看看现在能调用哪些工具、技能和平台能力',
-    icon: <UnorderedListOutlined />,
-  },
-];
+
 
 export default function ChatPage() {
   const app = App.useApp();
@@ -324,7 +301,7 @@ export default function ChatPage() {
       ? '图片附件'
       : attachment.file_type === 'video'
         ? '视频附件'
-      : '文件附件',
+        : '文件附件',
   })), [attachments]);
   const suggestionItems = useMemo(() => buildSuggestionItems(draft), [draft]);
   const agentSelectorOptions = useMemo(
@@ -749,21 +726,8 @@ export default function ChatPage() {
               <div className="chat-empty-wrap">
                 <Welcome
                   variant="borderless"
-                  icon={<Avatar size={56} icon={<RobotOutlined />} className="chat-welcome-avatar" />}
-                  title="开始对话"
-                  description="上传附件或直接提问"
-                />
-                <Prompts
-                  title="可以从这些问题开始"
-                  items={promptItems}
-                  wrap
-                  fadeIn
-                  rootClassName="chat-prompts"
-                  onItemClick={({ data }) => {
-                    if (typeof data.label === 'string') {
-                      submitMessage(data.label);
-                    }
-                  }}
+                  icon={<Avatar size={56} icon={<SmileOutlined />} className="chat-welcome-avatar" />}
+                  title={`与 ${formatAgentTriggerLabel(scopeLabel)} 对话`}
                 />
               </div>
             )}
@@ -854,98 +818,87 @@ export default function ChatPage() {
               onPasteFile={(files) => {
                 void uploadFiles(Array.from(files));
               }}
-                  header={(
-                    <SenderHeader
-                      open={attachmentPanelOpen}
-                      forceRender
-                      title={uploading ? '正在上传附件…' : attachments.length > 0 ? `附件 (${attachments.length})` : '附件'}
-                      className="chat-sender-header"
-                      classNames={{
-                        content: 'chat-sender-header-content',
+
+              header={(
+                <SenderHeader
+                  open={attachmentPanelOpen}
+                  forceRender
+                  title={uploading ? '正在上传附件…' : attachments.length > 0 ? `附件 (${attachments.length})` : '附件'}
+                  className="chat-sender-header"
+                  classNames={{
+                    content: 'chat-sender-header-content',
+                  }}
+                  onOpenChange={setAttachmentPanelOpen}
+                >
+                  <div className="chat-attachment-panel">
+                    <Attachments
+                      ref={attachmentsRef}
+                      items={attachmentItems}
+                      multiple
+                      rootClassName="chat-attachments"
+                      beforeUpload={(file) => {
+                        void uploadFiles([file as File]);
+                        return false;
                       }}
-                      onOpenChange={setAttachmentPanelOpen}
+                      onRemove={(file) => {
+                        setAttachments((prev) => prev.filter((item) => item.file_path !== String(file.uid)));
+                        return true;
+                      }}
+                      placeholder={{
+                        icon: uploading ? <LoadingOutlined /> : <PaperClipOutlined />,
+                        title: uploading ? '正在上传附件…' : '上传附件',
+                        description: '支持图片、视频和文件，可拖拽或点击选择',
+                      }}
+                    />
+                  </div>
+                </SenderHeader>
+              )}
+              footer={(actionNode) => (
+                <Flex justify="space-between" align="center" gap={12} wrap style={{ padding: '0 12px 12px' }}>
+                  <Flex align="center" gap={8} wrap>
+                    <Button
+                      type="text"
+                      icon={<PaperClipOutlined />}
+                      aria-label={attachmentPanelOpen ? '收起附件面板' : '上传附件'}
+                      title={attachmentPanelOpen ? '收起附件面板' : '上传附件'}
+                      onClick={openAttachmentPanel}
+                      loading={uploading}
+                      style={{ color: attachmentPanelOpen ? 'var(--color-primary)' : 'var(--text-secondary)' }}
+                    />
+                    <SenderSwitch
+                      value={deepThink ?? false}
+                      icon={<BulbOutlined />}
+                      checkedChildren="深度思考：开"
+                      unCheckedChildren="深度思考：关"
+                      onChange={(checked) => setDeepThink(Boolean(checked))}
+                    />
+                    <Dropdown
+                      trigger={['click']}
+                      menu={{
+                        selectable: true,
+                        selectedKeys: [selectedAgentValue],
+                        items: agentMenuItems,
+                        onClick: ({ key }) => setAgentScope(String(key)),
+                      }}
                     >
-                      <div className="chat-attachment-panel">
-                        <Attachments
-                          ref={attachmentsRef}
-                          items={attachmentItems}
-                          multiple
-                          rootClassName="chat-attachments"
-                          beforeUpload={(file) => {
-                            void uploadFiles([file as File]);
-                            return false;
-                          }}
-                          onRemove={(file) => {
-                            setAttachments((prev) => prev.filter((item) => item.file_path !== String(file.uid)));
-                            return true;
-                          }}
-                          placeholder={{
-                            icon: uploading ? <LoadingOutlined /> : <PaperClipOutlined />,
-                            title: uploading ? '正在上传附件…' : '上传附件',
-                            description: '支持图片、视频和文件，可拖拽或点击选择',
-                          }}
-                        />
-                      </div>
-                    </SenderHeader>
-                  )}
-                  footer={(actionNode) => (
-                    <div className="chat-sender-footer">
-                      <Flex justify="space-between" align="center" gap={12} wrap className="chat-sender-footer-bar">
-                        <Flex align="center" gap={8} wrap className="chat-sender-left-tools">
-                          <Button
-                            type="text"
-                            className={attachmentPanelOpen ? 'chat-sender-icon-button chat-sender-icon-button-active' : 'chat-sender-icon-button'}
-                            icon={<PaperClipOutlined />}
-                            aria-label={attachmentPanelOpen ? '收起附件面板' : '上传附件'}
-                            title={attachmentPanelOpen ? '收起附件面板' : '上传附件'}
-                            onClick={openAttachmentPanel}
-                            loading={uploading}
-                          />
-                          <SenderSwitch
-                            value={deepThink ?? false}
-                            icon={<OpenAIOutlined />}
-                            rootClassName="chat-sender-trigger"
-                            checkedChildren={(
-                              <>
-                                深度思考：<span className="chat-sender-switch-value">开</span>
-                              </>
-                            )}
-                            unCheckedChildren={(
-                              <>
-                                深度思考：<span className="chat-sender-switch-value">关</span>
-                              </>
-                            )}
-                            onChange={(checked) => setDeepThink(Boolean(checked))}
-                          />
-                          <Dropdown
-                            trigger={['click']}
-                            menu={{
-                              selectable: true,
-                              selectedKeys: [selectedAgentValue],
-                              items: agentMenuItems,
-                              onClick: ({ key }) => setAgentScope(String(key)),
-                            }}
-                          >
-                            <span>
-                              <SenderSwitch
-                                value={false}
-                                icon={<AntDesignOutlined />}
-                                rootClassName="chat-sender-trigger"
-                              >
-                                {formatAgentTriggerLabel(selectedAgentLabel)}
-                              </SenderSwitch>
-                            </span>
-                          </Dropdown>
-                          {attachments.length > 0 ? <Tag color="blue">已选 {attachments.length} 个附件</Tag> : null}
-                          {dragOver ? <Tag color="processing">松开以上传附件</Tag> : null}
-                        </Flex>
-                        <Flex align="center" gap={8} className="chat-sender-right-tools">
-                          {actionNode}
-                        </Flex>
-                      </Flex>
-                    </div>
-                  )}
-                  suffix={false}
+                      <span>
+                        <SenderSwitch
+                          value={false}
+                          icon={<RobotOutlined />}
+                        >
+                          {formatAgentTriggerLabel(selectedAgentLabel)}
+                        </SenderSwitch>
+                      </span>
+                    </Dropdown>
+                    {attachments.length > 0 ? <Tag color="blue">已选 {attachments.length}</Tag> : null}
+                    {dragOver ? <Tag color="processing">松开上传</Tag> : null}
+                  </Flex>
+                  <Flex align="center" gap={8}>
+                    {actionNode}
+                  </Flex>
+                </Flex>
+              )}
+              suffix={false}
             />
           </div>
         </div>

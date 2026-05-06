@@ -63,12 +63,6 @@ export const capabilityProviderFallbacks: CapabilityProviderOption[] = [
   { provider: 'pytts', label: '本地 pyttsx3', capabilities: ['text_to_speech'] },
 ];
 
-export function filterSelectOption(input: string, option?: { label?: unknown; value?: unknown }) {
-  const keyword = input.trim().toLowerCase();
-  if (!keyword) return true;
-  return [option?.label, option?.value].some((value) => String(value || '').toLowerCase().includes(keyword));
-}
-
 export function providerOptionLabel(item: { label?: string; provider: string }) {
   return item.label || item.provider;
 }

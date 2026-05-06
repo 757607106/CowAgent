@@ -69,7 +69,7 @@ export function getMenuItemsForRole(isPlatformAdmin: boolean): MenuProps['items'
     },
     {
       type: 'group',
-      label: '数字员工',
+      label: 'AI 员工',
       children: toMenuItems(tenantNavItems.filter((item) => item.key === '/agents')),
     },
     {

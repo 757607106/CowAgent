@@ -3,7 +3,6 @@ import type { FormInstance } from 'antd';
 import type { CapabilityConfigItem, CapabilityProviderOption } from '../types';
 import {
   apiKeyKeepValueExtra,
-  filterSelectOption,
   findDefaultBaseForProvider,
   findFirstProviderForCapability,
   supportsImageSizeField,
@@ -46,8 +45,6 @@ export function CapabilityConfigForm({
         <Select
           options={capabilityOptions}
           showSearch
-          optionFilterProp="label"
-          filterOption={filterSelectOption}
           aria-label="能力类型"
           onChange={(value) => {
             const provider = findFirstProviderForCapability(effectiveCapabilityProviders, String(value));
@@ -64,8 +61,6 @@ export function CapabilityConfigForm({
         <Select
           options={capabilityProviderOptions}
           showSearch
-          optionFilterProp="label"
-          filterOption={filterSelectOption}
           aria-label="厂商"
           onChange={(value) => form.setFieldValue('api_base', findDefaultBaseForProvider(effectiveCapabilityProviders, String(value)))}
         />

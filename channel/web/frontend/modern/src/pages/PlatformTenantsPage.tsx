@@ -4,11 +4,9 @@ import { ConsolePage, DataTableShell, PageToolbar } from '../components/console'
 import { api } from '../services/api';
 import type { TenantItem } from '../types';
 import {
-  parseTenantMetadata,
   renderTenantMetadata,
   renderTenantStatus,
   renderTenantTitle,
-  serializeTenantMetadata,
   TENANT_STATUS_OPTIONS,
 } from './tenantShared';
 
@@ -16,7 +14,6 @@ interface TenantFormValues {
   tenant_id: string;
   name: string;
   status: string;
-  metadata: string;
 }
 
 export default function PlatformTenantsPage() {
@@ -39,7 +36,7 @@ export default function PlatformTenantsPage() {
 
   const openCreate = () => {
     setEditing(null);
-    form.setFieldsValue({ tenant_id: '', name: '', status: 'active', metadata: '{}' });
+    form.setFieldsValue({ tenant_id: '', name: '', status: 'active' });
     setOpen(true);
   };
 
@@ -49,18 +46,13 @@ export default function PlatformTenantsPage() {
       tenant_id: row.tenant_id,
       name: row.name,
       status: row.status,
-      metadata: serializeTenantMetadata(row.metadata),
     });
     setOpen(true);
   };
 
   const submit = async () => {
     const values = await form.validateFields();
-    const metadata = parseTenantMetadata(values.metadata);
-    if (metadata === null) {
-      message.error('metadata 必须是合法 JSON');
-      return;
-    }
+    const metadata = editing?.metadata || {};
 
     setSubmitting(true);
     try {
@@ -113,6 +105,11 @@ export default function PlatformTenantsPage() {
         loading={loading}
         dataSource={tenants}
         pagination={{ pageSize: 12 }}
+        emptyState={{
+          title: '暂无租户',
+          description: '创建租户后，可统一管理模型可见性、成员和运行治理。',
+          action: <Button type="primary" onClick={openCreate}>新建租户</Button>,
+        }}
         columns={[
           {
             title: '租户',
@@ -152,9 +149,6 @@ export default function PlatformTenantsPage() {
           </Form.Item>
           <Form.Item name="status" label="状态" rules={[{ required: true }]}>
             <Select aria-label="状态" options={TENANT_STATUS_OPTIONS} />
-          </Form.Item>
-          <Form.Item name="metadata" label="高级配置(JSON)" htmlFor="platform-tenant-metadata">
-            <Input.TextArea id="platform-tenant-metadata" rows={6} aria-label="高级配置 JSON" />
           </Form.Item>
         </Form>
       </Modal>
