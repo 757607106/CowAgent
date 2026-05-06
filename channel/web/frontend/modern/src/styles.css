@@ -873,25 +873,39 @@ body,
 /* Sender / input area */
 .chat-sender-shell {
   position: relative;
-  padding: var(--space-3) var(--space-4);
+  padding: 0;
   margin: 0 var(--space-4) var(--space-4);
-  border: 1px solid rgba(0, 0, 0, 0.04);
-  border-radius: var(--radius-2xl);
-  background: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  box-shadow: var(--shadow-xl);
+  border: 0;
+  background: transparent;
+  box-shadow: none;
   transition: all var(--transition-smooth);
   flex-shrink: 0;
 }
 
+.chat-sender-shell > .ant-sender-main {
+  border-color: var(--border-light);
+  border-radius: var(--radius-xl);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: var(--shadow-md);
+}
+
 .chat-sender-shell:focus-within {
-  box-shadow: var(--shadow-xl), 0 0 0 2px var(--brand-100);
+  box-shadow: none;
+}
+
+.chat-sender-shell:focus-within > .ant-sender-main {
+  border-color: var(--brand-200);
+  box-shadow: var(--shadow-md), 0 0 0 2px var(--brand-100);
 }
 
 .chat-sender-shell.drag-over {
+  background: transparent;
+  box-shadow: none;
+}
+
+.chat-sender-shell.drag-over > .ant-sender-main {
   background: var(--color-primary-light);
-  box-shadow: inset 0 0 0 2px var(--color-primary), var(--shadow-xl);
+  box-shadow: inset 0 0 0 2px var(--color-primary), var(--shadow-md);
 }
 
 /* Command suggestion popup */
@@ -3684,7 +3698,7 @@ body,
   }
 
   .chat-sender-shell {
-    padding: var(--space-2);
+    padding: 0;
   }
 
   /* Grids → 1 column */
