@@ -1,8 +1,9 @@
 import { XMarkdown } from '@ant-design/x-markdown';
-import { Button, Card, Segmented, Space, Spin, Table, Tag, Typography } from 'antd';
+import { Button, Card, Input, Segmented, Space, Spin, Tag, Typography } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import type { ColumnsType } from 'antd/es/table';
 import { PageTitle } from '../components/PageTitle';
+import { DataTableShell } from '../components/console';
 import { api } from '../services/api';
 import type { RuntimeScope } from '../types';
 import { formatBytes } from '../utils/format';
@@ -43,7 +44,9 @@ export function MemoryPanel({
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [files, setFiles] = useState<MemoryFileItem[]>([]);
+  const [search, setSearch] = useState('');
   const [selected, setSelected] = useState<string>('');
+  const [selectedItem, setSelectedItem] = useState<MemoryFileItem | null>(null);
   const [contentLoading, setContentLoading] = useState(false);
   const [content, setContent] = useState('');
 
@@ -87,19 +90,47 @@ export function MemoryPanel({
     }
   };
 
-  const loadContent = async (filename: string) => {
-    setSelected(filename);
+  const loadContent = async (item: MemoryFileItem) => {
+    setSelected(item.filename);
+    setSelectedItem(item);
     setContentLoading(true);
     try {
-      const data = await api.memoryContent(scope, filename, category);
+      const data = await api.memoryContent(scope, item.filename, category);
       setContent(String(data.content || ''));
     } finally {
       setContentLoading(false);
     }
   };
 
+  const filteredFiles = useMemo(() => {
+    const keyword = search.trim().toLowerCase();
+    if (!keyword) return files;
+    return files.filter((item) => (
+      item.filename.toLowerCase().includes(keyword)
+      || String(item.type || '').toLowerCase().includes(keyword)
+    ));
+  }, [files, search]);
+
+  const emptyState = useMemo(() => {
+    const keyword = search.trim();
+    if (keyword) {
+      return {
+        title: '未找到匹配文件',
+        description: '请尝试更换关键词。',
+        action: <Button onClick={() => setSearch('')}>清除筛选</Button>,
+      };
+    }
+    return {
+      title: category === 'dream' ? '暂无梦境日记' : '暂无记忆文件',
+      description: '生成后会自动出现在这里。',
+      action: <Button onClick={() => void loadFiles(page)}>刷新</Button>,
+    };
+  }, [category, loadFiles, page, search]);
+
   useEffect(() => {
+    setSearch('');
     setSelected('');
+    setSelectedItem(null);
     setContent('');
     void loadFiles(1);
   }, [category, scope.tenantId, scope.agentId, scope.bindingId]);
@@ -119,20 +150,32 @@ export function MemoryPanel({
               value={category}
               onChange={(value) => setCategory(value as MemoryCategory)}
             />
+            <Input.Search
+              allowClear
+              placeholder="筛选文件名"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              style={{ width: 220 }}
+            />
+            {search.trim() ? <Tag color="blue">本页筛选</Tag> : null}
             <Button onClick={() => void loadFiles(page)}>刷新</Button>
           </Space>
         )}
       />
 
       <div className="memory-panel-layout">
-        <Card title="文件列表" className="memory-file-list-card memory-file-table-card">
-          <Table<MemoryFileItem>
-            rowKey={(row) => row.filename}
-            loading={loading}
-            size="small"
-            columns={columns}
-            dataSource={files}
-            pagination={{
+        <DataTableShell<MemoryFileItem>
+          title="文件列表"
+          compact
+          className="memory-file-list-card memory-file-table-card"
+          rowKey={(row) => row.filename}
+          loading={loading}
+          columns={columns}
+          dataSource={filteredFiles}
+          emptyState={emptyState}
+          pagination={search.trim()
+            ? false
+            : {
               current: page,
               pageSize: PAGE_SIZE,
               total,
@@ -142,17 +185,23 @@ export function MemoryPanel({
                 void loadFiles(targetPage);
               },
             }}
-            rowClassName={(row) => (selected === row.filename ? 'memory-row-selected' : '')}
-            onRow={(row) => ({
-              onClick: () => {
-                void loadContent(row.filename);
-              },
-            })}
-          />
-        </Card>
+          rowClassName={(row) => (selected === row.filename ? 'memory-row-selected' : '')}
+          onRow={(row) => ({
+            onClick: () => {
+              void loadContent(row);
+            },
+          })}
+        />
 
         <Card
           title={selected ? `内容：${selected}` : '内容预览'}
+          extra={selectedItem ? (
+            <Space size={6} wrap>
+              {typeTag(selectedItem.type)}
+              <Tag>{formatBytes(Number(selectedItem.size || 0))}</Tag>
+              <Tag>{selectedItem.updated_at || '-'}</Tag>
+            </Space>
+          ) : null}
           className="memory-content-card"
         >
           {contentLoading ? (

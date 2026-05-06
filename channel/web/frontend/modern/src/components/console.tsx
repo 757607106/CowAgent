@@ -1,6 +1,9 @@
-import { Card, Collapse, Empty, Space, Table, Tag, Typography, type TableProps } from 'antd';
+import { Card, Collapse, Empty, Table, Tag, Typography, type TableProps } from 'antd';
 import type { ReactNode } from 'react';
 import { JsonBlock } from './JsonBlock';
+import { PageHeader } from './PageHeader';
+import { Toolbar } from './Toolbar';
+import { Workspace } from './Workspace';
 
 type Tone = 'default' | 'success' | 'processing' | 'warning' | 'error' | 'disabled';
 
@@ -67,29 +70,15 @@ function colorForTone(tone: Tone) {
 
 export function ConsolePage({ title, description, actions, children, className }: ConsolePageProps) {
   return (
-    <section className={['console-page', className].filter(Boolean).join(' ')}>
-      <header className="console-page-header">
-        <div className="console-page-heading">
-          <Typography.Title level={3} className="console-page-title">
-            {title}
-          </Typography.Title>
-          {description ? <Typography.Text className="console-page-description">{description}</Typography.Text> : null}
-        </div>
-        {actions ? <div className="console-page-actions">{actions}</div> : null}
-      </header>
+    <Workspace variant="console" className={className}>
+      <PageHeader title={title} description={description} extra={actions} />
       {children}
-    </section>
+    </Workspace>
   );
 }
 
 export function PageToolbar({ children, align = 'end' }: PageToolbarProps) {
-  return (
-    <div className={`page-toolbar page-toolbar-${align}`} role="group" aria-label="页面操作">
-      <Space wrap size={0}>
-        {children}
-      </Space>
-    </div>
-  );
+  return <Toolbar align={align} ariaLabel="页面操作">{children}</Toolbar>;
 }
 
 function fallbackRowKey<T extends object>(record: T, index?: number) {

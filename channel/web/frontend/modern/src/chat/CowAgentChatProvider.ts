@@ -22,6 +22,7 @@ export interface CowAgentChatRequest {
   attachments?: ChatAttachment[];
   timestamp?: string;
   enable_thinking?: boolean;
+  stream?: boolean;
   agent_id?: string;
   binding_id?: string;
 }
@@ -653,58 +654,6 @@ export function extractAssistantReply(message?: CowAgentChatMessage): string {
   return message.content?.text || '';
 }
 
-async function cowAgentStreamFetch(
-  baseURL: RequestInfo | URL,
-  options: XRequestOptions<CowAgentChatRequest, SSEOutput>,
-): Promise<Response> {
-  const bootstrapResponse = await fetch(baseURL, {
-    method: options.method || 'POST',
-    body: options.body,
-    headers: options.headers,
-    credentials: 'same-origin',
-    signal: options.signal,
-  });
-
-  const bootstrapPayload = await bootstrapResponse.json();
-  if (!bootstrapResponse.ok || bootstrapPayload?.status === 'error') {
-    throw new Error(String(bootstrapPayload?.message || `请求失败：${bootstrapResponse.status}`));
-  }
-
-  const requestId = bootstrapPayload?.request_id;
-  if (!requestId) {
-    return new Response(JSON.stringify(bootstrapPayload), {
-      status: 200,
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-  }
-
-  const streamResponse = await fetch(`/stream?request_id=${encodeURIComponent(String(requestId))}`, {
-    method: 'GET',
-    credentials: 'same-origin',
-    headers: {
-      Accept: 'text/event-stream',
-    },
-    signal: options.signal,
-  });
-
-  if (!streamResponse.ok) {
-    const reason = await streamResponse.text().catch(() => '');
-    throw new Error(reason || `流式请求失败：${streamResponse.status}`);
-  }
-
-  const headers = new Headers(streamResponse.headers);
-  headers.set('Content-Type', headers.get('Content-Type') || 'text/event-stream');
-  headers.set('X-CowAgent-Request-Id', String(requestId));
-
-  return new Response(streamResponse.body, {
-    status: streamResponse.status,
-    statusText: streamResponse.statusText,
-    headers,
-  });
-}
-
 class CowAgentChatProvider extends AbstractChatProvider<CowAgentChatMessage, CowAgentChatRequest, SSEOutput> {
   transformParams(
     requestParams: Partial<CowAgentChatRequest>,
@@ -762,7 +711,10 @@ export function createCowAgentChatProvider() {
   return new CowAgentChatProvider({
     request: XRequest<CowAgentChatRequest, SSEOutput, CowAgentChatMessage>('/message', {
       manual: true,
-      fetch: cowAgentStreamFetch,
+      credentials: 'same-origin',
+      headers: {
+        Accept: 'text/event-stream',
+      },
     }),
   });
 }

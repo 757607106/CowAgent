@@ -125,14 +125,17 @@
   --sidebar-width: 14.5rem;
   --header-height: 3.5rem;
   --content-max-width: 100%;
-  --content-available-height: 100vh;
+  --content-available-height: calc(100vh - var(--app-content-padding, 0px) - var(--app-content-padding, 0px));
   --page-workspace-min-height: clamp(30rem, 72vh, 56rem);
-  --table-shell-min-height: clamp(18rem, 48vh, 34rem);
-  --chart-card-height: clamp(15rem, 24vh, 18rem);
-  --chart-card-height-lg: clamp(16rem, 28vh, 20rem);
+  --table-shell-min-height: clamp(12rem, 30vh, 22rem);
+  --chart-card-height: clamp(13.5rem, 22vh, 17rem);
+  --chart-card-height-lg: clamp(15rem, 28vh, 21rem);
   --filter-width-sm: clamp(9rem, 12vw, 11rem);
   --filter-width-md: clamp(11rem, 14vw, 14rem);
   --filter-width-lg: clamp(13rem, 17vw, 17rem);
+  --console-panel-border: rgba(17, 24, 39, 0.08);
+  --console-panel-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 8px 24px -20px rgba(17, 24, 39, 0.32);
+  --console-panel-shadow-hover: 0 1px 2px rgba(17, 24, 39, 0.05), 0 14px 32px -22px rgba(17, 24, 39, 0.38);
 
   color-scheme: light;
   color: var(--text-primary);
@@ -348,6 +351,8 @@ body,
   padding: var(--app-content-padding) var(--space-8);
   overflow-y: auto;
   overflow-x: hidden;
+  overscroll-behavior: contain;
+  background: var(--bg-body);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -546,7 +551,7 @@ body,
 }
 
 .chat-session-empty {
-  min-height: 18.75rem;
+  min-height: 14rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -604,7 +609,7 @@ body,
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: var(--space-5) var(--space-5) var(--space-4);
+  padding: var(--space-4) var(--space-4) var(--space-3);
   border-bottom: 1px solid var(--border-light);
   flex-shrink: 0;
 }
@@ -639,9 +644,36 @@ body,
 }
 
 .chat-welcome-avatar {
-  background: linear-gradient(135deg, var(--color-primary), var(--brand-400));
-  box-shadow: 0 4px 12px rgba(77, 107, 254, 0.25);
-  color: white;
+  background: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+  color: var(--neutral-0);
+}
+
+.chat-welcome-description {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.chat-welcome-subtitle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--font-size-sm);
+}
+
+.chat-welcome-dot {
+  color: var(--text-quaternary);
+}
+
+.chat-welcome-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-2);
 }
 
 /* Transcript area */
@@ -659,7 +691,7 @@ body,
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: var(--space-8) var(--space-4);
+  padding: var(--space-6) var(--space-4);
 }
 
 .chat-bubble-list {
@@ -2730,6 +2762,22 @@ body,
   min-width: 0;
 }
 
+.knowledge-tree-search {
+  width: 18rem;
+  max-width: 42vw;
+}
+
+.knowledge-disabled {
+  flex: 1 1 auto;
+  min-height: clamp(22rem, 54vh, 42rem);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-xl);
+  background: var(--bg-subtle);
+}
+
 .knowledge-content-card {
   min-width: 0;
 }
@@ -3196,20 +3244,7 @@ body,
   }
 }
 
-/* ── Unified Console Theme ────────────────────────────────────── */
-:root {
-  --table-shell-min-height: clamp(12rem, 30vh, 22rem);
-  --chart-card-height: clamp(13.5rem, 22vh, 17rem);
-  --chart-card-height-lg: clamp(15rem, 28vh, 21rem);
-  --console-panel-border: rgba(17, 24, 39, 0.08);
-  --console-panel-shadow: 0 1px 2px rgba(17, 24, 39, 0.04), 0 8px 24px -20px rgba(17, 24, 39, 0.32);
-  --console-panel-shadow-hover: 0 1px 2px rgba(17, 24, 39, 0.05), 0 14px 32px -22px rgba(17, 24, 39, 0.38);
-}
-
-.app-content {
-  background: #f6f7f9;
-}
-
+.page-workspace,
 .console-page {
   display: flex;
   flex-direction: column;
@@ -3222,6 +3257,7 @@ body,
   container-name: console-page;
 }
 
+.page-header,
 .console-page-header {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -3230,11 +3266,13 @@ body,
   margin-bottom: 0;
 }
 
+.page-header-heading,
 .console-page-heading {
   min-width: 0;
   white-space: normal;
 }
 
+.page-header-title.ant-typography,
 .console-page-title.ant-typography {
   margin: 0;
   color: var(--text-primary);
@@ -3244,6 +3282,7 @@ body,
   letter-spacing: 0;
 }
 
+.page-header-description,
 .console-page-description {
   display: block;
   max-width: 46rem;
@@ -3252,6 +3291,15 @@ body,
   font-size: var(--font-size-md);
 }
 
+.page-header-meta:empty {
+  display: none;
+}
+
+.page-header-meta {
+  margin-top: var(--space-2);
+}
+
+.page-header-extra,
 .console-page-actions {
   min-width: 0;
 }
@@ -3275,6 +3323,21 @@ body,
   justify-content: flex-end;
 }
 
+.page-toolbar-split {
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.page-toolbar-slot {
+  display: flex;
+  min-width: 0;
+}
+
+.page-toolbar-slot-end {
+  margin-left: auto;
+}
+
 .console-filter-strip,
 .skills-toolbar,
 .tasks-filter-bar,
@@ -3285,7 +3348,7 @@ body,
   gap: var(--space-2);
   width: 100%;
   min-width: 0;
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--console-panel-border);
   border-radius: var(--radius-md);
   background: var(--bg-surface);
@@ -3372,7 +3435,7 @@ body,
 }
 
 .data-table-shell .ant-table-placeholder .ant-table-cell {
-  padding: var(--space-8) var(--space-4) !important;
+  padding: var(--space-7) var(--space-4) !important;
 }
 
 .data-table-empty {
@@ -3461,8 +3524,8 @@ body,
 
 .agent-empty-card .ant-card-body,
 .skills-empty-card .ant-card-body {
-  min-height: 12rem;
-  padding: var(--space-6);
+  min-height: 10rem;
+  padding: var(--space-5);
 }
 
 .console-embedded-header {
@@ -3649,6 +3712,16 @@ body,
   padding: var(--space-3) var(--space-4) var(--space-4);
 }
 
+.echart-card .ant-empty {
+  margin: 0;
+  padding: var(--space-5) 0;
+}
+
+.echart-card .ant-empty-image {
+  height: 2.75rem;
+  margin-bottom: var(--space-2);
+}
+
 .echart-card-canvas {
   width: 100%;
   min-width: 0;
@@ -3723,6 +3796,7 @@ body,
 }
 
 @container console-page (max-width: 64rem) {
+  .page-header,
   .console-page-header,
   .console-embedded-header,
   .mcp-server-header,
@@ -3731,12 +3805,13 @@ body,
     align-items: stretch;
   }
 
+  .page-header-extra,
   .console-page-actions,
   .console-embedded-actions {
     width: 100%;
   }
 
-  .page-toolbar {
+  .page-toolbar:not(.page-toolbar-split) {
     justify-content: flex-start;
   }
 

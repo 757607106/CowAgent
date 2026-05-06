@@ -8,6 +8,8 @@ import {
 } from '@ant-design/x';
 import {
   CheckOutlined,
+  EllipsisOutlined,
+  ArrowDownOutlined,
   BulbOutlined,
   CopyOutlined,
   DeleteOutlined,
@@ -69,6 +71,13 @@ const SLASH_COMMANDS = [
   { cmd: '/knowledge off', desc: '关闭知识库' },
   { cmd: '/config', desc: '查看当前配置' },
   { cmd: '/version', desc: '查看版本' },
+] as const;
+
+const WELCOME_ACTIONS = [
+  { label: '命令帮助', value: '/help' },
+  { label: '知识库文件', value: '/knowledge list' },
+  { label: '上下文状态', value: '/context' },
+  { label: '清空上下文', value: '/context clear' },
 ] as const;
 
 function buildSuggestionItems(query?: string) {
@@ -335,6 +344,13 @@ export default function ChatPage() {
     [agentSelectorOptions],
   );
 
+  const scrollToBottom = useCallback(() => {
+    const node = transcriptRef.current;
+    if (!node) return;
+    node.scrollTop = node.scrollHeight;
+    setAutoScrollEnabled(true);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     void api.getConfig()
@@ -500,6 +516,11 @@ export default function ChatPage() {
       ...scopeBody(scope),
     });
   }, [attachments, conversationKey, deepThink, onRequest, scope.agentId, scope.bindingId, sessionId, sessions]);
+
+  const submitCommand = useCallback((command: string) => {
+    if (uploading || !sessionId || isRequesting) return;
+    submitMessage(command);
+  }, [isRequesting, sessionId, submitMessage, uploading]);
 
   const handleSenderKeyDown = useCallback((event: ReactKeyboardEvent) => {
     if ((event.nativeEvent as KeyboardEvent).isComposing) return;
@@ -698,13 +719,34 @@ export default function ChatPage() {
             ) : null}
           </div>
 
-          {isRequesting ? (
-            <Space wrap>
+          <Space wrap>
+            <Dropdown
+              trigger={['click']}
+              placement="bottomRight"
+              menu={{
+                items: [
+                  { key: 'context', label: '查看上下文', icon: <BulbOutlined /> },
+                  { key: 'context-clear', label: '清空上下文', icon: <DeleteOutlined />, danger: true },
+                ],
+                onClick: ({ key }) => {
+                  if (key === 'context') submitCommand('/context');
+                  if (key === 'context-clear') submitCommand('/context clear');
+                },
+              }}
+            >
+              <Button icon={<EllipsisOutlined />} />
+            </Dropdown>
+            {!autoScrollEnabled && bubbleItems.length > 0 ? (
+              <Button icon={<ArrowDownOutlined />} onClick={scrollToBottom}>
+                回到底部
+              </Button>
+            ) : null}
+            {isRequesting ? (
               <Button danger icon={<StopOutlined />} onClick={abort}>
                 停止回复
               </Button>
-            </Space>
-          ) : null}
+            ) : null}
+          </Space>
         </div>
 
         <div className="chat-main-stage">
@@ -732,8 +774,33 @@ export default function ChatPage() {
               <div className="chat-empty-wrap">
                 <Welcome
                   variant="borderless"
-                  icon={<Avatar size={56} src={assistantAvatarSrc} className="chat-welcome-avatar" />}
+                  icon={<Avatar size={48} src={assistantAvatarSrc} className="chat-welcome-avatar" />}
                   title={`与 ${formatAgentTriggerLabel(scopeLabel)} 对话`}
+                  description={(
+                    <div className="chat-welcome-description">
+                      <div className="chat-welcome-subtitle">
+                        <span>输入 / 查看命令</span>
+                        <span className="chat-welcome-dot">·</span>
+                        <span>Shift + Enter 换行</span>
+                      </div>
+                      <div className="chat-welcome-actions">
+                        {WELCOME_ACTIONS.map((item) => (
+                          <Button
+                            key={item.value}
+                            size="small"
+                            onClick={() => {
+                              setDraft(item.value);
+                              setSuggestionOpen(item.value.trimStart().startsWith('/'));
+                              setActiveIndex(-1);
+                            }}
+                            disabled={!sessionId || uploading || isRequesting}
+                          >
+                            {item.label}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 />
               </div>
             )}

@@ -751,6 +751,100 @@ class WebChannel(ChatChannel):
             logger.error(f"Error processing message: {e}")
             return json.dumps({"status": "error", "message": str(e)})
 
+    def post_message_stream(self):
+        try:
+            data = web.data()
+            json_data = json.loads(data)
+            json_data["stream"] = True
+            session_id = json_data.get('session_id', f'session_{int(time.time())}')
+            prompt = json_data.get('message', '')
+            attachments = json_data.get('attachments', [])
+            has_enable_thinking = 'enable_thinking' in json_data
+            enable_thinking = _parse_bool(json_data.get('enable_thinking'), False)
+            target = _resolve_runtime_target(
+                agent_id=json_data.get('agent_id', ''),
+                tenant_id=json_data.get('tenant_id', ''),
+                binding_id=json_data.get('binding_id', ''),
+            )
+            agent_id = target["agent_id"]
+            tenant_id = target["tenant_id"]
+            binding_id = target["binding_id"]
+            scoped_session_key = self._build_scoped_session_key(session_id, agent_id, tenant_id)
+
+            if attachments:
+                file_refs = []
+                for att in attachments:
+                    ftype = att.get("file_type", "file")
+                    fpath = att.get("file_path", "")
+                    if not fpath:
+                        continue
+                    if ftype == "image":
+                        file_refs.append(f"[图片: {fpath}]")
+                    elif ftype == "video":
+                        file_refs.append(f"[视频: {fpath}]")
+                    else:
+                        file_refs.append(f"[文件: {fpath}]")
+                if file_refs:
+                    prompt = prompt + "\n" + "\n".join(file_refs)
+                    logger.info(f"[WebChannel] Attached {len(file_refs)} file(s) to message")
+
+            request_id = self._generate_request_id()
+            self.request_to_session[request_id] = scoped_session_key
+
+            old_request_id = self.session_to_request.get(scoped_session_key)
+            if old_request_id and old_request_id in self.sse_queues:
+                old_q = self.sse_queues[old_request_id]
+                old_q.put({
+                    "type": "cancelled",
+                    "content": "Cancelled by newer message",
+                    "request_id": old_request_id,
+                    "timestamp": time.time()
+                })
+                logger.info(f"[WebChannel] Cancelled previous SSE stream for session={scoped_session_key}, old_request={old_request_id}")
+
+            self.session_to_request[scoped_session_key] = request_id
+
+            if scoped_session_key not in self.session_queues:
+                self.session_queues[scoped_session_key] = Queue()
+
+            self.sse_queues[request_id] = Queue()
+
+            trigger_prefixs = conf().get("single_chat_prefix", [""])
+            if check_prefix(prompt, trigger_prefixs) is None:
+                if trigger_prefixs:
+                    prompt = trigger_prefixs[0] + prompt
+                    logger.debug(f"[WebChannel] Added prefix to message: {prompt}")
+
+            msg = WebMessage(self._generate_msg_id(), prompt)
+            msg.from_user_id = session_id
+
+            context = self._compose_context(ContextType.TEXT, prompt, msg=msg, isgroup=False)
+
+            if context is None:
+                logger.warning(f"[WebChannel] Context is None for session {session_id}, message may be filtered")
+                self.sse_queues.pop(request_id, None)
+                yield b"data: {\"type\": \"error\", \"message\": \"Message was filtered\"}\n\n"
+                return
+
+            context["session_id"] = session_id
+            context["receiver"] = session_id
+            context["request_id"] = request_id
+            if agent_id:
+                context["agent_id"] = agent_id
+                context["tenant_id"] = tenant_id
+            if binding_id:
+                context["binding_id"] = binding_id
+            if has_enable_thinking:
+                context["enable_thinking"] = enable_thinking
+
+            context["on_event"] = self._make_sse_callback(request_id)
+            threading.Thread(target=self.produce, args=(context,)).start()
+            yield from self.stream_response(request_id)
+        except Exception as e:
+            logger.error(f"Error processing message: {e}")
+            payload = json.dumps({"type": "error", "message": str(e)}, ensure_ascii=False)
+            yield f"data: {payload}\n\n".encode("utf-8")
+
     def stream_response(self, request_id: str):
         """
         SSE generator for a given request_id.

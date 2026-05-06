@@ -475,6 +475,11 @@ export function KnowledgePanel({
     return [...rootNodes, ...groupNodes];
   }, [listData.root_files, listData.tree, search]);
 
+  const docsStatsText = useMemo(() => {
+    if (!listData.enabled) return '当前 AI 员工未启用知识库';
+    return `${listData.stats.pages} 篇文档 · ${formatBytes(listData.stats.size)}`;
+  }, [listData.enabled, listData.stats.pages, listData.stats.size]);
+
   return (
     <Card className={embedded ? 'knowledge-embedded-card' : undefined}>
       <PageTitle
@@ -499,52 +504,62 @@ export function KnowledgePanel({
             key: 'docs',
             label: '文档',
             children: (
-              <div className="knowledge-doc-layout">
-                <Card className="knowledge-tree-card">
-                  <Space vertical className="full-width-stack" size={10}>
-                    <Typography.Text type="secondary">
-                      {listData.enabled
-                        ? `${listData.stats.pages} 篇文档 · ${formatBytes(listData.stats.size)}`
-                        : '当前 AI 员工未启用知识库'}
-                    </Typography.Text>
-                    <Input.Search
-                      allowClear
-                      placeholder="搜索标题或文件名"
-                      value={search}
-                      onChange={(event) => setSearch(event.target.value)}
-                    />
-                    {loading ? (
-                      <Spin />
-                    ) : (
-                      <Tree
-                        treeData={treeData}
-                        defaultExpandAll
-                        selectedKeys={selectedPath ? [selectedPath] : []}
-                        onSelect={(keys) => {
-                          const key = String(keys[0] || '');
-                          if (!key || key.startsWith('dir:')) return;
-                          const slashIndex = key.lastIndexOf('/');
-                          void readPath(key, slashIndex >= 0 ? key.slice(slashIndex + 1) : key);
-                        }}
+              listData.enabled ? (
+                <div className="knowledge-doc-layout">
+                  <Card
+                    title="文档目录"
+                    className="knowledge-tree-card"
+                    extra={(
+                      <Input.Search
+                        allowClear
+                        placeholder="搜索标题或文件名"
+                        value={search}
+                        onChange={(event) => setSearch(event.target.value)}
+                        className="knowledge-tree-search"
                       />
                     )}
-                  </Space>
-                </Card>
+                  >
+                    <Space direction="vertical" size={10} className="full-width-stack">
+                      <Typography.Text type="secondary">{docsStatsText}</Typography.Text>
+                      {loading ? (
+                        <Spin />
+                      ) : treeData.length > 0 ? (
+                        <Tree
+                          treeData={treeData}
+                          defaultExpandAll
+                          selectedKeys={selectedPath ? [selectedPath] : []}
+                          onSelect={(keys) => {
+                            const key = String(keys[0] || '');
+                            if (!key || key.startsWith('dir:')) return;
+                            const slashIndex = key.lastIndexOf('/');
+                            void readPath(key, slashIndex >= 0 ? key.slice(slashIndex + 1) : key);
+                          }}
+                        />
+                      ) : (
+                        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="暂无知识文档" />
+                      )}
+                    </Space>
+                  </Card>
 
-                <Card
-                  title={selectedPath ? `文档：${selectedTitle}` : '文档内容'}
-                  extra={selectedPath ? <Typography.Text type="secondary">{selectedPath}</Typography.Text> : null}
-                  className="knowledge-content-card"
-                >
-                  {contentLoading ? (
-                    <Spin />
-                  ) : content ? (
-                    <XMarkdown content={content} rootClassName="chat-markdown" openLinksInNewTab escapeRawHtml />
-                  ) : (
-                    <Typography.Text type="secondary">请选择左侧文档查看内容。</Typography.Text>
-                  )}
-                </Card>
-              </div>
+                  <Card
+                    title={selectedPath ? `文档：${selectedTitle}` : '文档内容'}
+                    extra={selectedPath ? <Typography.Text type="secondary">{selectedPath}</Typography.Text> : null}
+                    className="knowledge-content-card"
+                  >
+                    {contentLoading ? (
+                      <Spin />
+                    ) : content ? (
+                      <XMarkdown content={content} rootClassName="chat-markdown" openLinksInNewTab escapeRawHtml />
+                    ) : (
+                      <Typography.Text type="secondary">请选择左侧文档查看内容。</Typography.Text>
+                    )}
+                  </Card>
+                </div>
+              ) : (
+                <div className="knowledge-disabled">
+                  <Empty description={docsStatsText} />
+                </div>
+              )
             ),
           },
           {

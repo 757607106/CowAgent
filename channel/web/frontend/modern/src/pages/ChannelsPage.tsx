@@ -475,7 +475,7 @@ export default function ChannelsPage({ embedded = false }: ChannelsPageProps) {
             {qrLoading ? (
               <Spin />
             ) : qrValue ? (
-              <QRCode value={qrValue} size={240} />
+              <QRCode value={qrValue} size={200} />
             ) : qrInfo?.qr_image ? (
               <img src={qrInfo.qr_image} alt="weixin-qr" />
             ) : null}

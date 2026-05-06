@@ -108,7 +108,7 @@ export const appTheme = {
       collapsedIconSize: 18,
     },
     Card: {
-      paddingLG: 24,
+      paddingLG: 20,
       borderRadiusLG: radius.xl,
       boxShadow: shadow.card,
       colorBorderSecondary: 'rgba(0, 0, 0, 0.04)',
@@ -138,7 +138,7 @@ export const appTheme = {
       headerColor: palette.neutral[500],
       rowHoverBg: palette.neutral[25],
       headerBorderRadius: 0,
-      padding: 12,
+      padding: 10,
     },
     Input: {
       borderRadius: radius.md,
@@ -167,7 +167,7 @@ export const appTheme = {
       headerPadding: '14px 20px',
     },
     Form: {
-      itemMarginBottom: 20,
+      itemMarginBottom: 16,
       labelFontSize: 13,
     },
     Switch: {
@@ -183,3 +183,31 @@ export const appTheme = {
     },
   },
 };
+
+export function applyConsoleThemeToCssVars(root: HTMLElement = document.documentElement) {
+  const set = (name: string, value: string) => {
+    root.style.setProperty(name, value);
+  };
+
+  for (const [key, value] of Object.entries(palette.brand)) {
+    set(`--brand-${key}`, value);
+  }
+
+  for (const [key, value] of Object.entries(palette.neutral)) {
+    set(`--neutral-${key}`, value);
+  }
+
+  set('--color-primary', palette.brand[600]);
+  set('--color-primary-hover', palette.brand[700]);
+  set('--color-primary-pressed', palette.brand[800]);
+  set('--color-primary-light', palette.brand[50]);
+  set('--color-primary-border', palette.brand[100]);
+  set('--color-success', palette.semantic.success);
+  set('--color-warning', palette.semantic.warning);
+  set('--color-error', palette.semantic.error);
+
+  set('--radius-sm', `${radius.sm}px`);
+  set('--radius-md', `${radius.md}px`);
+  set('--radius-lg', `${radius.lg}px`);
+  set('--radius-xl', `${radius.xl}px`);
+}

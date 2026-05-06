@@ -20,6 +20,12 @@ interface IdentityFormValues {
   external_user_id: string;
 }
 
+interface TenantIdentityItem {
+  tenant_id: string;
+  channel_type: string;
+  external_user_id: string;
+}
+
 const ROLE_LABELS: Record<string, string> = {
   owner: '所有者',
   admin: '管理员',
@@ -58,7 +64,7 @@ export default function TenantUsersPage() {
   const [submitting, setSubmitting] = useState(false);
   const [identityOpen, setIdentityOpen] = useState(false);
   const [identityUser, setIdentityUser] = useState<TenantUserItem | null>(null);
-  const [identities, setIdentities] = useState<any[]>([]);
+  const [identities, setIdentities] = useState<TenantIdentityItem[]>([]);
   const [identitySubmitting, setIdentitySubmitting] = useState(false);
 
   const [form] = Form.useForm<UserFormValues>();
@@ -170,7 +176,7 @@ export default function TenantUsersPage() {
     setIdentityOpen(true);
     identityForm.resetFields();
     const data = await api.listTenantIdentities(row.tenant_id, row.user_id);
-    setIdentities(data.identities || []);
+    setIdentities((data.identities || []) as TenantIdentityItem[]);
   };
 
   const bindIdentity = async () => {
@@ -186,18 +192,18 @@ export default function TenantUsersPage() {
       });
       message.success('身份映射已绑定');
       const data = await api.listTenantIdentities(identityUser.tenant_id, identityUser.user_id);
-      setIdentities(data.identities || []);
+      setIdentities((data.identities || []) as TenantIdentityItem[]);
       identityForm.resetFields();
     } finally {
       setIdentitySubmitting(false);
     }
   };
 
-  const unbindIdentity = async (item: any) => {
+  const unbindIdentity = async (item: TenantIdentityItem) => {
     if (!identityUser) return;
     await api.deleteTenantIdentity(identityUser.tenant_id, item.channel_type, item.external_user_id);
     const data = await api.listTenantIdentities(identityUser.tenant_id, identityUser.user_id);
-    setIdentities(data.identities || []);
+    setIdentities((data.identities || []) as TenantIdentityItem[]);
     message.success('身份映射已移除');
   };
 
@@ -355,7 +361,7 @@ export default function TenantUsersPage() {
           <Button type="primary" loading={identitySubmitting} onClick={() => void bindIdentity()}>绑定映射</Button>
         </Form>
 
-        <Table
+        <Table<TenantIdentityItem>
           className="identity-table"
           rowKey={(row) => `${row.tenant_id}/${row.channel_type}/${row.external_user_id}`}
           pagination={false}

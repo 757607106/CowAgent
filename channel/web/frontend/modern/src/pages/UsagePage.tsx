@@ -443,7 +443,7 @@ export default function UsagePage() {
             loading={loading || !agentsLoaded}
             dataSource={records}
             pagination={{ pageSize: 20, showSizeChanger: false }}
-            scroll={{ x: 'max-content', y: 'clamp(24rem, calc(100vh - 18rem), 42rem)' }}
+            scroll={{ x: 'max-content', y: 'clamp(24rem, calc(var(--content-available-height) - 18rem), 42rem)' }}
             emptyState={{
               title: '暂无用量明细',
               description: '当前筛选范围内没有调用记录，切换 AI 员工、模型或时间范围后再查看。',

@@ -63,6 +63,14 @@ def build_core_handlers(deps: CoreHandlerDeps) -> dict[str, type]:
     class MessageHandler:
         def POST(self):
             deps.require_auth()
+            accept = (web.ctx.env.get("HTTP_ACCEPT") or "").lower()
+            if "text/event-stream" in accept:
+                web.header("Content-Type", "text/event-stream; charset=utf-8")
+                web.header("Cache-Control", "no-cache")
+                web.header("X-Accel-Buffering", "no")
+                web.header("Access-Control-Allow-Origin", "*")
+                return deps.get_web_channel().post_message_stream()
+
             web.header("Content-Type", "application/json; charset=utf-8")
             return deps.get_web_channel().post_message()
 
