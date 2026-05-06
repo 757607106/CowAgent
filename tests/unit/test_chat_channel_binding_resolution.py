@@ -1,8 +1,13 @@
+from types import SimpleNamespace
+
+import pytest
+
 from bridge.context import Context, ContextType
 from channel.terminal.terminal_channel import TerminalChannel, TerminalMessage
 from config import conf
 from cow_platform.services.agent_service import AgentService
 from cow_platform.services.binding_service import ChannelBindingService
+from cow_platform.services.channel_config_service import CHANNEL_TYPE_DEFS
 from cow_platform.services.tenant_service import TenantService
 from cow_platform.services.tenant_user_service import TenantUserService
 from tests.support.platform_fakes import (
@@ -12,6 +17,16 @@ from tests.support.platform_fakes import (
     InMemoryTenantRepository,
     InMemoryTenantUserRepository,
 )
+
+
+class FakeChannelConfigService:
+    def resolve_channel_config(self, *, tenant_id: str = "", channel_config_id: str = ""):
+        prefix = f"{tenant_id}-"
+        if tenant_id and channel_config_id.startswith(prefix):
+            channel_type = channel_config_id[len(prefix):]
+            if channel_type in CHANNEL_TYPE_DEFS:
+                return SimpleNamespace(channel_type=channel_type, channel_config_id=channel_config_id)
+        raise KeyError(f"channel config not found: {channel_config_id}")
 
 
 def test_chat_channel_injects_platform_binding_target(tmp_path, monkeypatch) -> None:
@@ -152,3 +167,68 @@ def test_managed_channel_without_binding_fails_closed(tmp_path, monkeypatch) -> 
     )
 
     assert context is None
+
+
+@pytest.mark.parametrize("channel_type", sorted(CHANNEL_TYPE_DEFS))
+def test_managed_channel_config_routes_to_binding_for_each_channel_type(
+    tmp_path,
+    monkeypatch,
+    channel_type: str,
+) -> None:
+    monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
+    monkeypatch.setitem(conf(), "model", "legacy-model")
+    monkeypatch.setitem(conf(), "agent", True)
+    monkeypatch.setitem(conf(), "single_chat_prefix", [""])
+    monkeypatch.setitem(conf(), "image_create_prefix", [])
+
+    tenant_service = TenantService(repository=InMemoryTenantRepository())
+    agent_service = AgentService(
+        repository=InMemoryAgentRepository(tmp_path / "legacy"),
+        tenant_service=tenant_service,
+    )
+    binding_service = ChannelBindingService(
+        repository=InMemoryBindingRepository(),
+        tenant_service=tenant_service,
+        agent_service=agent_service,
+        channel_config_service=FakeChannelConfigService(),
+    )
+
+    tenant_service.create_tenant(tenant_id="acme", name="Acme")
+    agent_service.create_agent(
+        tenant_id="acme",
+        agent_id="support",
+        name="客服助手",
+        model="qwen-plus",
+    )
+    binding_service.create_binding(
+        tenant_id="acme",
+        binding_id=f"acme-{channel_type}-binding",
+        name=f"Acme {channel_type} 入口",
+        channel_type=channel_type,
+        channel_config_id=f"acme-{channel_type}",
+        agent_id="support",
+    )
+    monkeypatch.setattr(
+        "cow_platform.services.binding_service.ChannelBindingService",
+        lambda: binding_service,
+    )
+
+    channel = TerminalChannel()
+    channel.channel_type = channel_type
+    channel.channel_config_id = f"acme-{channel_type}"
+    channel.tenant_id = "acme"
+    msg = TerminalMessage(
+        1,
+        "hello",
+        from_user_id="user-42",
+        to_user_id=f"{channel_type}-bot",
+        other_user_id="user-42",
+    )
+
+    context = channel._compose_context(ContextType.TEXT, "hello", msg=msg, isgroup=False)
+
+    assert context is not None
+    assert context["binding_id"] == f"acme-{channel_type}-binding"
+    assert context["tenant_id"] == "acme"
+    assert context["agent_id"] == "support"
+    assert context["channel_config_id"] == f"acme-{channel_type}"

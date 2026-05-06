@@ -275,10 +275,15 @@ class ChannelBindingService:
             if self._requires_channel_config(resolved_channel_type):
                 raise ValueError("channel_config_id is required for tenant channel bindings")
             return resolved_channel_type, ""
-        channel_config = self.channel_config_service.resolve_channel_config(
-            tenant_id=tenant_id,
-            channel_config_id=resolved_channel_config_id,
-        )
+        try:
+            channel_config = self.channel_config_service.resolve_channel_config(
+                tenant_id=tenant_id,
+                channel_config_id=resolved_channel_config_id,
+            )
+        except KeyError as exc:
+            raise ValueError(
+                f"channel_config_id not found for tenant '{tenant_id}': {resolved_channel_config_id}"
+            ) from exc
         if resolved_channel_type and channel_config.channel_type != resolved_channel_type:
             raise ValueError("channel_config_id does not match channel_type")
         return channel_config.channel_type, channel_config.channel_config_id

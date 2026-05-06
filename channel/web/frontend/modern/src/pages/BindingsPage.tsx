@@ -1,5 +1,5 @@
 import { Button, Form, Input, Modal, Popconfirm, Select, Space, Switch, Tag, Typography, message } from 'antd';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { ConsolePage, DataTableShell, PageToolbar, StatusTag } from '../components/console';
 import { useRuntimeScope } from '../context/runtime';
 import { api, formatBindingPayload } from '../services/api';
@@ -30,6 +30,10 @@ const TENANT_CHANNEL_TYPES = new Set([
   'wechatmp_service',
 ]);
 
+function isFormValidationError(error: unknown): error is { errorFields: unknown[] } {
+  return Boolean(error && typeof error === 'object' && 'errorFields' in error);
+}
+
 export default function BindingsPage({ embedded = false }: BindingsPageProps) {
   const { tenantId: currentTenantId } = useRuntimeScope();
   const [loading, setLoading] = useState(false);
@@ -43,6 +47,8 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
   const [submitting, setSubmitting] = useState(false);
   const [form] = Form.useForm<BindingFormValues>();
   const selectedChannelType = Form.useWatch('channel_type', form);
+  const reloadSeqRef = useRef(0);
+  const bindingLoadSeqRef = useRef(0);
 
   const tenantAgentOptions = useMemo(() => agents.map((agent) => ({
     label: agent.name,
@@ -70,40 +76,55 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
     [channelConfigs, selectedChannelType],
   );
 
-  const loadBase = async (tenant = tenantId) => {
-    const [tenantData, agentData, channelConfigData] = await Promise.all([
-      api.listTenants(),
-      api.listAgents(tenant || currentTenantId),
-      api.listChannelConfigs(tenant || currentTenantId),
-    ]);
-    setTenants(tenantData.tenants || []);
-    setAgents(agentData.agents || []);
-    setChannelConfigs(channelConfigData.channel_configs || []);
-  };
-
-  const loadBindings = async () => {
+  const loadBindings = async (tenant = tenantId) => {
+    const requestSeq = bindingLoadSeqRef.current + 1;
+    bindingLoadSeqRef.current = requestSeq;
     setLoading(true);
     try {
-      const data = await api.listBindings(tenantId);
+      const data = await api.listBindings(tenant);
+      if (requestSeq !== bindingLoadSeqRef.current) return;
       setBindings(data.bindings || []);
     } finally {
-      setLoading(false);
+      if (requestSeq === bindingLoadSeqRef.current) {
+        setLoading(false);
+      }
     }
   };
 
   const reload = async () => {
-    await loadBase(tenantId);
-    await loadBindings();
+    const requestSeq = reloadSeqRef.current + 1;
+    reloadSeqRef.current = requestSeq;
+    bindingLoadSeqRef.current = requestSeq;
+    setLoading(true);
+    try {
+      const [tenantData, agentData, channelConfigData, bindingData] = await Promise.all([
+        api.listTenants(),
+        api.listAgents(tenantId || currentTenantId),
+        api.listChannelConfigs(tenantId || currentTenantId),
+        api.listBindings(tenantId),
+      ]);
+      if (requestSeq !== reloadSeqRef.current) return;
+      setTenants(tenantData.tenants || []);
+      setAgents(agentData.agents || []);
+      setChannelConfigs(channelConfigData.channel_configs || []);
+      setBindings(bindingData.bindings || []);
+    } finally {
+      if (requestSeq === reloadSeqRef.current) {
+        setLoading(false);
+      }
+    }
   };
 
   const openCreate = () => {
     setEditing(null);
+    form.resetFields();
+    const defaultChannelConfig = channelConfigs[0];
     form.setFieldsValue({
       tenant_id: tenantId || currentTenantId,
       binding_id: '',
       name: '',
-      channel_type: 'web',
-      channel_config_id: '',
+      channel_type: defaultChannelConfig?.channel_type || 'web',
+      channel_config_id: defaultChannelConfig?.channel_config_id || '',
       agent_id: '',
       enabled: true,
     });
@@ -112,6 +133,7 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
 
   const openEdit = (row: BindingItem) => {
     setEditing(row);
+    form.resetFields();
     form.setFieldsValue({
       tenant_id: row.tenant_id,
       binding_id: row.binding_id,
@@ -124,23 +146,67 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
     setOpen(true);
   };
 
+  const validateFreshChannelConfig = async (
+    effectiveTenantId: string,
+    channelType: string,
+    channelConfigId: string,
+  ) => {
+    const requiresChannelConfig = TENANT_CHANNEL_TYPES.has(channelType);
+    const resolvedChannelConfigId = (channelConfigId || '').trim();
+
+    if (!requiresChannelConfig && !resolvedChannelConfigId) {
+      form.setFields([{ name: 'channel_config_id', errors: [] }]);
+      return '';
+    }
+
+    if (requiresChannelConfig && !resolvedChannelConfigId) {
+      const error = '租户级渠道绑定必须选择渠道配置';
+      form.setFields([{ name: 'channel_config_id', errors: [error] }]);
+      throw new Error(error);
+    }
+
+    const freshData = await api.listChannelConfigs(effectiveTenantId);
+    const freshChannelConfigs = freshData.channel_configs || [];
+    setChannelConfigs(freshChannelConfigs);
+
+    const matchedConfig = freshChannelConfigs.find(
+      (config) => config.tenant_id === effectiveTenantId
+        && config.channel_config_id === resolvedChannelConfigId
+        && config.channel_type === channelType,
+    );
+    if (!matchedConfig) {
+      const error = '渠道配置不存在、已删除或不属于当前租户，请重新选择';
+      form.setFieldValue('channel_config_id', '');
+      form.setFields([{ name: 'channel_config_id', errors: [error] }]);
+      throw new Error(error);
+    }
+
+    form.setFields([{ name: 'channel_config_id', errors: [] }]);
+    return matchedConfig.channel_config_id;
+  };
+
   const onSubmit = async () => {
-    const values = await form.validateFields();
-    const effectiveTenantId = values.tenant_id || tenantId || currentTenantId;
-
-    const payload = formatBindingPayload({
-      tenant_id: effectiveTenantId,
-      binding_id: editing ? values.binding_id : undefined,
-      name: values.name,
-      channel_type: values.channel_type,
-      channel_config_id: values.channel_config_id,
-      agent_id: values.agent_id,
-      enabled: values.enabled,
-      metadata: editing?.metadata || {},
-    });
-
     setSubmitting(true);
     try {
+      const values = await form.validateFields();
+      const effectiveTenantId = values.tenant_id || tenantId || currentTenantId;
+      const channelConfigId = await validateFreshChannelConfig(
+        effectiveTenantId,
+        values.channel_type,
+        values.channel_config_id,
+      );
+
+      const payload = formatBindingPayload({
+        tenant_id: effectiveTenantId,
+        binding_id: editing ? values.binding_id : undefined,
+        name: values.name,
+        channel_type: values.channel_type,
+        channel_config_id: channelConfigId,
+        agent_id: values.agent_id,
+        enabled: values.enabled,
+        metadata: editing?.metadata || {},
+      });
+
       if (editing) {
         await api.updateBinding(editing.binding_id, payload);
         message.success('绑定已更新');
@@ -149,7 +215,11 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
         message.success('绑定已创建');
       }
       setOpen(false);
-      await loadBindings();
+      await loadBindings(effectiveTenantId);
+    } catch (error) {
+      if (!isFormValidationError(error)) {
+        message.error(error instanceof Error ? error.message : '保存绑定失败');
+      }
     } finally {
       setSubmitting(false);
     }
@@ -158,7 +228,7 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
   const onDelete = async (row: BindingItem) => {
     await api.deleteBinding(row.tenant_id, row.binding_id);
     message.success('绑定已删除');
-    await loadBindings();
+    await loadBindings(row.tenant_id);
   };
 
   useEffect(() => {
@@ -269,9 +339,10 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
         onCancel={() => setOpen(false)}
         onOk={() => void onSubmit()}
         confirmLoading={submitting}
+        destroyOnClose
         width="min(47.5rem, calc(100vw - 3rem))"
       >
-        <Form form={form} layout="vertical">
+        <Form form={form} layout="vertical" clearOnDestroy>
           <Form.Item name="name" label="名称" rules={[{ required: true }]}>
             <Input aria-label="名称" />
           </Form.Item>
@@ -285,6 +356,10 @@ export default function BindingsPage({ embedded = false }: BindingsPageProps) {
                 );
                 if (selected && selected.channel_type !== value) {
                   form.setFieldValue('channel_config_id', '');
+                }
+                const sameTypeConfigs = channelConfigs.filter((config) => config.channel_type === value);
+                if (!form.getFieldValue('channel_config_id') && sameTypeConfigs.length === 1) {
+                  form.setFieldValue('channel_config_id', sameTypeConfigs[0].channel_config_id);
                 }
               }}
               options={[

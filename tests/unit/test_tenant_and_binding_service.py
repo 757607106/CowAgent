@@ -13,8 +13,11 @@ from tests.support.platform_fakes import InMemoryAgentRepository, InMemoryBindin
 
 class FakeChannelConfigService:
     def resolve_channel_config(self, *, tenant_id: str = "", channel_config_id: str = ""):
-        if tenant_id == "acme" and channel_config_id == "acme-feishu":
-            return SimpleNamespace(channel_type="feishu", channel_config_id="acme-feishu")
+        prefix = "acme-"
+        if tenant_id == "acme" and channel_config_id.startswith(prefix):
+            channel_type = channel_config_id[len(prefix):]
+            if channel_type in CHANNEL_TYPE_DEFS:
+                return SimpleNamespace(channel_type=channel_type, channel_config_id=channel_config_id)
         raise KeyError(f"channel config not found: {channel_config_id}")
 
 
@@ -147,3 +150,86 @@ def test_tenant_channel_binding_requires_channel_config(tmp_path, monkeypatch, c
         agent_id="writer",
     )
     assert terminal_binding["channel_config_id"] == ""
+
+
+@pytest.mark.parametrize("channel_type", sorted(CHANNEL_TYPE_DEFS))
+def test_tenant_channel_binding_accepts_only_current_channel_config(tmp_path, monkeypatch, channel_type: str) -> None:
+    monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
+    monkeypatch.setitem(conf(), "model", "legacy-model")
+
+    tenant_service = TenantService(repository=InMemoryTenantRepository())
+    agent_service = AgentService(
+        repository=InMemoryAgentRepository(tmp_path / "legacy"),
+        tenant_service=tenant_service,
+    )
+    binding_service = ChannelBindingService(
+        repository=InMemoryBindingRepository(),
+        tenant_service=tenant_service,
+        agent_service=agent_service,
+        channel_config_service=FakeChannelConfigService(),
+    )
+
+    tenant_service.create_tenant(tenant_id="acme", name="Acme 团队")
+    agent_service.create_agent(
+        tenant_id="acme",
+        agent_id="writer",
+        name="写作助手",
+        model="qwen-plus",
+    )
+
+    binding = binding_service.create_binding(
+        tenant_id="acme",
+        binding_id=f"acme-{channel_type}-binding",
+        name=f"Acme {channel_type} 入口",
+        channel_type=channel_type,
+        channel_config_id=f"acme-{channel_type}",
+        agent_id="writer",
+    )
+
+    assert binding["channel_type"] == channel_type
+    assert binding["channel_config_id"] == f"acme-{channel_type}"
+
+
+def test_tenant_channel_binding_rejects_stale_or_mismatched_channel_config(tmp_path, monkeypatch) -> None:
+    monkeypatch.setitem(conf(), "agent_workspace", str(tmp_path / "legacy"))
+    monkeypatch.setitem(conf(), "model", "legacy-model")
+
+    tenant_service = TenantService(repository=InMemoryTenantRepository())
+    agent_service = AgentService(
+        repository=InMemoryAgentRepository(tmp_path / "legacy"),
+        tenant_service=tenant_service,
+    )
+    binding_service = ChannelBindingService(
+        repository=InMemoryBindingRepository(),
+        tenant_service=tenant_service,
+        agent_service=agent_service,
+        channel_config_service=FakeChannelConfigService(),
+    )
+
+    tenant_service.create_tenant(tenant_id="acme", name="Acme 团队")
+    agent_service.create_agent(
+        tenant_id="acme",
+        agent_id="writer",
+        name="写作助手",
+        model="qwen-plus",
+    )
+
+    with pytest.raises(ValueError, match="channel_config_id not found for tenant 'acme': chcfg_weixin_deleted"):
+        binding_service.create_binding(
+            tenant_id="acme",
+            binding_id="acme-stale-weixin",
+            name="Acme 旧微信入口",
+            channel_type="weixin",
+            channel_config_id="chcfg_weixin_deleted",
+            agent_id="writer",
+        )
+
+    with pytest.raises(ValueError, match="channel_config_id does not match channel_type"):
+        binding_service.create_binding(
+            tenant_id="acme",
+            binding_id="acme-mismatched-weixin",
+            name="Acme 错配微信入口",
+            channel_type="weixin",
+            channel_config_id="acme-feishu",
+            agent_id="writer",
+        )
