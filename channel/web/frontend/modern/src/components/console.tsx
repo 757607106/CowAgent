@@ -1,4 +1,16 @@
-import { Card, Collapse, Empty, Table, Tag, Typography, type TableProps } from 'antd';
+import {
+  Button,
+  Card,
+  Collapse,
+  Empty,
+  Popconfirm,
+  Table,
+  Tag,
+  Tooltip,
+  Typography,
+  type ButtonProps,
+  type TableProps,
+} from 'antd';
 import type { ReactNode } from 'react';
 import { JsonBlock } from './JsonBlock';
 import { PageHeader } from './PageHeader';
@@ -18,6 +30,45 @@ interface ConsolePageProps {
 interface PageToolbarProps {
   children: ReactNode;
   align?: 'start' | 'end';
+}
+
+interface ConsoleFilterBarProps {
+  children: ReactNode;
+  className?: string;
+}
+
+interface MetricItem {
+  key: string;
+  title: ReactNode;
+  value: ReactNode;
+  description?: ReactNode;
+  icon?: ReactNode;
+  tone?: 'default' | 'success' | 'processing' | 'warning' | 'error';
+  loading?: boolean;
+}
+
+interface MetricStripProps {
+  items: MetricItem[];
+  className?: string;
+}
+
+interface EntityActionItem {
+  key: string;
+  label: string;
+  icon?: ReactNode;
+  tooltip?: ReactNode;
+  danger?: boolean;
+  disabled?: boolean;
+  type?: ButtonProps['type'];
+  showLabel?: boolean;
+  confirmTitle?: ReactNode;
+  onClick?: () => void;
+}
+
+interface EntityActionBarProps {
+  actions: EntityActionItem[];
+  className?: string;
+  size?: ButtonProps['size'];
 }
 
 interface DataTableShellProps<T extends object> extends Omit<TableProps<T>, 'title'> {
@@ -81,6 +132,68 @@ export function PageToolbar({ children, align = 'end' }: PageToolbarProps) {
   return <Toolbar align={align} ariaLabel="页面操作">{children}</Toolbar>;
 }
 
+export function ConsoleFilterBar({ children, className }: ConsoleFilterBarProps) {
+  return (
+    <div className={['console-filter-strip', className].filter(Boolean).join(' ')}>
+      {children}
+    </div>
+  );
+}
+
+export function MetricStrip({ items, className }: MetricStripProps) {
+  return (
+    <div className={['metric-strip', className].filter(Boolean).join(' ')}>
+      {items.map((item) => (
+        <section key={item.key} className={['metric-tile', item.tone ? `metric-tile-${item.tone}` : ''].filter(Boolean).join(' ')}>
+          <div className="metric-tile-main">
+            <span className="metric-tile-title">{item.title}</span>
+            <strong className="metric-tile-value">{item.loading ? '...' : item.value}</strong>
+            {item.description ? <span className="metric-tile-desc">{item.description}</span> : null}
+          </div>
+          {item.icon ? <span className="metric-tile-icon">{item.icon}</span> : null}
+        </section>
+      ))}
+    </div>
+  );
+}
+
+export function EntityActionBar({ actions, className, size = 'small' }: EntityActionBarProps) {
+  return (
+    <div className={['entity-action-bar', className].filter(Boolean).join(' ')}>
+      {actions.map((action) => {
+        const button = (
+          <Button
+            key={action.key}
+            type={action.type ?? 'text'}
+            size={size}
+            icon={action.icon}
+            danger={action.danger}
+            disabled={action.disabled}
+            aria-label={action.label}
+            onClick={action.confirmTitle ? undefined : action.onClick}
+          >
+            {action.showLabel ? action.label : null}
+          </Button>
+        );
+        const tooltip = action.tooltip ?? action.label;
+        const confirmedButton = action.confirmTitle ? (
+          <Popconfirm title={action.confirmTitle} onConfirm={action.onClick} disabled={action.disabled} placement="topRight">
+            <span className="entity-action-tooltip-wrap">{button}</span>
+          </Popconfirm>
+        ) : (
+          <span className="entity-action-tooltip-wrap">{button}</span>
+        );
+
+        return (
+          <span key={action.key} className="entity-action-item">
+            {tooltip ? <Tooltip title={tooltip}>{confirmedButton}</Tooltip> : confirmedButton}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
 function fallbackRowKey<T extends object>(record: T, index?: number) {
   const source = record as Record<string, unknown>;
   const key = source.id ?? source.key ?? source.agent_id ?? source.tenant_id ?? source.user_id ?? source.name ?? index;
@@ -128,7 +241,7 @@ export function DataTableShell<T extends object>({
   };
 
   return (
-    <Card className={['data-table-shell', compact ? 'data-table-shell-compact' : '', className].filter(Boolean).join(' ')}>
+    <Card size="small" className={['data-table-shell', compact ? 'data-table-shell-compact' : '', className].filter(Boolean).join(' ')}>
       {title || toolbar ? (
         <div className="data-table-shell-head">
           <div className="data-table-shell-title">{title}</div>
@@ -155,10 +268,10 @@ export function EntityDetailLayout({ master, detail, className }: EntityDetailLa
   );
 }
 
-export function AdvancedJsonPanel({ title = '高级信息', value, defaultOpen = false }: AdvancedJsonPanelProps) {
+export function DiagnosticPanel({ title = '详情', value, defaultOpen = false }: AdvancedJsonPanelProps) {
   return (
     <Collapse
-      className="advanced-json-panel"
+      className="diagnostic-panel"
       ghost
       defaultActiveKey={defaultOpen ? ['raw'] : undefined}
       items={[
@@ -172,8 +285,12 @@ export function AdvancedJsonPanel({ title = '高级信息', value, defaultOpen =
   );
 }
 
+export function AdvancedJsonPanel({ title = '详情', value, defaultOpen = false }: AdvancedJsonPanelProps) {
+  return <DiagnosticPanel title={title} value={value} defaultOpen={defaultOpen} />;
+}
+
 export function StatusTag({ status, children }: StatusTagProps) {
   const tone = toneForStatus(status);
   const label = children ?? (typeof status === 'boolean' ? (status ? '启用' : '停用') : (status || '未知'));
-  return <Tag color={colorForTone(tone)}>{label}</Tag>;
+  return <Tag className="status-tag" color={colorForTone(tone)}>{label}</Tag>;
 }

@@ -108,8 +108,8 @@ export const appTheme = {
       collapsedIconSize: 18,
     },
     Card: {
-      paddingLG: 20,
-      borderRadiusLG: radius.xl,
+      paddingLG: 16,
+      borderRadiusLG: radius.md,
       boxShadow: shadow.card,
       colorBorderSecondary: 'rgba(0, 0, 0, 0.04)',
     },
@@ -155,8 +155,8 @@ export const appTheme = {
       colorBorder: palette.neutral[200],
     },
     Modal: {
-      borderRadiusLG: radius.xl,
-      titleFontSize: 18,
+      borderRadiusLG: radius.md,
+      titleFontSize: 16,
     },
     Drawer: {
       borderRadiusLG: 0,

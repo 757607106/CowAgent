@@ -3,12 +3,12 @@ import {
   Bubble,
   Conversations,
   Sender,
+  Suggestion,
   Welcome,
   type BubbleItemType,
 } from '@ant-design/x';
 import {
   CheckOutlined,
-  EllipsisOutlined,
   ArrowDownOutlined,
   BulbOutlined,
   CopyOutlined,
@@ -71,13 +71,6 @@ const SLASH_COMMANDS = [
   { cmd: '/knowledge off', desc: '关闭知识库' },
   { cmd: '/config', desc: '查看当前配置' },
   { cmd: '/version', desc: '查看版本' },
-] as const;
-
-const WELCOME_ACTIONS = [
-  { label: '命令帮助', value: '/help' },
-  { label: '知识库文件', value: '/knowledge list' },
-  { label: '上下文状态', value: '/context' },
-  { label: '清空上下文', value: '/context clear' },
 ] as const;
 
 function buildSuggestionItems(query?: string) {
@@ -214,8 +207,6 @@ export default function ChatPage() {
   } | null>(null);
   const previousRequestingRef = useRef(false);
   const [suggestionOpen, setSuggestionOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(-1);
-  const suggestionListRef = useRef<HTMLDivElement>(null);
 
   const [sessionId, setSessionId] = useState<string>(() => readStoredSessionId(scope));
   const [sessions, setSessions] = useState<SessionItem[]>([]);
@@ -377,7 +368,6 @@ export default function ChatPage() {
     setSessionId(nextSessionId);
     setAutoScrollEnabled(true);
     setSuggestionOpen(false);
-    setActiveIndex(-1);
     setDraft('');
     setAttachments([]);
     setAttachmentPanelOpen(false);
@@ -392,7 +382,6 @@ export default function ChatPage() {
     setSessionId(nextSessionId);
     setAutoScrollEnabled(true);
     setSuggestionOpen(false);
-    setActiveIndex(-1);
     setDraft('');
     setAutoScrollEnabled(true);
     setAttachments([]);
@@ -479,7 +468,6 @@ export default function ChatPage() {
     historyIndexRef.current = -1;
     historyDraftRef.current = '';
     setSuggestionOpen(false);
-    setActiveIndex(-1);
     setDraft('');
 
     const nextAttachments = [...attachments];
@@ -516,11 +504,6 @@ export default function ChatPage() {
       ...scopeBody(scope),
     });
   }, [attachments, conversationKey, deepThink, onRequest, scope.agentId, scope.bindingId, sessionId, sessions]);
-
-  const submitCommand = useCallback((command: string) => {
-    if (uploading || !sessionId || isRequesting) return;
-    submitMessage(command);
-  }, [isRequesting, sessionId, submitMessage, uploading]);
 
   const handleSenderKeyDown = useCallback((event: ReactKeyboardEvent) => {
     if ((event.nativeEvent as KeyboardEvent).isComposing) return;
@@ -719,34 +702,20 @@ export default function ChatPage() {
             ) : null}
           </div>
 
-          <Space wrap>
-            <Dropdown
-              trigger={['click']}
-              placement="bottomRight"
-              menu={{
-                items: [
-                  { key: 'context', label: '查看上下文', icon: <BulbOutlined /> },
-                  { key: 'context-clear', label: '清空上下文', icon: <DeleteOutlined />, danger: true },
-                ],
-                onClick: ({ key }) => {
-                  if (key === 'context') submitCommand('/context');
-                  if (key === 'context-clear') submitCommand('/context clear');
-                },
-              }}
-            >
-              <Button icon={<EllipsisOutlined />} />
-            </Dropdown>
-            {!autoScrollEnabled && bubbleItems.length > 0 ? (
-              <Button icon={<ArrowDownOutlined />} onClick={scrollToBottom}>
-                回到底部
-              </Button>
-            ) : null}
-            {isRequesting ? (
-              <Button danger icon={<StopOutlined />} onClick={abort}>
-                停止回复
-              </Button>
-            ) : null}
-          </Space>
+          {(!autoScrollEnabled && bubbleItems.length > 0) || isRequesting ? (
+            <Space wrap>
+              {!autoScrollEnabled && bubbleItems.length > 0 ? (
+                <Button icon={<ArrowDownOutlined />} onClick={scrollToBottom}>
+                  回到底部
+                </Button>
+              ) : null}
+              {isRequesting ? (
+                <Button danger icon={<StopOutlined />} onClick={abort}>
+                  停止回复
+                </Button>
+              ) : null}
+            </Space>
+          ) : null}
         </div>
 
         <div className="chat-main-stage">
@@ -776,31 +745,6 @@ export default function ChatPage() {
                   variant="borderless"
                   icon={<Avatar size={48} src={assistantAvatarSrc} className="chat-welcome-avatar" />}
                   title={`与 ${formatAgentTriggerLabel(scopeLabel)} 对话`}
-                  description={(
-                    <div className="chat-welcome-description">
-                      <div className="chat-welcome-subtitle">
-                        <span>输入 / 查看命令</span>
-                        <span className="chat-welcome-dot">·</span>
-                        <span>Shift + Enter 换行</span>
-                      </div>
-                      <div className="chat-welcome-actions">
-                        {WELCOME_ACTIONS.map((item) => (
-                          <Button
-                            key={item.value}
-                            size="small"
-                            onClick={() => {
-                              setDraft(item.value);
-                              setSuggestionOpen(item.value.trimStart().startsWith('/'));
-                              setActiveIndex(-1);
-                            }}
-                            disabled={!sessionId || uploading || isRequesting}
-                          >
-                            {item.label}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 />
               </div>
             )}
@@ -826,153 +770,125 @@ export default function ChatPage() {
               }
             }}
           >
-            {suggestionOpen && suggestionItems.length > 0 && (
-              <div className="chat-command-popup" ref={suggestionListRef}>
-                {suggestionItems.map((item, index) => (
-                  <div
-                    key={item.value}
-                    className={`chat-command-item ${index === activeIndex ? 'chat-command-item-active' : ''}`}
-                    onMouseEnter={() => setActiveIndex(index)}
-                    onClick={() => {
-                      setDraft(item.value);
-                      setSuggestionOpen(false);
-                      setActiveIndex(-1);
-                    }}
-                  >
-                    <span className="chat-command-label">{item.label}</span>
-                    {item.extra && <span className="chat-command-extra">{item.extra}</span>}
-                  </div>
-                ))}
-              </div>
-            )}
-            <Sender
-              value={draft}
-              loading={isRequesting}
-              disabled={uploading || !sessionId}
-              placeholder={isRequesting ? '模型正在回复...' : '输入消息，输入 / 查看命令'}
-              autoSize={{ minRows: 2, maxRows: 6 }}
-              onChange={(value) => {
+            <Suggestion
+              items={suggestionItems}
+              open={suggestionOpen && suggestionItems.length > 0}
+              onOpenChange={setSuggestionOpen}
+              onSelect={(value) => {
                 setDraft(value);
-                const shouldOpen = value.trimStart().startsWith('/');
-                setSuggestionOpen(shouldOpen);
-                if (!shouldOpen) setActiveIndex(-1);
+                setSuggestionOpen(false);
               }}
-              onKeyDown={(event) => {
-                if (suggestionOpen && suggestionItems.length > 0) {
-                  const { key, shiftKey } = event;
-                  if (key === 'Escape') {
-                    setSuggestionOpen(false);
-                    setActiveIndex(-1);
-                    event.preventDefault();
-                    return;
-                  }
-                  if (key === 'ArrowUp') {
-                    event.preventDefault();
-                    setActiveIndex((prev) => (prev <= 0 ? suggestionItems.length - 1 : prev - 1));
-                    return;
-                  }
-                  if (key === 'ArrowDown') {
-                    event.preventDefault();
-                    setActiveIndex((prev) => (prev >= suggestionItems.length - 1 ? 0 : prev + 1));
-                    return;
-                  }
-                  if (key === 'Enter' && !shiftKey && activeIndex >= 0) {
-                    event.preventDefault();
-                    setDraft(suggestionItems[activeIndex].value);
-                    setSuggestionOpen(false);
-                    setActiveIndex(-1);
-                    return;
-                  }
-                }
-                handleSenderKeyDown(event);
-              }}
-              onSubmit={(value) => submitMessage(value)}
-              onCancel={abort}
-              onPasteFile={(files) => {
-                void uploadFiles(Array.from(files));
-              }}
-
-              header={(
-                <SenderHeader
-                  open={attachmentPanelOpen}
-                  forceRender
-                  title={uploading ? '正在上传附件…' : attachments.length > 0 ? `附件 (${attachments.length})` : '附件'}
-                  className="chat-sender-header"
-                  classNames={{
-                    content: 'chat-sender-header-content',
+              rootClassName="chat-command-suggestion"
+            >
+              {({ onTrigger, onKeyDown }) => (
+                <Sender
+                  value={draft}
+                  loading={isRequesting}
+                  disabled={uploading || !sessionId}
+                  placeholder={isRequesting ? '模型正在回复...' : '输入消息，输入 / 查看命令'}
+                  autoSize={{ minRows: 2, maxRows: 5 }}
+                  onChange={(value) => {
+                    setDraft(value);
+                    const shouldOpen = value.trimStart().startsWith('/') && buildSuggestionItems(value).length > 0;
+                    setSuggestionOpen(shouldOpen);
+                    onTrigger(shouldOpen ? value : false);
                   }}
-                  onOpenChange={setAttachmentPanelOpen}
-                >
-                  <div className="chat-attachment-panel">
-                    <Attachments
-                      ref={attachmentsRef}
-                      items={attachmentItems}
-                      multiple
-                      rootClassName="chat-attachments"
-                      beforeUpload={(file) => {
-                        void uploadFiles([file as File]);
-                        return false;
+                  onKeyDown={(event) => {
+                    if (suggestionOpen && suggestionItems.length > 0) {
+                      onKeyDown(event);
+                      if (event.defaultPrevented) return;
+                    }
+                    handleSenderKeyDown(event);
+                  }}
+                  onSubmit={(value) => submitMessage(value)}
+                  onCancel={abort}
+                  onPasteFile={(files) => {
+                    void uploadFiles(Array.from(files));
+                  }}
+
+                  header={(
+                    <SenderHeader
+                      open={attachmentPanelOpen}
+                      forceRender
+                      title={uploading ? '正在上传附件…' : attachments.length > 0 ? `附件 (${attachments.length})` : '附件'}
+                      className="chat-sender-header"
+                      classNames={{
+                        content: 'chat-sender-header-content',
                       }}
-                      onRemove={(file) => {
-                        setAttachments((prev) => prev.filter((item) => item.file_path !== String(file.uid)));
-                        return true;
-                      }}
-                      placeholder={{
-                        icon: uploading ? <LoadingOutlined /> : <PaperClipOutlined />,
-                        title: uploading ? '正在上传附件…' : '上传附件',
-                        description: '支持图片、视频和文件，可拖拽或点击选择',
-                      }}
-                    />
-                  </div>
-                </SenderHeader>
-              )}
-              footer={(actionNode) => (
-                <Flex justify="space-between" align="center" gap={12} wrap style={{ padding: '0 12px 12px' }}>
-                  <Flex align="center" gap={8} wrap>
-                    <Button
-                      type="text"
-                      icon={<PaperClipOutlined />}
-                      aria-label={attachmentPanelOpen ? '收起附件面板' : '上传附件'}
-                      title={attachmentPanelOpen ? '收起附件面板' : '上传附件'}
-                      onClick={openAttachmentPanel}
-                      loading={uploading}
-                      style={{ color: attachmentPanelOpen ? 'var(--color-primary)' : 'var(--text-secondary)' }}
-                    />
-                    <SenderSwitch
-                      value={deepThink ?? false}
-                      icon={<BulbOutlined />}
-                      checkedChildren="深度思考：开"
-                      unCheckedChildren="深度思考：关"
-                      onChange={(checked) => setDeepThink(Boolean(checked))}
-                    />
-                    <Dropdown
-                      trigger={['click']}
-                      menu={{
-                        selectable: true,
-                        selectedKeys: [selectedAgentValue],
-                        items: agentMenuItems,
-                        onClick: ({ key }) => setAgentScope(String(key)),
-                      }}
+                      onOpenChange={setAttachmentPanelOpen}
                     >
-                      <span>
+                      <div className="chat-attachment-panel">
+                        <Attachments
+                          ref={attachmentsRef}
+                          items={attachmentItems}
+                          multiple
+                          rootClassName="chat-attachments"
+                          beforeUpload={(file) => {
+                            void uploadFiles([file as File]);
+                            return false;
+                          }}
+                          onRemove={(file) => {
+                            setAttachments((prev) => prev.filter((item) => item.file_path !== String(file.uid)));
+                            return true;
+                          }}
+                          placeholder={{
+                            icon: uploading ? <LoadingOutlined /> : <PaperClipOutlined />,
+                            title: uploading ? '正在上传附件…' : '上传附件',
+                            description: '支持图片、视频和文件，可拖拽或点击选择',
+                          }}
+                        />
+                      </div>
+                    </SenderHeader>
+                  )}
+                  footer={(actionNode) => (
+                    <Flex justify="space-between" align="center" gap={10} wrap className="chat-sender-footer-bar">
+                      <Flex align="center" gap={8} wrap>
+                        <Button
+                          type="text"
+                          icon={<PaperClipOutlined />}
+                          aria-label={attachmentPanelOpen ? '收起附件面板' : '上传附件'}
+                          title={attachmentPanelOpen ? '收起附件面板' : '上传附件'}
+                          onClick={openAttachmentPanel}
+                          loading={uploading}
+                          style={{ color: attachmentPanelOpen ? 'var(--color-primary)' : 'var(--text-secondary)' }}
+                        />
                         <SenderSwitch
-                          value={false}
-                          icon={<Avatar size={20} src={assistantAvatarSrc} />}
+                          value={deepThink ?? false}
+                          icon={<BulbOutlined />}
+                          checkedChildren="深度思考：开"
+                          unCheckedChildren="深度思考：关"
+                          onChange={(checked) => setDeepThink(Boolean(checked))}
+                        />
+                        <Dropdown
+                          trigger={['click']}
+                          menu={{
+                            selectable: true,
+                            selectedKeys: [selectedAgentValue],
+                            items: agentMenuItems,
+                            onClick: ({ key }) => setAgentScope(String(key)),
+                          }}
                         >
-                          {formatAgentTriggerLabel(selectedAgentLabel)}
-                        </SenderSwitch>
-                      </span>
-                    </Dropdown>
-                    {attachments.length > 0 ? <Tag color="blue">已选 {attachments.length}</Tag> : null}
-                    {dragOver ? <Tag color="processing">松开上传</Tag> : null}
-                  </Flex>
-                  <Flex align="center" gap={8}>
-                    {actionNode}
-                  </Flex>
-                </Flex>
+                          <span>
+                            <SenderSwitch
+                              value={false}
+                              icon={<Avatar size={20} src={assistantAvatarSrc} />}
+                            >
+                              {formatAgentTriggerLabel(selectedAgentLabel)}
+                            </SenderSwitch>
+                          </span>
+                        </Dropdown>
+                        {attachments.length > 0 ? <Tag color="blue">已选 {attachments.length}</Tag> : null}
+                        {dragOver ? <Tag color="processing">松开上传</Tag> : null}
+                      </Flex>
+                      <Flex align="center" gap={8}>
+                        {actionNode}
+                      </Flex>
+                    </Flex>
+                  )}
+                  suffix={false}
+                />
               )}
-              suffix={false}
-            />
+            </Suggestion>
           </div>
         </div>
       </section>

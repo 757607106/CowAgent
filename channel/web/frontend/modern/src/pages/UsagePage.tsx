@@ -1,8 +1,8 @@
-import { Button, Card, DatePicker, Segmented, Select, Statistic, Tag, message } from 'antd';
+import { Button, DatePicker, Segmented, Select, Tag, message } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { consoleThemeTokens } from '../app/theme';
 import { EChartCard } from '../components/EChartCard';
-import { AdvancedJsonPanel, ConsolePage, DataTableShell, PageToolbar } from '../components/console';
+import { ConsoleFilterBar, ConsolePage, DataTableShell, DiagnosticPanel, MetricStrip, PageToolbar } from '../components/console';
 import { displayAgentName, useRuntimeScope } from '../context/runtime';
 import { api } from '../services/api';
 import type {
@@ -268,19 +268,6 @@ export default function UsagePage() {
     </span>
   );
 
-  const renderSummaryCard = (title: string, value: number, mode: 'number' | 'cost' = 'number') => (
-    <Card className="operations-summary-card">
-      <Statistic
-        title={title}
-        value={value}
-        loading={loading}
-        {...(mode === 'cost'
-          ? { precision: 6 }
-          : { formatter: (statValue: unknown) => formatNumber(Number(statValue)) })}
-      />
-    </Card>
-  );
-
   const loadAgents = async () => {
     setAgentsLoaded(false);
     try {
@@ -335,7 +322,7 @@ export default function UsagePage() {
         </PageToolbar>
       )}
     >
-      <div className="console-filter-strip usage-filter-strip">
+      <ConsoleFilterBar className="usage-filter-strip">
         <Segmented
           className="usage-view-filter"
           value={panelKey}
@@ -379,17 +366,20 @@ export default function UsagePage() {
           onChange={(_dates, dateStrings) => setDateRange(normalizeDateRange(dateStrings as [string, string]))}
           format="YYYY-MM-DD"
         />
-      </div>
+      </ConsoleFilterBar>
       {panelKey === 'reports' ? (
         <section className="usage-report-panel">
-          <div className="operations-summary-grid usage-summary-grid">
-            {renderSummaryCard('租户总 Token', tenantSummary.total_tokens)}
-            {renderSummaryCard('租户总费用', tenantSummary.estimated_cost, 'cost')}
-            {renderSummaryCard(agentId ? 'AI 员工 Token' : '筛选 Token', scopeSummary.total_tokens)}
-            {renderSummaryCard('请求数', scopeSummary.request_count)}
-            {renderSummaryCard('工具调用', scopeSummary.tool_call_count)}
-            {renderSummaryCard('MCP 调用', scopeSummary.mcp_call_count)}
-          </div>
+          <MetricStrip
+            className="usage-summary-grid"
+            items={[
+              { key: 'tenant_tokens', title: '租户总 Token', value: formatNumber(tenantSummary.total_tokens), loading, tone: 'processing' },
+              { key: 'tenant_cost', title: '租户总费用', value: formatCost(tenantSummary.estimated_cost), loading },
+              { key: 'scope_tokens', title: agentId ? 'AI 员工 Token' : '筛选 Token', value: formatNumber(scopeSummary.total_tokens), loading, tone: 'success' },
+              { key: 'requests', title: '请求数', value: formatNumber(scopeSummary.request_count), loading },
+              { key: 'tool_calls', title: '工具调用', value: formatNumber(scopeSummary.tool_call_count), loading },
+              { key: 'mcp_calls', title: 'MCP 调用', value: formatNumber(scopeSummary.mcp_call_count), loading },
+            ]}
+          />
 
           <section className="usage-report-grid">
             <EChartCard
@@ -461,7 +451,7 @@ export default function UsagePage() {
               { title: '费用', dataIndex: 'estimated_cost', width: 110, render: (value: number) => formatCost(value) },
             ]}
             expandable={{
-              expandedRowRender: (row) => <AdvancedJsonPanel title="诊断信息" value={row} defaultOpen />,
+              expandedRowRender: (row) => <DiagnosticPanel title="调用详情" value={row} defaultOpen />,
             }}
           />
         </section>

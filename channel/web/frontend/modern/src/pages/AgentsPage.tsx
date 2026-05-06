@@ -12,26 +12,22 @@ import {
 } from '@ant-design/icons';
 import {
   Avatar,
-  Badge,
   Button,
-  Card,
   Empty,
   Form,
   Input,
   Modal,
-  Popconfirm,
   Popover,
   Select,
-  Statistic,
   Switch,
   Tag,
-  Tooltip,
   Typography,
   message,
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ConsolePage, PageToolbar } from '../components/console';
+import { ConsoleFilterBar, ConsolePage, MetricStrip, PageToolbar } from '../components/console';
+import { EmployeeCard } from '../components/EmployeeCard';
 import { displayAgentName, useRuntimeScope } from '../context/runtime';
 import { api, formatAgentPayload } from '../services/api';
 import type { AgentItem, ModelConfigItem, SkillItem, TenantItem, ToolItem } from '../types';
@@ -366,22 +362,17 @@ export default function AgentsPage() {
       )}
     >
 
-      <div className="agent-overview-grid">
-        <Card className="agent-overview-card">
-          <Statistic title="在岗员工" value={agentOverview.total} loading={loading} />
-        </Card>
-        <Card className="agent-overview-card">
-          <Statistic title="可独立服务" value={agentOverview.serviceable} loading={loading} />
-        </Card>
-        <Card className="agent-overview-card">
-          <Statistic title="带知识库" value={agentOverview.knowledgeEnabled} loading={loading} />
-        </Card>
-        <Card className="agent-overview-card">
-          <Statistic title="能力连接" value={agentOverview.capabilityTotal} loading={loading} />
-        </Card>
-      </div>
+      <MetricStrip
+        className="agent-overview-metrics"
+        items={[
+          { key: 'total', title: '在岗员工', value: agentOverview.total, loading, tone: 'processing' },
+          { key: 'serviceable', title: '可独立服务', value: agentOverview.serviceable, loading, tone: 'success' },
+          { key: 'knowledge', title: '带知识库', value: agentOverview.knowledgeEnabled, loading },
+          { key: 'capability', title: '能力连接', value: agentOverview.capabilityTotal, loading },
+        ]}
+      />
 
-      <div className="console-filter-strip agent-filter-strip">
+      <ConsoleFilterBar className="agent-filter-strip">
         <Select
           value={tenantId}
           className="agent-tenant-filter"
@@ -401,19 +392,20 @@ export default function AgentsPage() {
           onChange={(event) => setSearch(event.target.value)}
           className="agent-search"
         />
-      </div>
+      </ConsoleFilterBar>
 
       {filteredAgents.length === 0 && !loading ? (
-        <Card className="agent-empty-card">
+        <div className="agent-empty-card">
           <Empty description={search ? '没有匹配的 AI 员工。' : '暂无 AI 员工。'}>
             <Button type="primary" icon={<PlusOutlined />} onClick={openCreate}>新员工入职</Button>
           </Empty>
-        </Card>
+        </div>
       ) : (
-        <div className="agent-vivid-grid">
+        <div className="employee-grid">
           {filteredAgents.map(agent => {
             const agentName = displayAgentName(agent.agent_id, agent.name);
             const avatar = agentAvatarOption(agent);
+            const position = String(agent.metadata?.position || DEFAULT_AGENT_POSITION);
             const toolCount = effectiveToolNames(agent, tools).length;
             const skillCount = effectiveSkillNames(agent, skills).length;
             const capabilityCount = toolCount + skillCount + mcpServerCount(agent);
@@ -421,48 +413,37 @@ export default function AgentsPage() {
             const isDefault = isDefaultAgent(agent);
 
             return (
-              <div key={agent.agent_id} className="agent-vivid-card">
-                <div className="agent-vivid-cover">
-                  <Badge status={state.status} text={state.label} className="agent-vivid-status-badge" />
-                </div>
-                <div className="agent-vivid-avatar-wrapper">
-                  <Avatar src={avatar.src}>{agentInitial(agentName)}</Avatar>
-                </div>
-                <div className="agent-vivid-body">
-                  <div className="agent-vivid-title">
-                    <Typography.Title level={5} className="agent-vivid-name" title={agentName}>
-                      {agentName}
-                    </Typography.Title>
-                  </div>
-                  <div className="agent-vivid-model">
-                    {agent.model ? <Tag color="blue">{agent.model}</Tag> : <Tag>模型待配置</Tag>}
-                    {agent.knowledge_enabled && <Tag color="green">知识库</Tag>}
-                  </div>
-                  <div className="agent-vivid-capabilities">
-                    <Tooltip title={`挂载了 ${toolCount} 个工具`}><Tag icon={<ToolOutlined />}>{toolCount}</Tag></Tooltip>
-                    <Tooltip title={`挂载了 ${skillCount} 个技能`}><Tag icon={<BuildOutlined />}>{skillCount}</Tag></Tooltip>
-                    <Tooltip title={`启用了 ${enabledMcpServerCount(agent)} 个 MCP`}><Tag icon={<ApiOutlined />}>{enabledMcpServerCount(agent)}</Tag></Tooltip>
-                  </div>
-                </div>
-                <div className="agent-vivid-actions">
-                  <button className="agent-vivid-action-btn" onClick={() => void openDetail(agent)} aria-label="配置">
-                    <SettingOutlined />
-                  </button>
-                  <button className="agent-vivid-action-btn" onClick={() => startChatWithAgent(agent)} aria-label="对话">
-                    <MessageOutlined />
-                  </button>
-                  <Popconfirm
-                    title={isDefault ? '通用 AI 员工不能删除' : '确认删除该 AI 员工？'}
-                    onConfirm={() => void onDelete(agent)}
-                    disabled={isDefault}
-                    placement="topRight"
-                  >
-                    <button className="agent-vivid-action-btn" disabled={isDefault} aria-label="删除" style={{ color: isDefault ? 'var(--text-tertiary)' : 'var(--color-error)' }}>
-                      <DeleteOutlined />
-                    </button>
-                  </Popconfirm>
-                </div>
-              </div>
+              <EmployeeCard
+                key={agent.agent_id}
+                name={agentName}
+                id={agent.agent_id}
+                position={position}
+                avatarSrc={avatar.src}
+                initial={agentInitial(agentName)}
+                status={state.status}
+                statusLabel={state.label}
+                model={agent.model}
+                tags={agent.knowledge_enabled ? [<Tag key="knowledge" color="green">知识库</Tag>] : []}
+                metrics={[
+                  { key: 'tools', label: '工具', value: toolCount, icon: <ToolOutlined />, tooltip: `挂载了 ${toolCount} 个工具` },
+                  { key: 'skills', label: '技能', value: skillCount, icon: <BuildOutlined />, tooltip: `挂载了 ${skillCount} 个技能` },
+                  { key: 'mcp', label: 'MCP', value: enabledMcpServerCount(agent), icon: <ApiOutlined />, tooltip: `启用了 ${enabledMcpServerCount(agent)} 个 MCP` },
+                ]}
+                actions={[
+                  { key: 'config', label: '配置', icon: <SettingOutlined />, onClick: () => openDetail(agent) },
+                  { key: 'chat', label: '对话', icon: <MessageOutlined />, onClick: () => startChatWithAgent(agent) },
+                  {
+                    key: 'delete',
+                    label: '删除',
+                    icon: <DeleteOutlined />,
+                    danger: true,
+                    disabled: isDefault,
+                    tooltip: isDefault ? '通用 AI 员工不能删除' : '删除',
+                    confirmTitle: isDefault ? undefined : '确认删除该 AI 员工？',
+                    onClick: () => void onDelete(agent),
+                  },
+                ]}
+              />
             );
           })}
         </div>

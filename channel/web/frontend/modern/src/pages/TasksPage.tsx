@@ -5,7 +5,6 @@ import {
   Form,
   Input,
   InputNumber,
-  Popconfirm,
   Segmented,
   Select,
   Space,
@@ -26,7 +25,7 @@ import {
 import dayjs, { type Dayjs } from 'dayjs';
 import { useEffect, useMemo, useState } from 'react';
 import { useRuntimeScope } from '../context/runtime';
-import { AdvancedJsonPanel, ConsolePage, DataTableShell, PageToolbar, StatusTag } from '../components/console';
+import { ConsoleFilterBar, ConsolePage, DataTableShell, DiagnosticPanel, EntityActionBar, PageToolbar, StatusTag } from '../components/console';
 import { api } from '../services/api';
 import type { ChannelConfigItem, ScheduledTaskItem, ScheduledTaskRunItem } from '../types';
 
@@ -330,7 +329,7 @@ export default function TasksPage() {
         </PageToolbar>
       )}
     >
-      <div className="console-filter-strip tasks-filter-bar">
+      <ConsoleFilterBar className="tasks-filter-bar">
         <Segmented
           value={statusFilter}
           onChange={(value) => setStatusFilter(String(value))}
@@ -357,7 +356,7 @@ export default function TasksPage() {
           className="tasks-filter-search"
           placeholder="搜索任务、接收人"
         />
-      </div>
+      </ConsoleFilterBar>
 
       <DataTableShell<ScheduledTaskItem>
         title={`任务列表 (${filteredTasks.length})`}
@@ -393,28 +392,24 @@ export default function TasksPage() {
           {
             title: '操作',
             fixed: 'right',
-            width: 280,
+            width: 168,
             render: (_, row) => (
-              <Space size={6} className="task-action-cell">
-                <Button size="small" icon={<HistoryOutlined />} onClick={() => void openRuns(row)} />
-                {canManage ? (
-                  <>
-                    <Button size="small" icon={<PlayCircleOutlined />} onClick={() => void runTaskOnce(row)} />
-                    <Button size="small" icon={row.enabled ? <PauseCircleOutlined /> : <PlayCircleOutlined />} onClick={() => void toggleTask(row)}>
-                      {row.enabled ? '暂停' : '启用'}
-                    </Button>
-                    <Button size="small" icon={<EditOutlined />} onClick={() => openEdit(row)}>编辑</Button>
-                    <Popconfirm title="确认删除该任务？" onConfirm={() => void deleteTask(row)}>
-                      <Button size="small" danger icon={<DeleteOutlined />} />
-                    </Popconfirm>
-                  </>
-                ) : null}
-              </Space>
+              <EntityActionBar
+                actions={[
+                  { key: 'history', label: '执行记录', icon: <HistoryOutlined />, onClick: () => void openRuns(row) },
+                  ...(canManage ? [
+                    { key: 'run', label: '立即执行', icon: <PlayCircleOutlined />, onClick: () => void runTaskOnce(row) },
+                    { key: 'toggle', label: row.enabled ? '暂停' : '启用', icon: row.enabled ? <PauseCircleOutlined /> : <PlayCircleOutlined />, onClick: () => void toggleTask(row) },
+                    { key: 'edit', label: '编辑', icon: <EditOutlined />, onClick: () => openEdit(row) },
+                    { key: 'delete', label: '删除', icon: <DeleteOutlined />, danger: true, confirmTitle: '确认删除该任务？', onClick: () => void deleteTask(row) },
+                  ] : []),
+                ]}
+              />
             ),
           },
         ]}
         expandable={{
-          expandedRowRender: (row) => <AdvancedJsonPanel title="完整任务 JSON" value={row} defaultOpen />,
+          expandedRowRender: (row) => <DiagnosticPanel title="任务配置详情" value={row} defaultOpen />,
         }}
       />
 
@@ -529,7 +524,7 @@ export default function TasksPage() {
             },
           ]}
           expandable={{
-            expandedRowRender: (row) => <AdvancedJsonPanel title="执行详情" value={row} defaultOpen />,
+            expandedRowRender: (row) => <DiagnosticPanel title="执行记录详情" value={row} defaultOpen />,
           }}
         />
       </Drawer>

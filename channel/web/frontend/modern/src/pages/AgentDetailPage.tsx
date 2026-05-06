@@ -11,6 +11,7 @@ import {
   ToolOutlined,
 } from '@ant-design/icons';
 import {
+  Avatar,
   Breadcrumb,
   Button,
   Card,
@@ -27,10 +28,11 @@ import {
 } from 'antd';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, Link } from 'react-router-dom';
-import { ConsolePage, StatusTag } from '../components/console';
+import { ConsolePage, MetricStrip, StatusTag } from '../components/console';
 import { displayAgentName, useRuntimeScope } from '../context/runtime';
 import { api, formatAgentPayload } from '../services/api';
 import type { AgentItem, McpServerItem, ModelConfigItem, RuntimeScope, SkillItem, ToolItem } from '../types';
+import { avatarOptionByKey } from '../utils/avatar';
 import { KnowledgePanel } from './KnowledgePage';
 import { MemoryPanel } from './MemoryPage';
 
@@ -205,6 +207,9 @@ export default function AgentDetailPage() {
 
   const agentName = displayAgentName(agent.agent_id, agent.name);
   const agentPos = (agent.metadata?.position as string) || DEFAULT_AGENT_POSITION;
+  const avatar = avatarOptionByKey(String(agent.metadata?.avatar_key || ''));
+  const enabledMcpCount = Object.values(mcpEnabledMap).filter(Boolean).length;
+  const capabilityTotal = selectedTools.length + selectedSkills.length + enabledMcpCount;
 
   return (
     <ConsolePage
@@ -232,20 +237,36 @@ export default function AgentDetailPage() {
       }
     >
       <Form form={form} layout="vertical" className="agent-detail-form-container">
-        <div className="agent-detail-full-hero">
-          <div className="agent-detail-hero-info">
-            <Typography.Title level={2} className="agent-detail-hero-name">{agentName}</Typography.Title>
-            <Space size={12}>
-              <StatusTag status="active">{agentPos}</StatusTag>
-              <Typography.Text type="secondary">ID: {agent.agent_id}</Typography.Text>
-            </Space>
+        <div className="agent-detail-profile">
+          <div className="agent-detail-identity">
+            <span className="agent-detail-avatar-ring">
+              <Avatar src={avatar.src} className="agent-detail-avatar">
+                {agentName.slice(0, 1).toUpperCase()}
+              </Avatar>
+            </span>
+            <div className="agent-detail-hero-info">
+              <Typography.Title level={3} className="agent-detail-hero-name">{agentName}</Typography.Title>
+              <Space size={10} wrap>
+                <StatusTag status="active">{agentPos}</StatusTag>
+                <Typography.Text type="secondary">ID: {agent.agent_id}</Typography.Text>
+              </Space>
+            </div>
           </div>
+          <MetricStrip
+            className="agent-detail-metrics"
+            items={[
+              { key: 'tools', title: '工具', value: selectedTools.length, icon: <ToolOutlined /> },
+              { key: 'skills', title: '技能', value: selectedSkills.length, icon: <BuildOutlined /> },
+              { key: 'mcp', title: 'MCP', value: enabledMcpCount, icon: <ApiOutlined /> },
+              { key: 'capability', title: '能力总数', value: capabilityTotal, icon: <BranchesOutlined />, tone: capabilityTotal > 0 ? 'success' : 'default' },
+            ]}
+          />
         </div>
 
         <Tabs
           activeKey={activeTab}
           onChange={setActiveTab}
-          size="large"
+          size="middle"
           className="agent-detail-full-tabs"
           items={[
             {
@@ -257,16 +278,16 @@ export default function AgentDetailPage() {
                   <Card className="agent-section-card" title="身份与模型设定">
                     <div className="agent-core-form-grid">
                       <Form.Item name="name" label="员工昵称" rules={[{ required: true, message: '请输入员工昵称' }]}>
-                        <Input placeholder="例如：支付通客服" size="large" />
+                        <Input placeholder="例如：支付通客服" />
                       </Form.Item>
                       <Form.Item name="position" label="职位">
-                        <Input placeholder="例如：AI 业务专员" size="large" />
+                        <Input placeholder="例如：AI 业务专员" />
                       </Form.Item>
                       <Form.Item name="model_config_id" label="模型" rules={[{ required: true, message: '请选择模型' }]}>
-                        <Select showSearch allowClear options={modelOptions} placeholder="选择基础模型" size="large" />
+                        <Select showSearch allowClear options={modelOptions} placeholder="选择基础模型" />
                       </Form.Item>
                       <Form.Item name="role_intro" label="角色简介">
-                        <Input.TextArea rows={4} placeholder="用一两句话描述角色职责和边界。" />
+                        <Input.TextArea rows={3} placeholder="用一两句话描述角色职责和边界。" />
                       </Form.Item>
                       <Form.Item className="agent-core-full-row">
                         <div className="agent-kb-toggle-card">
@@ -289,7 +310,7 @@ export default function AgentDetailPage() {
                   <Card className="agent-section-card agent-command-card" title="系统核心指令 (System Prompt)">
                     <Form.Item name="system_prompt" className="agent-system-prompt-field">
                       <Input.TextArea
-                        rows={16}
+                        rows={10}
                         placeholder="在此设定 AI 员工的身份、回答边界、工作流以及必须遵循的规则..."
                       />
                     </Form.Item>
