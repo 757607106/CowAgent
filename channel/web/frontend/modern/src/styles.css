@@ -170,7 +170,9 @@ body,
 
 /* ── App Layout ───────────────────────────────────────────────── */
 .app-layout {
-  min-height: 100%;
+  min-height: 100vh;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .app-sider {
@@ -190,6 +192,8 @@ body,
   background: var(--bg-body);
   display: flex;
   flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
 }
 
 /* Logo */
@@ -337,43 +341,15 @@ body,
   z-index: 20;
 }
 
-/* Mobile header */
-.app-mobile-header {
-  display: none;
-  position: sticky;
-  top: 0;
-  z-index: 20;
-  background: var(--bg-surface);
-  border-bottom: 1px solid var(--border-light);
-  align-items: center;
-  gap: var(--space-3);
-  min-height: 3rem;
-  padding: 0 var(--space-3);
-}
-
-.app-mobile-title {
-  min-width: 0;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  line-height: 1.2;
-}
-
-.app-mobile-drawer .ant-drawer-body {
-  padding: 0;
-}
-
-.app-mobile-drawer .app-logo {
-  display: none;
-}
-
 /* Content area */
 .app-content {
   flex: 1;
   --app-content-padding: var(--spacing-lg);
-  --content-available-height: calc(100vh - var(--app-content-padding) - var(--app-content-padding));
-  padding: var(--app-content-padding) var(--space-8) var(--space-10);
+  padding: var(--app-content-padding) var(--space-8);
   overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
   min-height: 0;
   container-type: inline-size;
   container-name: app-content;
@@ -510,28 +486,14 @@ body,
   box-shadow: 0 4px 14px var(--brand-200);
 }
 
-/* Responsive */
-@media (max-width: 992px) {
-  .app-login-wrap {
-    grid-template-columns: 1fr;
-  }
-  .app-login-brand {
-    display: none;
-  }
-  .app-login-panel {
-    margin: 1rem;
-    padding: var(--space-6);
-  }
-}
-
 /* ── Chat Page ────────────────────────────────────────────────── */
 .chat-page {
   --chat-sidebar-width: clamp(15.5rem, 18vw, 19.75rem);
   display: grid;
   grid-template-columns: var(--chat-sidebar-width) minmax(0, 1fr);
-  gap: var(--space-2);
-  height: var(--content-available-height);
-  min-height: var(--content-available-height);
+  gap: var(--space-4);
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -542,13 +504,19 @@ body,
   border-radius: var(--radius-xl);
   background: var(--bg-surface);
   box-shadow: var(--shadow-md);
+  display: flex;
+  flex-direction: column;
 }
 
 /* Session pane */
 .chat-session-pane {
-  display: flex;
-  flex-direction: column;
   overflow: hidden;
+}
+
+.chat-main-pane {
+  overflow: hidden;
+  container-type: inline-size;
+  container-name: chat-main;
 }
 
 .chat-session-head {
@@ -564,7 +532,8 @@ body,
 .chat-session-body {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: var(--space-2) var(--space-1);
 }
 
@@ -630,15 +599,6 @@ body,
   text-overflow: ellipsis;
 }
 
-/* Main chat pane */
-.chat-main-pane {
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-  container-type: inline-size;
-  container-name: chat-main;
-}
-
 .chat-main-head {
   display: flex;
   align-items: flex-start;
@@ -675,6 +635,7 @@ body,
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
 .chat-welcome-avatar {
@@ -687,9 +648,18 @@ body,
 .chat-transcript {
   flex: 1;
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   overscroll-behavior: contain;
   padding: var(--space-2) var(--space-4) 0;
+}
+
+.chat-empty-wrap {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-8) var(--space-4);
 }
 
 .chat-bubble-list {
@@ -804,7 +774,7 @@ body,
 .chat-sender-shell {
   position: relative;
   padding: 0;
-  margin: 0 var(--space-4) var(--space-4);
+  margin: var(--space-4) var(--space-4) var(--space-4);
   border: 0;
   background: transparent;
   box-shadow: none;
@@ -3203,190 +3173,6 @@ body,
   }
 }
 
-/* Mobile (sub-900px) */
-@media (max-width: 900px) {
-  html,
-  body,
-  #root {
-    height: auto;
-    min-height: 100%;
-  }
-
-  .app-layout {
-    min-height: 100vh;
-  }
-
-  .app-sider {
-    display: none;
-  }
-
-  .app-mobile-header {
-    display: flex;
-  }
-
-  .app-content {
-    --app-content-padding: var(--spacing-xs);
-  }
-
-  /* Chat mobile */
-  .chat-page {
-    grid-template-columns: 1fr;
-    height: auto;
-    min-height: auto;
-    overflow: visible;
-  }
-
-  .logs-page {
-    height: auto;
-    min-height: auto;
-    overflow: visible;
-  }
-
-  .console-page,
-  .skills-page,
-  .agents-page,
-  .agent-detail-page,
-  .channel-access-page,
-  .config-page {
-    height: auto;
-    min-height: auto;
-    overflow: visible;
-  }
-
-  .skills-page > .skills-card-grid,
-  .console-page > :last-child:not(.console-page-header),
-  .console-page > .data-table-shell,
-  .console-page > .ant-card:last-child,
-  .console-page > .ant-tabs:last-child,
-  .channel-access-page > .channel-access-shell,
-  .config-page > .config-shell,
-  .agents-page > .agent-empty-card,
-  .skills-page > .skills-empty-card {
-    overflow: visible;
-  }
-
-  .logs-console {
-    min-height: 28rem;
-  }
-
-  .channel-row-actions {
-    flex-wrap: wrap !important;
-  }
-
-  .chat-session-pane,
-  .chat-main-pane {
-    min-height: auto;
-    border-radius: var(--radius-xl);
-  }
-
-  .chat-session-pane {
-    max-height: 280px;
-  }
-
-  .chat-main-pane {
-    min-height: calc(100vh - 360px);
-  }
-
-  .chat-main-head {
-    padding: var(--space-4);
-  }
-
-  .chat-transcript {
-    min-height: 360px;
-    padding: var(--space-2) var(--space-2) 0;
-  }
-
-  .chat-sender-shell {
-    padding: 0;
-  }
-
-  /* Grids → 1 column */
-  .channel-form-grid,
-  .mcp-tool-grid,
-  .skills-overview-grid,
-  .skills-toolbar,
-  .skills-card-grid,
-  .agent-overview-grid,
-  .agent-create-grid,
-  .agent-core-panel-grid,
-  .agent-core-form-grid,
-  .agent-capability-grid,
-  .agent-mcp-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .agent-avatar-popover-grid {
-    grid-template-columns: repeat(3, 4.75rem);
-    gap: var(--space-3);
-  }
-
-  .agent-avatar-option {
-    width: 4.75rem;
-    height: 4.75rem;
-    border-radius: 24px;
-  }
-
-  /* Flex → stack */
-  .channel-card-header,
-  .mcp-server-header,
-  .chat-main-head,
-  .chat-sender-footer,
-  .channel-card-actions,
-  .agent-detail-hero .ant-card-body,
-  .agent-knowledge-switch,
-  .config-section-actions,
-  .config-custom-toggle,
-  .config-sticky-bar {
-    flex-direction: column;
-  }
-
-  .agent-detail-hero .ant-card-body,
-  .agent-knowledge-switch {
-    align-items: stretch;
-  }
-
-  .memory-panel-layout,
-  .knowledge-doc-layout {
-    grid-template-columns: 1fr;
-  }
-
-  .memory-file-list-card,
-  .knowledge-tree-card {
-    width: 100%;
-    flex-basis: auto;
-  }
-
-  .chat-sender-footer-bar,
-  .chat-sender-left-tools,
-  .chat-sender-right-tools {
-    width: 100%;
-  }
-
-  .config-overview,
-  .config-presets {
-    grid-template-columns: 1fr;
-  }
-
-  .config-section-actions,
-  .config-sticky-bar {
-    align-items: stretch;
-  }
-
-  .chat-sender-right-tools {
-    justify-content: flex-end;
-  }
-
-  .chat-suggestion-popup .ant-suggestion-item {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .chat-suggestion-popup .ant-suggestion-item-extra {
-    margin-inline-start: 0;
-    white-space: normal;
-  }
-}
-
 @container console-page (max-width: 56.25rem) {
   .agent-overview-grid,
   .skills-overview-grid,
@@ -4166,10 +3952,8 @@ body,
 /* Print styles */
 @media print {
   .app-sider,
-  .app-mobile-header,
   .chat-session-pane,
-  .chat-sender-shell,
-  .app-mobile-drawer {
+  .chat-sender-shell {
     display: none !important;
   }
 

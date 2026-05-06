@@ -1,8 +1,7 @@
 import {
   LogoutOutlined,
-  MenuOutlined,
 } from '@ant-design/icons';
-import { App as AntdApp, Button, ConfigProvider, Drawer, Form, Input, Layout, Menu, Spin, Tabs, Tag, Typography, message, Dropdown } from 'antd';
+import { App as AntdApp, Button, ConfigProvider, Form, Input, Layout, Menu, Spin, Tabs, Typography, message, Dropdown } from 'antd';
 import zhCN from 'antd/locale/zh_CN';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
@@ -300,7 +299,6 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
   const tenantId = authUser?.tenant_id || 'default';
   const isPlatformAdmin = authUser?.principal_type === 'platform';
   const flatMenuItems = useMemo(() => getFlatMenuItemsForRole(isPlatformAdmin), [isPlatformAdmin]);
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const [scope, setScope] = useState<RuntimeScope>({
     tenantId,
@@ -318,6 +316,7 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
     const options = (agentData.agents || []).map((agent) => ({
       label: displayAgentName(agent.agent_id, agent.name),
       value: agent.agent_id,
+      avatar_key: (agent.metadata?.avatar_key || agent.metadata?.avatar) as string | undefined,
     }));
     setAgentOptions(options.some((item) => item.value === DEFAULT_AGENT_ID)
       ? options
@@ -356,14 +355,8 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
     return target ? [target.key] : [isPlatformAdmin ? '/platform/models' : '/chat'];
   }, [flatMenuItems, isPlatformAdmin, location.pathname]);
 
-  const currentMenuLabel = useMemo(() => {
-    const selectedKey = selectedMenu[0] || '/chat';
-    return flatMenuItems.find((item) => item.key === selectedKey)?.label || '控制台';
-  }, [flatMenuItems, selectedMenu]);
-
   const handleMenuClick = useCallback((key: string) => {
     navigate(key);
-    setMobileMenuOpen(false);
   }, [navigate]);
 
   return (
@@ -389,20 +382,6 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
           />
         </Sider>
         <Layout className="app-main-layout">
-          <div className="app-mobile-header">
-            <Button
-              type="text"
-              shape="circle"
-              icon={<MenuOutlined />}
-              aria-label="打开导航"
-              onClick={() => setMobileMenuOpen(true)}
-            />
-            <div className="app-mobile-title">
-              <Typography.Text strong>CowAgent</Typography.Text>
-              <Typography.Text type="secondary">{currentMenuLabel}</Typography.Text>
-            </div>
-            {authUser ? <Tag color={isPlatformAdmin ? 'purple' : 'blue'}>{isPlatformAdmin ? '平台超管' : authUser.tenant_name || '当前团队'}</Tag> : null}
-          </div>
           <Content className="app-content">
             <Routes>
               <Route path="/" element={<Navigate to={isPlatformAdmin ? '/platform/models' : '/chat'} replace />} />
@@ -430,21 +409,6 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
             </Routes>
           </Content>
         </Layout>
-        <Drawer
-          className="app-mobile-drawer"
-          title="CowAgent"
-          placement="left"
-          width="17.5rem"
-          open={mobileMenuOpen}
-          onClose={() => setMobileMenuOpen(false)}
-        >
-          <SidebarContent
-            authUser={authUser}
-            selectedMenu={selectedMenu}
-            onMenuClick={handleMenuClick}
-            onLogout={onLogout}
-          />
-        </Drawer>
       </Layout>
     </RuntimeContext.Provider>
   );

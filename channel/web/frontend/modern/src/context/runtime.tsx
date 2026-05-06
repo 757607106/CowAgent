@@ -4,6 +4,7 @@ import type { AuthUser, RuntimeScope } from '../types';
 export interface RuntimeAgentOption {
   label: string;
   value: string;
+  avatar_key?: string;
 }
 
 export const DEFAULT_AGENT_ID = 'default';

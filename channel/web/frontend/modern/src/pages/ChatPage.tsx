@@ -12,14 +12,11 @@ import {
   CopyOutlined,
   DeleteOutlined,
   LoadingOutlined,
-  AntDesignOutlined,
   PaperClipOutlined,
   PlusOutlined,
   ReloadOutlined,
-  RobotOutlined,
   StopOutlined,
   UserOutlined,
-  SmileOutlined,
 } from '@ant-design/icons';
 import { App, Avatar, Button, Dropdown, Empty, Flex, Space, Spin, Tag, Tooltip, Typography } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
@@ -48,6 +45,7 @@ import { asAttachment, api } from '../services/api';
 import { scopeBody } from '../services/http';
 import type { ChatAttachment, SessionItem } from '../types';
 import { useXChat, type SSEOutput } from '@ant-design/x-sdk';
+import { avatarOptionByKey } from '../utils/avatar';
 
 const SenderSwitch = Sender.Switch;
 const SenderHeader = Sender.Header;
@@ -314,16 +312,24 @@ export default function ChatPage() {
     () => scope.agentId || DEFAULT_AGENT_ID,
     [scope.agentId],
   );
+  const selectedAgentOption = useMemo(
+    () => agentSelectorOptions.find((item) => item.value === selectedAgentValue),
+    [agentSelectorOptions, selectedAgentValue],
+  );
   const selectedAgentLabel = useMemo(
-    () => agentSelectorOptions.find((item) => item.value === selectedAgentValue)?.label || fallbackScopeLabel,
-    [agentSelectorOptions, fallbackScopeLabel, selectedAgentValue],
+    () => selectedAgentOption?.label || fallbackScopeLabel,
+    [selectedAgentOption, fallbackScopeLabel],
+  );
+  const assistantAvatarSrc = useMemo(
+    () => avatarOptionByKey(selectedAgentOption?.avatar_key).src,
+    [selectedAgentOption],
   );
   const scopeLabel = scope.bindingId ? fallbackScopeLabel : selectedAgentLabel;
   const bubbleItems = useMemo(() => buildBubbleItems(messages, scopeLabel), [messages, scopeLabel]);
   const agentMenuItems = useMemo(
     () => agentSelectorOptions.map((item) => ({
       key: item.value,
-      icon: item.value === DEFAULT_AGENT_ID ? <AntDesignOutlined /> : <RobotOutlined />,
+      icon: <Avatar size={20} src={avatarOptionByKey(item.avatar_key).src} />,
       label: item.label,
     })),
     [agentSelectorOptions],
@@ -583,7 +589,7 @@ export default function ChatPage() {
     assistant: {
       placement: 'start' as const,
       variant: 'borderless' as const,
-      avatar: <Avatar className="chat-avatar-assistant" icon={<RobotOutlined />} />,
+      avatar: <Avatar className="chat-avatar-assistant" src={assistantAvatarSrc} />,
       footerPlacement: 'outer-start' as const,
       footer: (_content: unknown, info: { extraInfo?: Record<string, unknown> }) => (
         <div className="chat-bubble-meta">
@@ -614,7 +620,7 @@ export default function ChatPage() {
         return <Typography.Text>{content.text || asText(content)}</Typography.Text>;
       },
     },
-  }), [scopeLabel]);
+  }), [scopeLabel, assistantAvatarSrc]);
 
   return (
     <div className="chat-page">
@@ -726,7 +732,7 @@ export default function ChatPage() {
               <div className="chat-empty-wrap">
                 <Welcome
                   variant="borderless"
-                  icon={<Avatar size={56} icon={<SmileOutlined />} className="chat-welcome-avatar" />}
+                  icon={<Avatar size={56} src={assistantAvatarSrc} className="chat-welcome-avatar" />}
                   title={`与 ${formatAgentTriggerLabel(scopeLabel)} 对话`}
                 />
               </div>
@@ -884,7 +890,7 @@ export default function ChatPage() {
                       <span>
                         <SenderSwitch
                           value={false}
-                          icon={<RobotOutlined />}
+                          icon={<Avatar size={20} src={assistantAvatarSrc} />}
                         >
                           {formatAgentTriggerLabel(selectedAgentLabel)}
                         </SenderSwitch>
