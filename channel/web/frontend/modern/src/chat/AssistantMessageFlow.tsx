@@ -1,11 +1,7 @@
-import { ThoughtChain, type BubbleItemType, type ThoughtChainItemType } from '@ant-design/x';
-import {
-  CheckOutlined,
-  CopyOutlined,
-  LinkOutlined,
-} from '@ant-design/icons';
+import { Actions, FileCard, ThoughtChain, type BubbleItemType, type FileCardProps, type ThoughtChainItemType } from '@ant-design/x';
 import { useEffect, useMemo, useState } from 'react';
 import { MarkdownBlock } from './ChatMarkdown';
+import { buildChatFileCard } from './fileCards';
 import { renderReasoningStepIcon, renderToolStepIcon } from './toolIcons';
 import type { AssistantBubbleContent, AssistantMedia, AssistantStep } from '../types';
 
@@ -23,39 +19,6 @@ function unfoldCodeFence(content?: string): string {
   const match = text.match(/^```[^\n]*\n([\s\S]*?)\n```$/);
   if (match) return match[1];
   return text;
-}
-
-function CopyIconButton({
-  text,
-  className = 'tool-copy-btn',
-}: {
-  text: string;
-  className?: string;
-}) {
-  const [copied, setCopied] = useState(false);
-
-  if (!text.trim()) return null;
-
-  return (
-    <button
-      type="button"
-      className={className}
-      title={copied ? '已复制' : '复制'}
-      onClick={async (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        try {
-          await navigator.clipboard.writeText(text);
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), 1200);
-        } catch {
-          setCopied(false);
-        }
-      }}
-    >
-      {copied ? <CheckOutlined /> : <CopyOutlined />}
-    </button>
-  );
 }
 
 function isLongText(text: string): boolean {
@@ -79,7 +42,7 @@ function ToolDetailPanel({
     <div className="tool-detail-section">
       <div className="tool-detail-head">
         <div className="tool-detail-label">{label}</div>
-        <CopyIconButton text={text} />
+        <Actions.Copy text={text} rootClassName="tool-copy-action" aria-label="复制" />
       </div>
       <div
         className={joinClassNames(
@@ -114,34 +77,14 @@ function ToolDetailPanel({
   );
 }
 
-function renderMediaItem(media: AssistantMedia, index: number) {
-  if (media.type === 'image') {
-    return (
-      <img
-        key={`${media.url}-${index}`}
-        src={media.url}
-        alt={media.fileName || 'image'}
-        className="chat-media-image"
-      />
-    );
-  }
-
-  if (media.type === 'video') {
-    return <video key={`${media.url}-${index}`} src={media.url} controls className="chat-media-video" />;
-  }
-
-  return (
-    <a
-      key={`${media.url}-${index}`}
-      href={media.url}
-      target="_blank"
-      rel="noreferrer"
-      className="chat-media-file"
-    >
-      <LinkOutlined />
-      {media.fileName || '下载文件'}
-    </a>
-  );
+function buildAssistantMediaItems(mediaItems: AssistantMedia[]): FileCardProps[] {
+  return mediaItems.map((media, index) => buildChatFileCard({
+    key: `${media.url}-${index}`,
+    name: media.fileName,
+    type: media.type,
+    url: media.url,
+    openInNewTab: media.type === 'file',
+  }));
 }
 
 function renderToolContent(step: AssistantStep) {
@@ -232,6 +175,7 @@ function collectAutoExpandedKeys(steps: AssistantStep[]): string[] {
 export function AssistantMessageFlow({ content, status }: AssistantMessageFlowProps) {
   const isStreaming = status === 'loading' || status === 'updating' || content.streaming;
   const chainItems = useMemo(() => buildThoughtChainItems(content.steps), [content.steps]);
+  const mediaItems = useMemo(() => buildAssistantMediaItems(content.media), [content.media]);
   const autoExpandedKeys = useMemo(() => collectAutoExpandedKeys(content.steps), [content.steps]);
   const [expandedKeys, setExpandedKeys] = useState<string[]>(autoExpandedKeys);
 
@@ -269,7 +213,13 @@ export function AssistantMessageFlow({ content, status }: AssistantMessageFlowPr
       {content.media.length > 0 ? (
         <div className="chat-assistant-media">
           <div className="chat-media-list">
-            {content.media.map(renderMediaItem)}
+            {mediaItems.map((item) => (
+              <FileCard
+                {...item}
+                key={item.key}
+                rootClassName="chat-media-file-card"
+              />
+            ))}
           </div>
         </div>
       ) : null}

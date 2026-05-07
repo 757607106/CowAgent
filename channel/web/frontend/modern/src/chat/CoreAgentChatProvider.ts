@@ -466,6 +466,63 @@ function normalizeAttachment(item: any): ChatAttachment | null {
   };
 }
 
+function buildFilePreviewUrl(filePath: string): string {
+  if (/^(https?:)?\/\//.test(filePath) || filePath.startsWith('/api/file?')) {
+    return filePath;
+  }
+  return `/api/file?path=${encodeURIComponent(filePath)}`;
+}
+
+function fileNameFromPath(filePath: string): string {
+  const cleanPath = filePath.split('?')[0] || filePath;
+  const name = cleanPath.split(/[\\/]/).filter(Boolean).at(-1);
+  try {
+    return decodeURIComponent(name || cleanPath || '附件');
+  } catch {
+    return name || cleanPath || '附件';
+  }
+}
+
+function extractHistoryInlineAttachments(content: string): { text: string; attachments: ChatAttachment[] } {
+  const attachments: ChatAttachment[] = [];
+  const textLines: string[] = [];
+
+  content.split(/\r?\n/).forEach((line) => {
+    const match = line.match(/^\s*\[(图片|视频|文件)\s*:\s*(.+?)\s*\]\s*$/);
+    if (!match) {
+      textLines.push(line);
+      return;
+    }
+
+    const filePath = match[2].trim();
+    if (!filePath) return;
+
+    const label = match[1];
+    const fileType: ChatAttachment['file_type'] = label === '图片' ? 'image' : label === '视频' ? 'video' : 'file';
+    attachments.push({
+      file_path: filePath,
+      file_name: fileNameFromPath(filePath),
+      file_type: fileType,
+      preview_url: buildFilePreviewUrl(filePath),
+    });
+  });
+
+  return {
+    text: textLines.join('\n').trim(),
+    attachments,
+  };
+}
+
+function mergeAttachments(items: ChatAttachment[]): ChatAttachment[] {
+  const byPath = new Map<string, ChatAttachment>();
+  items.forEach((item) => {
+    if (!byPath.has(item.file_path)) {
+      byPath.set(item.file_path, item);
+    }
+  });
+  return [...byPath.values()];
+}
+
 function parseHistoryAssistantContent(row: any): AssistantBubbleContent {
   const steps: AssistantStep[] = [];
   let text = String(row.content || '');
@@ -569,16 +626,19 @@ export function parseHistoryMessages(rows: any[], contextStartSeq = 0): MessageI
     }
 
     if (row.role === 'user') {
-      const attachments = Array.isArray(row.attachments)
+      const contentText = String(row.content || '');
+      const extracted = extractHistoryInlineAttachments(contentText);
+      const explicitAttachments = Array.isArray(row.attachments)
         ? row.attachments.map(normalizeAttachment).filter(Boolean) as ChatAttachment[]
         : [];
-      if (!String(row.content || '').trim() && attachments.length === 0) return;
+      const attachments = mergeAttachments([...explicitAttachments, ...extracted.attachments]);
+      if (!extracted.text && attachments.length === 0) return;
       messages.push({
         id: createHistoryMessageId(row, index, 'history-user'),
         status: 'success',
         message: {
           role: 'user',
-          text: String(row.content || ''),
+          text: extracted.text,
           attachments,
           createdAt: normalizeTimestamp(row.created_at),
         },

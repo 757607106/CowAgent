@@ -1,17 +1,18 @@
 import {
+  Actions,
   Attachments,
   Bubble,
   Conversations,
+  FileCard,
   Sender,
   Suggestion,
   Welcome,
   type BubbleItemType,
+  type FileCardProps,
 } from '@ant-design/x';
 import {
-  CheckOutlined,
   ArrowDownOutlined,
   BulbOutlined,
-  CopyOutlined,
   DeleteOutlined,
   LoadingOutlined,
   PaperClipOutlined,
@@ -43,6 +44,7 @@ import {
   persistSessionId,
   readStoredSessionId,
 } from '../chat/sessionState';
+import { buildChatFileCard } from '../chat/fileCards';
 import { asAttachment, api } from '../services/api';
 import { scopeBody } from '../services/http';
 import type { ChatAttachment, SessionItem } from '../types';
@@ -111,50 +113,14 @@ function asText(value: unknown): string {
   }
 }
 
-function renderUserAttachment(attachment: ChatAttachment) {
-  if (attachment.file_type === 'image' && attachment.preview_url) {
-    return (
-      <img
-        key={attachment.file_path}
-        src={attachment.preview_url}
-        alt={attachment.file_name}
-        className="chat-user-attachment-image"
-      />
-    );
-  }
-
-  return (
-    <span key={attachment.file_path} className="chat-user-attachment-chip">
-      <PaperClipOutlined />
-      {attachment.file_name}
-    </span>
-  );
-}
-
-function FooterCopyButton({ text }: { text?: string }) {
-  const [copied, setCopied] = useState(false);
-  const value = (text || '').trim();
-
-  if (!value) return null;
-
-  return (
-    <button
-      type="button"
-      className="chat-bubble-copy-btn"
-      title={copied ? '已复制' : '复制回复'}
-      onClick={async () => {
-        try {
-          await navigator.clipboard.writeText(value);
-          setCopied(true);
-          window.setTimeout(() => setCopied(false), 1200);
-        } catch {
-          setCopied(false);
-        }
-      }}
-    >
-      {copied ? <CheckOutlined /> : <CopyOutlined />}
-    </button>
-  );
+function buildUserFileCardItems(attachments: ChatAttachment[]): FileCardProps[] {
+  return attachments.map((attachment) => buildChatFileCard({
+    key: attachment.file_path,
+    name: attachment.file_name,
+    type: attachment.file_type,
+    url: attachment.preview_url || attachment.file_path,
+    openInNewTab: attachment.file_type === 'file',
+  }));
 }
 
 function buildBubbleItems(
@@ -580,7 +546,12 @@ export default function ChatPage() {
         <div className="chat-user-stack">
           {content.attachments?.length ? (
             <div className="chat-user-attachments">
-              {content.attachments.map(renderUserAttachment)}
+              <FileCard.List
+                items={buildUserFileCardItems(content.attachments)}
+                size="small"
+                overflow="wrap"
+                rootClassName="chat-user-file-list"
+              />
             </div>
           ) : null}
           {content.text ? (
@@ -598,7 +569,13 @@ export default function ChatPage() {
         <div className="chat-bubble-meta">
           <span>{String(info.extraInfo?.scopeLabel || scopeLabel)}</span>
           <span>{formatClock(Number(info.extraInfo?.createdAt || Date.now()))}</span>
-          {info.extraInfo?.canCopy ? <FooterCopyButton text={String(info.extraInfo.copyText || '')} /> : null}
+          {info.extraInfo?.canCopy ? (
+            <Actions.Copy
+              text={String(info.extraInfo.copyText || '')}
+              rootClassName="chat-bubble-copy-action"
+              aria-label="复制回复"
+            />
+          ) : null}
         </div>
       ),
       contentRender: (content: CoreAgentChatMessage, info: { status?: BubbleItemType['status'] }) => {
