@@ -247,6 +247,30 @@ const genericToolDefinition: ToolIconDefinition = {
   border: '#DEE5ED',
 };
 
+function renderStepIcon(
+  definition: ToolIconDefinition,
+  status: ToolIconStatus,
+  extraClassName?: string,
+) {
+  const Icon = definition.Icon;
+  const style = {
+    '--tool-icon-color': definition.color,
+    '--tool-icon-bg': definition.bg,
+    '--tool-icon-border': definition.border,
+  } as CSSProperties;
+  const className = [
+    'chat-tool-step-icon',
+    `chat-tool-step-icon--${status}`,
+    extraClassName,
+  ].filter(Boolean).join(' ');
+
+  return (
+    <span className={className} style={style} aria-hidden="true">
+      <Icon />
+    </span>
+  );
+}
+
 function resolveToolIconKey(toolName?: string): ToolIconKey | undefined {
   const normalized = (toolName || '')
     .trim()
@@ -273,30 +297,16 @@ function resolveToolIconKey(toolName?: string): ToolIconKey | undefined {
 export function renderToolStepIcon(toolName: string | undefined, status: ToolIconStatus) {
   const iconKey = resolveToolIconKey(toolName);
   const definition = iconKey ? toolIconDefinitions[iconKey] : genericToolDefinition;
-  const Icon = definition.Icon;
-  const style = {
-    '--tool-icon-color': definition.color,
-    '--tool-icon-bg': definition.bg,
-    '--tool-icon-border': definition.border,
-  } as CSSProperties;
-
-  return (
-    <span className={`chat-tool-step-icon chat-tool-step-icon--${status}`} style={style} aria-hidden="true">
-      <Icon />
-    </span>
-  );
+  return renderStepIcon(definition, status);
 }
 
-export function renderReasoningStepIcon(status: ToolIconStatus) {
-  const style = {
-    '--tool-icon-color': '#61DAFB',
-    '--tool-icon-bg': '#E6F9FF',
-    '--tool-icon-border': '#BDEFFF',
-  } as CSSProperties;
+const reasoningIconDefinition: ToolIconDefinition = {
+  Icon: ReasoningIcon,
+  color: '#61DAFB',
+  bg: '#E6F9FF',
+  border: '#BDEFFF',
+};
 
-  return (
-    <span className={`chat-tool-step-icon chat-reasoning-step-icon chat-tool-step-icon--${status}`} style={style} aria-hidden="true">
-      <ReasoningIcon />
-    </span>
-  );
+export function renderReasoningStepIcon(status: ToolIconStatus) {
+  return renderStepIcon(reasoningIconDefinition, status, 'chat-reasoning-step-icon');
 }

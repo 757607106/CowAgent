@@ -205,6 +205,7 @@ function buildThoughtChainItems(steps: AssistantStep[]): ThoughtChainItemType[] 
     return {
       key: step.key,
       title,
+      description: step.description,
       status: isCustomIconStep ? undefined : step.status,
       icon: step.kind === 'tool'
         ? renderToolStepIcon(step.toolName || title, step.status)
