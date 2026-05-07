@@ -12,7 +12,7 @@ from cow_platform.services.channel_config_service import ChannelConfigService
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the CowAgent tenant channel runtime worker.")
+    parser = argparse.ArgumentParser(description="Run the CoreAgent tenant channel runtime worker.")
     parser.add_argument("--once", action="store_true", help="同步一次租户渠道运行时后退出。")
     parser.add_argument("--poll-interval", default=15.0, type=float, help="渠道配置轮询间隔（秒）。")
     return parser.parse_args(argv)

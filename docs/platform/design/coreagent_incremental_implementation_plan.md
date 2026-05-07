@@ -1,8 +1,8 @@
-# CowAgent AI 中台分阶段实施计划
+# CoreAgent AI 中台分阶段实施计划
 
 ## 1. 计划目标
 
-基于现有 CowAgent 项目，在**不过度设计**的前提下，按阶段把项目从“单实例、单全局配置、单工作区”的 Agent 引擎，逐步演进为：
+基于现有 CoreAgent 项目，在**不过度设计**的前提下，按阶段把项目从“单实例、单全局配置、单工作区”的 Agent 引擎，逐步演进为：
 
 - 支持显性多 Agent
 - 支持多租户隔离
@@ -10,7 +10,7 @@
 - 支持渠道绑定
 - 支持使用量与成本归因
 - 支持 Docker 一键部署
-- 保持对上游 CowAgent 的持续兼容能力
+- 保持对上游 CoreAgent 的持续兼容能力
 
 本计划默认遵循已有设计文档，但以**当前仓库真实结构**为边界，优先最小侵入落地。
 
@@ -50,7 +50,7 @@
 5. 保留 legacy 模式：
    - `app.py`
    - 根 `config.json`
-   - 现有 CowAgent Web 控制台
+   - 现有 CoreAgent Web 控制台
 6. 平台新代码统一放入新增的 `platform/` 目录，不把平台业务散落到 upstream 目录
 
 ---
@@ -93,7 +93,7 @@
 - 新增 `tests/integration/`
 - 新增 `tests/e2e/`
 - 新增 `docker/compose.base.yml`
-- 保持 [app.py](/Users/pusonglin/PycharmProjects/CowAgent-2.0.6/app.py) 不变
+- 保持 [app.py](/Users/pusonglin/PycharmProjects/CoreAgent-2.0.6/app.py) 不变
 
 ### 必做真实测试
 
@@ -124,7 +124,7 @@
    - 创建 Agent
    - 更新 Agent
    - 查询 Agent
-3. 新增 `CowAgentRuntimeAdapter`
+3. 新增 `CoreAgentRuntimeAdapter`
 4. 运行时按 `agent_id` 装配：
    - prompt
    - model config
@@ -141,11 +141,11 @@
 
 - 新增 `platform/services/agent_service`
 - 新增 `platform/runtime/agent_runtime_wrapper`
-- 新增 `platform/adapters/cowagent_runtime_adapter`
+- 新增 `platform/adapters/coreagent_runtime_adapter`
 - 有限改造：
-  - [bridge/agent_initializer.py](/Users/pusonglin/PycharmProjects/CowAgent-2.0.6/bridge/agent_initializer.py)
-  - [agent/prompt/workspace.py](/Users/pusonglin/PycharmProjects/CowAgent-2.0.6/agent/prompt/workspace.py)
-  - [agent/memory/conversation_store.py](/Users/pusonglin/PycharmProjects/CowAgent-2.0.6/agent/memory/conversation_store.py)
+  - [bridge/agent_initializer.py](/Users/pusonglin/PycharmProjects/CoreAgent-2.0.6/bridge/agent_initializer.py)
+  - [agent/prompt/workspace.py](/Users/pusonglin/PycharmProjects/CoreAgent-2.0.6/agent/prompt/workspace.py)
+  - [agent/memory/conversation_store.py](/Users/pusonglin/PycharmProjects/CoreAgent-2.0.6/agent/memory/conversation_store.py)
 
 ### 必做真实测试
 
@@ -200,7 +200,7 @@
 - 新增 `platform/resolvers`
 - 新增 `platform/adapters/channel_adapter`
 - 有限改造：
-  - [channel/web/web_channel.py](/Users/pusonglin/PycharmProjects/CowAgent-2.0.6/channel/web/web_channel.py)
+  - [channel/web/web_channel.py](/Users/pusonglin/PycharmProjects/CoreAgent-2.0.6/channel/web/web_channel.py)
   - 各外部 channel 的接入入口
 
 ### 必做真实测试
@@ -301,7 +301,7 @@
 - 新增 `docker/compose.platform.yml`
 - 新增 `docker/compose.test.yml`
 - 新增 `docker/compose.prod.yml`
-- 改造 [cli/commands/process.py](/Users/pusonglin/PycharmProjects/CowAgent-2.0.6/cli/commands/process.py)
+- 改造 [cli/commands/process.py](/Users/pusonglin/PycharmProjects/CoreAgent-2.0.6/cli/commands/process.py)
 
 ### 必做真实测试
 
@@ -352,7 +352,7 @@
 ### 阶段完成定义
 
 - 项目具备长期维护基础
-- 平台代码和 CowAgent 内核的边界清晰
+- 平台代码和 CoreAgent 内核的边界清晰
 
 ---
 
@@ -383,7 +383,7 @@
 2. 不做复杂 RBAC 平台
 3. 不做 Kubernetes 专属方案
 4. 不做完整 MCP 生态集成，只先留边界和埋点
-5. 不一次性重写 CowAgent 所有内核模块
+5. 不一次性重写 CoreAgent 所有内核模块
 6. 不先做复杂管理前端，优先 API 和最小管理能力
 
 ---

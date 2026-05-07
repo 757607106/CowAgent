@@ -523,7 +523,7 @@ class ChannelConfigService:
         configured_path = str((config or {}).get("weixin_credentials_path", "") or "").strip()
         if configured_path:
             paths.append(Path(configured_path).expanduser())
-        paths.append(Path.home() / ".cowagent" / "weixin" / f"{channel_config_id}.json")
+        paths.append(Path.home() / ".coreagent" / "weixin" / f"{channel_config_id}.json")
         unique: list[Path] = []
         seen: set[str] = set()
         for path in paths:
@@ -539,7 +539,7 @@ class ChannelConfigService:
             return False
         try:
             resolved = path.expanduser().resolve(strict=False)
-            allowed_root = (Path.home() / ".cowagent" / "weixin").resolve(strict=False)
+            allowed_root = (Path.home() / ".coreagent" / "weixin").resolve(strict=False)
             resolved.relative_to(allowed_root)
             return True
         except Exception:

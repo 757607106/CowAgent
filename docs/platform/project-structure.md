@@ -4,7 +4,7 @@
 
 ## 顶层边界
 
-- `agent/`、`bridge/`、`channel/`、`common/`、`models/`、`plugins/`、`skills/`、`translate/`、`voice/`：CowAgent 上游内核和 legacy 扩展目录，升级时优先按 `docs/patch-register.md` 做差异复核。
+- `agent/`、`bridge/`、`channel/`、`common/`、`models/`、`plugins/`、`skills/`、`translate/`、`voice/`：CoreAgent 上游内核和 legacy 扩展目录，升级时优先按 `docs/patch-register.md` 做差异复核。
 - `cow_platform/`：平台内核层，包含 API、领域模型、仓储、服务、运行时隔离、worker 和部署检查。
 - `channel/web/`：Web channel 后端入口和前端工程，后端路由仍在该目录，前端源码已收敛到 `channel/web/frontend/`。
 - `channel/web/handlers/`：Web 控制台 route handler 模块；`web_channel.py` 保留 WebChannel 主类、运行时作用域 helper 和旧类名 re-export。

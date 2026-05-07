@@ -1,14 +1,14 @@
-# 基于 CowAgent 二次开发的 AI 中台总体架构与需求文档
+# 基于 CoreAgent 二次开发的 AI 中台总体架构与需求文档
 
 ## 1. 文档目的
 
-本文档基于前期沟通内容，对未来基于 CowAgent 进行二次开发的目标、约束、总体架构、核心模块、数据与部署方案、性能与稳定性要求、可维护性治理、成本统计能力、上游兼容策略与实施路线进行统一提炼，作为后续研发评审、拆解任务、技术落地和团队协作的基线文档。
+本文档基于前期沟通内容，对未来基于 CoreAgent 进行二次开发的目标、约束、总体架构、核心模块、数据与部署方案、性能与稳定性要求、可维护性治理、成本统计能力、上游兼容策略与实施路线进行统一提炼，作为后续研发评审、拆解任务、技术落地和团队协作的基线文档。
 
 ---
 
 ## 2. 背景与现状
 
-当前 CowAgent 更适合“单实例、单全局运行时、单套全局配置、多通道接入”的使用形态，适合作为通用 Agent 引擎，但不直接满足以下平台化诉求：
+当前 CoreAgent 更适合“单实例、单全局运行时、单套全局配置、多通道接入”的使用形态，适合作为通用 Agent 引擎，但不直接满足以下平台化诉求：
 
 - 单实例多租户
 - 显性创建多个 Agent
@@ -16,11 +16,11 @@
 - 不同 Agent 的上下文、记忆、知识、文件空间完全隔离
 - 成本按租户 / Agent / 用户 / 会话进行统计
 - 保持性能、稳定性、可维护性
-- 后续仍能持续吸收 CowAgent 上游更新
+- 后续仍能持续吸收 CoreAgent 上游更新
 
-因此，本项目不是简单“在 CowAgent 上叠功能”，而是要将其演进为：
+因此，本项目不是简单“在 CoreAgent 上叠功能”，而是要将其演进为：
 
-**一个以 CowAgent 为可升级内核、具备多租户、显性 Agent、成本计量、治理与可维护性的 AI 中台。**
+**一个以 CoreAgent 为可升级内核、具备多租户、显性 Agent、成本计量、治理与可维护性的 AI 中台。**
 
 ---
 
@@ -28,7 +28,7 @@
 
 ### 3.1 总体目标
 
-构建一个基于 CowAgent 的 AI 中台，满足：
+构建一个基于 CoreAgent 的 AI 中台，满足：
 
 1. 单实例多租户
 2. 支持显性创建多个 Agent
@@ -39,14 +39,14 @@
 7. 具备高性能、稳定性与可维护性
 8. 支持 Docker 一键部署
 9. 开发、测试、生产环境保持一致
-10. 后续可持续吸收 CowAgent 上游更新
+10. 后续可持续吸收 CoreAgent 上游更新
 
 ### 3.2 非目标
 
 本期不追求：
 
 - 每个租户独立一套服务实例
-- 一次性重写 CowAgent 全部内部实现
+- 一次性重写 CoreAgent 全部内部实现
 - 第一阶段就引入极重的微服务体系
 - 第一阶段就实现完整商业计费系统
 - 第一阶段就实现全部精细化资源摊销
@@ -59,7 +59,7 @@
 
 ### 功能需求
 
-1. 基于 CowAgent 进行二次开发
+1. 基于 CoreAgent 进行二次开发
 2. 支持单实例多租户
 3. 不同租户数据完全隔离
 4. 支持显性创建多个 Agent
@@ -76,7 +76,7 @@
 10. 稳定
 11. 可维护
 12. 逻辑清晰
-13. 支持后续吸收 CowAgent 上游功能更新
+13. 支持后续吸收 CoreAgent 上游功能更新
 14. 支持 AI 中台级别的成本统计
 15. 支持统计：
    - token 使用量
@@ -112,11 +112,11 @@
 - 控制面：定义系统“长什么样”
 - 运行面：定义一次请求“怎么跑”
 
-### 5.3 平台层与 CowAgent 内核解耦
+### 5.3 平台层与 CoreAgent 内核解耦
 
 - 多租户、显性 Agent、配额、审计、成本统计等平台能力放在平台层
-- 对 CowAgent 的接入通过桥接层完成
-- CowAgent 内核尽量少改，保持接近 upstream
+- 对 CoreAgent 的接入通过桥接层完成
+- CoreAgent 内核尽量少改，保持接近 upstream
 
 ### 5.4 共享底座，隔离命名空间
 
@@ -174,13 +174,13 @@ Control Plane
 
 Bridge Layer
    -> ConfigMapper
-   -> CowAgent Runtime Adapter
+   -> CoreAgent Runtime Adapter
    -> Tool Adapter
    -> Skill Adapter
    -> Channel Adapter
    -> Model Adapter
 
-CowAgent Kernel
+CoreAgent Kernel
    -> Upstream agent/channel/models/tools/skills capabilities
 
 Infra Layer
@@ -212,13 +212,13 @@ Infra Layer
 
 ### B. Bridge Layer
 
-负责适配 CowAgent：
+负责适配 CoreAgent：
 
-- 将平台对象映射为 CowAgent 可消费的运行配置
-- 包装 CowAgent runtime / tool / skill / model / channel 能力
+- 将平台对象映射为 CoreAgent 可消费的运行配置
+- 包装 CoreAgent runtime / tool / skill / model / channel 能力
 - 吸收 upstream 变化
 
-### C. CowAgent Kernel
+### C. CoreAgent Kernel
 
 尽量保持接近上游，作为可升级内核。
 
@@ -416,7 +416,7 @@ user_ns    = tenant:{tenant_id}:user:{user_id}
 
 ## 10.1 为什么必须显性化
 
-当前 CowAgent 的思路更偏“agent 功能开关 + 单套全局配置”，不适合企业中台下多个 Agent 并存与管理。
+当前 CoreAgent 的思路更偏“agent 功能开关 + 单套全局配置”，不适合企业中台下多个 Agent 并存与管理。
 
 显性 Agent 化后，Agent 不再是抽象能力，而是平台中的一等资源对象。
 
@@ -759,7 +759,7 @@ load definition
 
 ### Bridge Layer
 
-放 CowAgent 适配逻辑：
+放 CoreAgent 适配逻辑：
 
 - config mapper
 - runtime adapter
@@ -768,7 +768,7 @@ load definition
 - channel adapter
 - model adapter
 
-### CowAgent Kernel
+### CoreAgent Kernel
 
 尽量少改，保持接近 upstream。
 
@@ -778,7 +778,7 @@ load definition
 2. 禁止业务逻辑依赖全局状态
 3. 禁止绕过 repository / adapter 访问底层
 4. 禁止在 channel、tool、skill 内散落租户特例
-5. 修改 CowAgent 原文件必须登记 patch register
+5. 修改 CoreAgent 原文件必须登记 patch register
 6. 所有核心 public service 必须有结构化日志
 7. 所有外部调用必须带 timeout
 
@@ -805,19 +805,19 @@ load definition
 
 ---
 
-## 16. 上游 CowAgent 兼容策略
+## 16. 上游 CoreAgent 兼容策略
 
 ## 16.1 目标
 
-二开后仍要尽量持续吸收 CowAgent upstream 更新。
+二开后仍要尽量持续吸收 CoreAgent upstream 更新。
 
 ## 16.2 核心策略
 
-### 1. CowAgent 视为可升级内核
+### 1. CoreAgent 视为可升级内核
 
 而不是业务代码容器。
 
-### 2. 平台能力不直接揉进 CowAgent 各目录
+### 2. 平台能力不直接揉进 CoreAgent 各目录
 
 避免在：
 
@@ -858,7 +858,7 @@ load definition
 建议维护：
 
 ```text
-Platform Version   CowAgent Version   Status
+Platform Version   CoreAgent Version   Status
 v1.0               2.0.x              stable
 v1.1               2.1.x              testing
 ```
@@ -1434,7 +1434,7 @@ docker/
 2. 禁止在 tool / skill 内散落 tenant 特例
 3. 禁止新增业务全局单例
 4. 禁止业务层直接使用底层 SDK
-5. 禁止无 patch register 修改 CowAgent 原文件
+5. 禁止无 patch register 修改 CoreAgent 原文件
 6. 禁止无测试合并 bridge / runtime_ext 关键改动
 
 ## 26.2 Code Review 检查项
@@ -1510,7 +1510,7 @@ docker/
 
 ## 28. 关键风险与应对
 
-## 风险 1：直接魔改 CowAgent 原目录导致后续难以升级
+## 风险 1：直接魔改 CoreAgent 原目录导致后续难以升级
 
 ### 应对
 - 平台层 / bridge 层优先
@@ -1571,22 +1571,22 @@ docker/
 
 ## 30. 最终结论
 
-本项目的正确方向不是“继续在 CowAgent 的单实例逻辑上叠补丁”，而是：
+本项目的正确方向不是“继续在 CoreAgent 的单实例逻辑上叠补丁”，而是：
 
-**将 CowAgent 作为可升级内核，在其上构建一层具备多租户、显性 Agent、强隔离、成本统计、治理与可维护性的 AI 中台平台层。**
+**将 CoreAgent 作为可升级内核，在其上构建一层具备多租户、显性 Agent、强隔离、成本统计、治理与可维护性的 AI 中台平台层。**
 
 最终需要达成的核心状态是：
 
-1. 单实例多租户  
-2. 不同租户数据完全隔离  
-3. 显性创建多个 Agent  
-4. 不同 Agent 的上下文、记忆、知识完全隔离  
-5. 使用量与成本可按租户 / Agent / 用户 / 会话归因  
-6. 成本统计不显著影响性能  
-7. 开发、测试、生产环境依赖一致  
-8. 通过 Docker 一键部署  
-9. 可维护、稳定、逻辑清晰  
-10. 后续能持续吸收 CowAgent 上游更新  
+1. 单实例多租户
+2. 不同租户数据完全隔离
+3. 显性创建多个 Agent
+4. 不同 Agent 的上下文、记忆、知识完全隔离
+5. 使用量与成本可按租户 / Agent / 用户 / 会话归因
+6. 成本统计不显著影响性能
+7. 开发、测试、生产环境依赖一致
+8. 通过 Docker 一键部署
+9. 可维护、稳定、逻辑清晰
+10. 后续能持续吸收 CoreAgent 上游更新
 
 ---
 

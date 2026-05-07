@@ -66,9 +66,9 @@ def get_session_repository():
 
 
 def get_runtime_adapter():
-    from cow_platform.adapters.cowagent_runtime_adapter import CowAgentRuntimeAdapter
+    from cow_platform.adapters.coreagent_runtime_adapter import CoreAgentRuntimeAdapter
 
-    return CowAgentRuntimeAdapter()
+    return CoreAgentRuntimeAdapter()
 
 
 def restart_channel_config_runtime(

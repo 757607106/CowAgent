@@ -13,7 +13,7 @@ def test_test_deployment_requires_full_dependency_stack() -> None:
         minio_endpoint="http://minio:9000",
         minio_access_key="cowplatform",
         minio_secret_key="cowplatform123",
-        minio_bucket="cowagent",
+        minio_bucket="coreagent",
         web_tenant_auth=True,
     )
 
@@ -29,7 +29,7 @@ def test_production_deployment_rejects_localhost_and_default_secrets(monkeypatch
     monkeypatch.setenv("COW_PLATFORM_MINIO_ENDPOINT", "http://127.0.0.1:9000")
     monkeypatch.setenv("COW_PLATFORM_MINIO_ACCESS_KEY", "cowplatform")
     monkeypatch.setenv("COW_PLATFORM_MINIO_SECRET_KEY", "cowplatform123")
-    monkeypatch.setenv("COW_PLATFORM_MINIO_BUCKET", "cowagent")
+    monkeypatch.setenv("COW_PLATFORM_MINIO_BUCKET", "coreagent")
 
     settings = DependencySettings(
         environment="production",
@@ -40,7 +40,7 @@ def test_production_deployment_rejects_localhost_and_default_secrets(monkeypatch
         minio_endpoint="http://127.0.0.1:9000",
         minio_access_key="cowplatform",
         minio_secret_key="cowplatform123",
-        minio_bucket="cowagent",
+        minio_bucket="coreagent",
         web_tenant_auth=True,
     )
 
@@ -61,7 +61,7 @@ def test_production_deployment_accepts_service_stack_with_strong_secrets(monkeyp
     monkeypatch.setenv("COW_PLATFORM_MINIO_ENDPOINT", "http://minio:9000")
     monkeypatch.setenv("COW_PLATFORM_MINIO_ACCESS_KEY", "prod-access")
     monkeypatch.setenv("COW_PLATFORM_MINIO_SECRET_KEY", "prod-minio-secret")
-    monkeypatch.setenv("COW_PLATFORM_MINIO_BUCKET", "cowagent-prod")
+    monkeypatch.setenv("COW_PLATFORM_MINIO_BUCKET", "coreagent-prod")
 
     settings = DependencySettings(
         environment="production",
@@ -72,7 +72,7 @@ def test_production_deployment_accepts_service_stack_with_strong_secrets(monkeyp
         minio_endpoint="http://minio:9000",
         minio_access_key="prod-access",
         minio_secret_key="prod-minio-secret",
-        minio_bucket="cowagent-prod",
+        minio_bucket="coreagent-prod",
         web_tenant_auth=True,
     )
 

@@ -29,8 +29,8 @@ import type { AuthUser, RuntimeScope } from './types';
 
 const { Sider, Content } = Layout;
 
-const AGENT_KEY = 'cowagent_runtime_agent_id';
-const BINDING_KEY = 'cowagent_runtime_binding_id';
+const AGENT_KEY = 'coreagent_runtime_agent_id';
+const BINDING_KEY = 'coreagent_runtime_binding_id';
 
 const DEFAULT_AGENT_OPTION: RuntimeAgentOption = { label: DEFAULT_AGENT_NAME, value: DEFAULT_AGENT_ID };
 
@@ -65,10 +65,10 @@ function SidebarContent({
 
   return (
     <>
-      <div className="app-logo" aria-label="CowAgent">
+      <div className="app-logo" aria-label="CoreAgent">
         <span className="app-logo-mark">C</span>
         <span className="app-logo-text">
-          <span className="app-logo-word">CowAgent</span>
+          <span className="app-logo-word">CoreAgent</span>
           <span className="app-logo-sub">AI 员工管理台</span>
         </span>
       </div>
@@ -209,7 +209,7 @@ function LoginScreen({
         <div className="app-login-brand-content">
           <div className="app-login-logo">
             <span className="app-logo-mark">C</span>
-            <span className="app-logo-word">CowAgent</span>
+            <span className="app-logo-word">CoreAgent</span>
           </div>
           <h1 className="app-login-slogan">
             AI 员工管理台

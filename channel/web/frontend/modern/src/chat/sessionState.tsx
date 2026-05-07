@@ -3,7 +3,7 @@ import type { ConversationItemType } from '@ant-design/x';
 import { DEFAULT_AGENT_ID, DEFAULT_AGENT_NAME } from '../context/runtime';
 import type { RuntimeScope, SessionItem } from '../types';
 
-const SESSION_KEY_PREFIX = 'cowagent-web-session-id';
+const SESSION_KEY_PREFIX = 'coreagent-web-session-id';
 
 export const HISTORY_PAGE_SIZE = 200;
 

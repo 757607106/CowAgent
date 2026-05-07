@@ -1,15 +1,15 @@
-# CowAgent AI 中台化改造 PR 说明
+# CoreAgent AI 中台化改造 PR 说明
 
 ## 1. 建议 PR 标题
 
-`feat: 将 CowAgent 渐进式改造为支持多租户、多 Agent、隔离记忆与异步 Worker 的 AI 中台`
+`feat: 将 CoreAgent 渐进式改造为支持多租户、多 Agent、隔离记忆与异步 Worker 的 AI 中台`
 
 ---
 
 ## 2. 背景
 
-当前 CowAgent 更适合“单实例、单全局配置、单工作区”的通用 Agent 引擎形态。  
-本次改造的目标不是重写 CowAgent，而是在尽量保持上游兼容的前提下，把它逐步演进为：
+当前 CoreAgent 更适合“单实例、单全局配置、单工作区”的通用 Agent 引擎形态。
+本次改造的目标不是重写 CoreAgent，而是在尽量保持上游兼容的前提下，把它逐步演进为：
 
 - 支持多租户
 - 支持显性多 Agent
@@ -75,7 +75,7 @@
 
 - 新增 Agent 资源与 PostgreSQL 仓储
 - 支持通过平台 API 创建 / 查询 / 更新 Agent
-- 新增 `CowAgentRuntimeAdapter`
+- 新增 `CoreAgentRuntimeAdapter`
 - 支持按 `agent_id` 切换：
   - workspace
   - prompt
@@ -226,7 +226,7 @@
 - `session_id`
 - `request_id`
 
-并通过 runtime scope 传递到现有 CowAgent 内核，减少对单全局状态的依赖。
+并通过 runtime scope 传递到现有 CoreAgent 内核，减少对单全局状态的依赖。
 
 ### 5.3 Legacy 与 Platform 双模式并存
 
@@ -299,7 +299,7 @@ COW_PLATFORM_DATABASE_URL=postgresql://... pytest \
 7 passed in 5.91s
 
 PLATFORM_POSTGRES_PASSWORD=... PLATFORM_MINIO_ROOT_USER=... PLATFORM_MINIO_ROOT_PASSWORD=... \
-docker compose -p cowagent-prod-smoke \
+docker compose -p coreagent-prod-smoke \
   -f docker/compose.base.yml \
   -f docker/compose.platform.yml \
   -f docker/compose.prod.yml \
@@ -349,7 +349,7 @@ passed
 
 ## 11. 变更总结
 
-这次改造的核心不是“给 CowAgent 再加几个功能”，而是把它从单实例 Agent 引擎，渐进式演进成一个具备：
+这次改造的核心不是“给 CoreAgent 再加几个功能”，而是把它从单实例 Agent 引擎，渐进式演进成一个具备：
 
 - 多租户
 - 显性多 Agent

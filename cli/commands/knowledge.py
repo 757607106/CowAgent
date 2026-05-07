@@ -33,7 +33,7 @@ def _get_knowledge_enabled():
 @click.group(invoke_without_command=True)
 @click.pass_context
 def knowledge(ctx):
-    """Manage CowAgent knowledge base."""
+    """Manage CoreAgent knowledge base."""
     if ctx.invoked_subcommand is None:
         click.echo(_stats())
 

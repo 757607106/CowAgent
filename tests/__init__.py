@@ -1,1 +1,1 @@
-"""Test package for CowAgent."""
+"""Test package for CoreAgent."""

@@ -2,7 +2,7 @@
 set -e
 
 # ============================
-# CowAgent Management Script
+# CoreAgent Management Script
 # ============================
 
 # ANSI colors
@@ -148,21 +148,21 @@ check_python_version() {
 
 # Clone project
 clone_project() {
-    echo -e "${GREEN}🔍 Cloning CowAgent project...${NC}"
+    echo -e "${GREEN}🔍 Cloning CoreAgent project...${NC}"
 
-    if [ -d "CowAgent" ]; then
-        echo -e "${YELLOW}⚠️  Directory 'CowAgent' already exists.${NC}"
+    if [ -d "CoreAgent" ]; then
+        echo -e "${YELLOW}⚠️  Directory 'CoreAgent' already exists.${NC}"
         read -p "Choose action: overwrite(o), backup(b), or quit(q)? [press Enter for default: b]: " choice
         choice=${choice:-b}
         case "$choice" in
             o|O)
-                echo -e "${YELLOW}🗑️  Overwriting 'CowAgent' directory...${NC}"
-                rm -rf CowAgent
+                echo -e "${YELLOW}🗑️  Overwriting 'CoreAgent' directory...${NC}"
+                rm -rf CoreAgent
                 ;;
             b|B)
-                backup_dir="CowAgent_backup_$(date +%s)"
+                backup_dir="CoreAgent_backup_$(date +%s)"
                 echo -e "${YELLOW}🔀 Backing up to '$backup_dir'...${NC}"
-                mv CowAgent "$backup_dir"
+                mv CoreAgent "$backup_dir"
                 ;;
             q|Q)
                 echo -e "${RED}❌ Installation cancelled.${NC}"
@@ -179,18 +179,18 @@ clone_project() {
 
     if ! command -v git &> /dev/null; then
         echo -e "${YELLOW}⚠️  Git not available. Trying wget/curl...${NC}"
-        local zip_url="https://gitee.com/zhayujie/CowAgent/repository/archive/master.zip"
+        local zip_url="https://gitee.com/zhayujie/CoreAgent/repository/archive/master.zip"
         if command -v wget &> /dev/null; then
-            wget "$zip_url" -O CowAgent.zip
+            wget "$zip_url" -O CoreAgent.zip
         elif command -v curl &> /dev/null; then
-            curl -L "$zip_url" -o CowAgent.zip
+            curl -L "$zip_url" -o CoreAgent.zip
         else
             echo -e "${RED}❌ Cannot download project. Please install Git, wget, or curl.${NC}"
             exit 1
         fi
-        unzip CowAgent.zip
-        mv CowAgent-master CowAgent
-        rm CowAgent.zip
+        unzip CoreAgent.zip
+        mv CoreAgent-master CoreAgent
+        rm CoreAgent.zip
     else
         local clone_ok=false
         # Detect and temporarily disable invalid git proxy settings
@@ -206,11 +206,11 @@ clone_project() {
         # Test GitHub connectivity before attempting clone
         if curl -sI --connect-timeout 5 --max-time 10 https://github.com > /dev/null 2>&1; then
             echo -e "${YELLOW}🌐 GitHub is reachable, cloning from GitHub...${NC}"
-            _timeout 60 git clone --depth 10 --progress https://github.com/zhayujie/CowAgent.git && clone_ok=true
+            _timeout 60 git clone --depth 10 --progress https://github.com/zhayujie/CoreAgent.git && clone_ok=true
         fi
         if [ "$clone_ok" = false ]; then
             echo -e "${YELLOW}⚠️  GitHub clone failed or timed out, switching to Gitee mirror...${NC}"
-            _timeout 30 git clone --depth 10 --progress https://gitee.com/zhayujie/CowAgent.git && clone_ok=true
+            _timeout 30 git clone --depth 10 --progress https://gitee.com/zhayujie/CoreAgent.git && clone_ok=true
         fi
         if [ "$clone_ok" = false ]; then
             echo -e "${RED}❌ Project clone failed. Please check network connection.${NC}"
@@ -224,7 +224,7 @@ clone_project() {
         fi
     fi
 
-    cd CowAgent || { echo -e "${RED}❌ Failed to enter project directory.${NC}"; exit 1; }
+    cd CoreAgent || { echo -e "${RED}❌ Failed to enter project directory.${NC}"; exit 1; }
     export BASE_DIR=$(pwd)
     echo -e "${GREEN}✅ Project cloned successfully: $BASE_DIR${NC}"
     
@@ -583,7 +583,7 @@ with open('config.json', 'w') as f:
 # Start project
 start_project() {
     echo ""
-    echo -e "${GREEN}${EMOJI_ROCKET} Starting CowAgent...${NC}"
+    echo -e "${GREEN}${EMOJI_ROCKET} Starting CoreAgent...${NC}"
     sleep 1
 
     local USE_COW=false
@@ -603,10 +603,10 @@ start_project() {
 
         if [[ "$OS_TYPE" == "Linux" ]]; then
             nohup setsid $PYTHON_CMD "${BASE_DIR}/app.py" > "${BASE_DIR}/nohup.out" 2>&1 &
-            echo -e "${GREEN}${EMOJI_COW} CowAgent started on Linux (using $PYTHON_CMD)${NC}"
+            echo -e "${GREEN}${EMOJI_COW} CoreAgent started on Linux (using $PYTHON_CMD)${NC}"
         elif [[ "$OS_TYPE" == "Darwin" ]]; then
             nohup $PYTHON_CMD "${BASE_DIR}/app.py" > "${BASE_DIR}/nohup.out" 2>&1 &
-            echo -e "${GREEN}${EMOJI_COW} CowAgent started on macOS (using $PYTHON_CMD)${NC}"
+            echo -e "${GREEN}${EMOJI_COW} CoreAgent started on macOS (using $PYTHON_CMD)${NC}"
         else
             echo -e "${RED}❌ Unsupported OS: ${OS_TYPE}${NC}"
             exit 1
@@ -616,7 +616,7 @@ start_project() {
     sleep 2
     echo ""
     echo -e "${CYAN}${BOLD}=========================================${NC}"
-    echo -e "${GREEN}${EMOJI_CHECK} CowAgent is now running in background!${NC}"
+    echo -e "${GREEN}${EMOJI_CHECK} CoreAgent is now running in background!${NC}"
     echo -e "${GREEN}${EMOJI_CHECK} Process will continue after closing terminal.${NC}"
     echo -e "${CYAN}$ACCESS_INFO${NC}"
     echo ""
@@ -646,7 +646,7 @@ start_project() {
 # Show usage
 show_usage() {
     echo -e "${CYAN}${BOLD}=========================================${NC}"
-    echo -e "${CYAN}${BOLD}   ${EMOJI_COW} CowAgent Management Script${NC}"
+    echo -e "${CYAN}${BOLD}   ${EMOJI_COW} CoreAgent Management Script${NC}"
     echo -e "${CYAN}${BOLD}=========================================${NC}"
     echo ""
     echo -e "${YELLOW}Usage:${NC}"
@@ -705,7 +705,7 @@ cmd_start() {
         cow start
     else
         if is_running; then
-            echo -e "${YELLOW}${EMOJI_WARN} CowAgent is already running (PID: $(get_pid))${NC}"
+            echo -e "${YELLOW}${EMOJI_WARN} CoreAgent is already running (PID: $(get_pid))${NC}"
             echo -e "${YELLOW}Use './run.sh restart' to restart${NC}"
             return
         fi
@@ -720,10 +720,10 @@ cmd_stop() {
         cd "${BASE_DIR}"
         cow stop
     else
-        echo -e "${GREEN}${EMOJI_STOP} Stopping CowAgent...${NC}"
+        echo -e "${GREEN}${EMOJI_STOP} Stopping CoreAgent...${NC}"
 
         if ! is_running; then
-            echo -e "${YELLOW}${EMOJI_WARN} CowAgent is not running${NC}"
+            echo -e "${YELLOW}${EMOJI_WARN} CoreAgent is not running${NC}"
             return
         fi
 
@@ -743,7 +743,7 @@ cmd_stop() {
             kill -9 ${pid}
         fi
 
-        echo -e "${GREEN}${EMOJI_CHECK} CowAgent stopped${NC}"
+        echo -e "${GREEN}${EMOJI_CHECK} CoreAgent stopped${NC}"
     fi
 }
 
@@ -766,7 +766,7 @@ cmd_status() {
         cow status
     else
         echo -e "${CYAN}${BOLD}=========================================${NC}"
-        echo -e "${CYAN}${BOLD}   ${EMOJI_COW} CowAgent Status${NC}"
+        echo -e "${CYAN}${BOLD}   ${EMOJI_COW} CoreAgent Status${NC}"
         echo -e "${CYAN}${BOLD}=========================================${NC}"
 
         if is_running; then
@@ -808,7 +808,7 @@ cmd_logs() {
 
 # Reconfigure
 cmd_config() {
-    echo -e "${YELLOW}${EMOJI_WRENCH} Reconfiguring CowAgent...${NC}"
+    echo -e "${YELLOW}${EMOJI_WRENCH} Reconfiguring CoreAgent...${NC}"
     
     if [ -f "${BASE_DIR}/config.json" ]; then
         backup_file="${BASE_DIR}/config.json.backup.$(date +%s)"
@@ -833,7 +833,7 @@ cmd_config() {
 
 # Update project
 cmd_update() {
-    echo -e "${GREEN}${EMOJI_WRENCH} Updating CowAgent...${NC}"
+    echo -e "${GREEN}${EMOJI_WRENCH} Updating CoreAgent...${NC}"
     cd "${BASE_DIR}"
     
     # Pull latest code first (service still running)
@@ -844,7 +844,7 @@ cmd_update() {
             pull_ok=true
         else
             echo -e "${YELLOW}⚠️  git pull failed, trying Gitee mirror...${NC}"
-            git remote set-url origin https://gitee.com/zhayujie/CowAgent.git
+            git remote set-url origin https://gitee.com/zhayujie/CoreAgent.git
             if git pull; then
                 pull_ok=true
             else
@@ -881,7 +881,7 @@ cmd_post_update() {
 install_mode() {
     clear
     echo -e "${CYAN}${BOLD}=========================================${NC}"
-    echo -e "${CYAN}${BOLD}   ${EMOJI_COW} CowAgent Installation${NC}"
+    echo -e "${CYAN}${BOLD}   ${EMOJI_COW} CoreAgent Installation${NC}"
     echo -e "${CYAN}${BOLD}=========================================${NC}"
     echo ""
     sleep 1
@@ -916,7 +916,7 @@ install_mode() {
     create_config_file
     
     echo ""
-    read -p "Start CowAgent now? [Y/n]: " start_now
+    read -p "Start CoreAgent now? [Y/n]: " start_now
     if [[ ! $start_now == [Nn]* ]]; then
         start_project
     else

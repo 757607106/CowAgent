@@ -10,7 +10,7 @@ x-platform-environment: &platform-environment
   COW_PLATFORM_MINIO_ENDPOINT: http://minio:9000
   COW_PLATFORM_MINIO_ACCESS_KEY: ${PLATFORM_MINIO_ROOT_USER:-cowplatform}
   COW_PLATFORM_MINIO_SECRET_KEY: ${PLATFORM_MINIO_ROOT_PASSWORD:-cowplatform123}
-  COW_PLATFORM_MINIO_BUCKET: ${PLATFORM_MINIO_BUCKET:-cowagent}
+  COW_PLATFORM_MINIO_BUCKET: ${PLATFORM_MINIO_BUCKET:-coreagent}
   AGENT_WORKSPACE: /home/agent/cow
   APPDATA_DIR: /home/agent/cow/appdata
   MODEL: ${MODEL:-qwen3.6-plus}

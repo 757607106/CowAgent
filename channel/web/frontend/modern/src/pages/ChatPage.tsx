@@ -23,14 +23,14 @@ import {
 import { App, Avatar, Button, Dropdown, Empty, Flex, Space, Spin, Tag, Tooltip, Typography } from 'antd';
 import { useCallback, useEffect, useMemo, useRef, useState, type ComponentRef, type KeyboardEvent as ReactKeyboardEvent } from 'react';
 import {
-  type CowAgentChatMessage,
-  type CowAgentChatRequest,
+  type CoreAgentChatMessage,
+  type CoreAgentChatRequest,
   createAssistantErrorMessage,
   createAssistantPlaceholderMessage,
-  createCowAgentChatProvider,
+  createCoreAgentChatProvider,
   extractAssistantReply,
   parseHistoryMessages,
-} from '../chat/CowAgentChatProvider';
+} from '../chat/CoreAgentChatProvider';
 import { AssistantMessageFlow } from '../chat/AssistantMessageFlow';
 import { MarkdownBlock } from '../chat/ChatMarkdown';
 import { DEFAULT_AGENT_ID, DEFAULT_AGENT_NAME, useRuntimeScope } from '../context/runtime';
@@ -158,7 +158,7 @@ function FooterCopyButton({ text }: { text?: string }) {
 }
 
 function buildBubbleItems(
-  messages: ReturnType<typeof useXChat<CowAgentChatMessage, CowAgentChatMessage, CowAgentChatRequest, SSEOutput>>['messages'],
+  messages: ReturnType<typeof useXChat<CoreAgentChatMessage, CoreAgentChatMessage, CoreAgentChatRequest, SSEOutput>>['messages'],
   scopeLabel: string,
 ): BubbleItemType[] {
   return messages.map((item) => {
@@ -197,7 +197,7 @@ function buildBubbleItems(
 export default function ChatPage() {
   const app = App.useApp();
   const { scope, agentOptions, setAgentScope } = useRuntimeScope();
-  const provider = useMemo(() => createCowAgentChatProvider(), []);
+  const provider = useMemo(() => createCoreAgentChatProvider(), []);
   const attachmentsRef = useRef<ComponentRef<typeof Attachments>>(null);
   const transcriptRef = useRef<HTMLDivElement>(null);
   const pendingTitleRef = useRef<{
@@ -272,7 +272,7 @@ export default function ChatPage() {
     abort,
     isRequesting,
     isDefaultMessagesRequesting,
-  } = useXChat<CowAgentChatMessage, CowAgentChatMessage, CowAgentChatRequest, SSEOutput>({
+  } = useXChat<CoreAgentChatMessage, CoreAgentChatMessage, CoreAgentChatRequest, SSEOutput>({
     provider,
     conversationKey,
     defaultMessages,
@@ -576,7 +576,7 @@ export default function ChatPage() {
       footer: (_content: unknown, info: { extraInfo?: Record<string, unknown> }) => (
         <span className="chat-bubble-time">{formatClock(Number(info.extraInfo?.createdAt || Date.now()))}</span>
       ),
-      contentRender: (content: CowAgentChatMessage) => (
+      contentRender: (content: CoreAgentChatMessage) => (
         <div className="chat-user-stack">
           {content.attachments?.length ? (
             <div className="chat-user-attachments">
@@ -601,7 +601,7 @@ export default function ChatPage() {
           {info.extraInfo?.canCopy ? <FooterCopyButton text={String(info.extraInfo.copyText || '')} /> : null}
         </div>
       ),
-      contentRender: (content: CowAgentChatMessage, info: { status?: BubbleItemType['status'] }) => {
+      contentRender: (content: CoreAgentChatMessage, info: { status?: BubbleItemType['status'] }) => {
         const payload = content.content || {
           text: '',
           steps: [],
@@ -616,7 +616,7 @@ export default function ChatPage() {
       placement: 'start' as const,
       variant: 'borderless' as const,
       avatar: <Avatar icon={<BulbOutlined />} />,
-      contentRender: (content: CowAgentChatMessage) => {
+      contentRender: (content: CoreAgentChatMessage) => {
         if (content.role === 'divider') {
           return <div className="chat-divider-chip">{content.text || '上下文已清空'}</div>;
         }

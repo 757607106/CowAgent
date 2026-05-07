@@ -590,7 +590,7 @@ class AgentInitializer:
             skill_manager = SkillManager(custom_dir=os.path.join(workspace_root, "skills"))
 
             # Non-default agents use allowlist semantics. The platform default
-            # agent keeps CowAgent's built-in skill behavior when no allowlist
+            # agent keeps CoreAgent's built-in skill behavior when no allowlist
             # is configured, so every tenant gets a full-capability assistant.
             if agent_definition is not None:
                 if self._uses_default_capability_set(agent_definition, "skills"):
@@ -616,7 +616,7 @@ class AgentInitializer:
 
     @staticmethod
     def _uses_default_capability_set(agent_definition, field_name: str) -> bool:
-        """True when the tenant default agent should inherit CowAgent defaults."""
+        """True when the tenant default agent should inherit CoreAgent defaults."""
         return (
             getattr(agent_definition, "agent_id", "") == "default"
             and not getattr(agent_definition, field_name, ())

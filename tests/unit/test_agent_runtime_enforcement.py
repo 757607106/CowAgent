@@ -277,7 +277,7 @@ def test_initializer_legacy_default_respects_explicit_knowledge_disabled(monkeyp
 def test_agent_bridge_can_clear_all_sessions_for_target_agent():
     from bridge.agent_bridge import AgentBridge
 
-    with patch("bridge.agent_bridge.AgentInitializer"), patch("bridge.agent_bridge.CowAgentRuntimeAdapter"):
+    with patch("bridge.agent_bridge.AgentInitializer"), patch("bridge.agent_bridge.CoreAgentRuntimeAdapter"):
         bridge = MagicMock()
         agent_bridge = AgentBridge(bridge)
 
@@ -299,7 +299,7 @@ def test_agent_bridge_can_clear_all_sessions_for_target_agent():
 def test_agent_bridge_reinitializes_cache_when_config_version_changes():
     from bridge.agent_bridge import AgentBridge
 
-    with patch("bridge.agent_bridge.AgentInitializer"), patch("bridge.agent_bridge.CowAgentRuntimeAdapter"):
+    with patch("bridge.agent_bridge.AgentInitializer"), patch("bridge.agent_bridge.CoreAgentRuntimeAdapter"):
         bridge = MagicMock()
         agent_bridge = AgentBridge(bridge)
 

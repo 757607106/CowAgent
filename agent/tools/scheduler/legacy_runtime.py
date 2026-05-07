@@ -8,7 +8,7 @@ from config import conf
 
 
 class LegacySchedulerRuntime:
-    """Workspace JSON fallback for legacy CowAgent scheduler tasks."""
+    """Workspace JSON fallback for legacy CoreAgent scheduler tasks."""
 
     @staticmethod
     def create_task_store():

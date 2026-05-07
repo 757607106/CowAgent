@@ -6,7 +6,7 @@ import json
 
 
 def get_project_root() -> str:
-    """Get the CowAgent project root directory."""
+    """Get the CoreAgent project root directory."""
     # cli/ is directly under the project root
     return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
@@ -59,4 +59,4 @@ def ensure_sys_path():
         sys.path.insert(0, root)
 
 
-SKILL_HUB_API = "https://skills.cowagent.ai/api"
+SKILL_HUB_API = "https://skills.coreagent.ai/api"

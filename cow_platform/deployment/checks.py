@@ -67,7 +67,7 @@ class DependencySettings:
             minio_secret_key=os.getenv("COW_PLATFORM_MINIO_SECRET_KEY")
             or os.getenv("MINIO_ROOT_PASSWORD")
             or "cowplatform123",
-            minio_bucket=os.getenv("COW_PLATFORM_MINIO_BUCKET") or "cowagent",
+            minio_bucket=os.getenv("COW_PLATFORM_MINIO_BUCKET") or "coreagent",
             web_tenant_auth=_as_bool(os.getenv("WEB_TENANT_AUTH"), False),
         )
 

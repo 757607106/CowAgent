@@ -1,4 +1,4 @@
-"""MCP (Model Context Protocol) tool integration for CowAgent."""
+"""MCP (Model Context Protocol) tool integration for CoreAgent."""
 
 from agent.tools.mcp.mcp_client import MCPClient
 from agent.tools.mcp.mcp_manager import MCPManager

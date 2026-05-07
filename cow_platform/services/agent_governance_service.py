@@ -5,7 +5,7 @@ from typing import Any
 
 
 class AgentGovernanceService:
-    """Quota and usage facade used by the CowAgent bridge."""
+    """Quota and usage facade used by the CoreAgent bridge."""
 
     def __init__(self, *, pricing_service=None, usage_service=None, quota_service=None):
         from cow_platform.services.pricing_service import PricingService

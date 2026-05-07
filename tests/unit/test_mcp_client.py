@@ -107,7 +107,7 @@ async def test_mcp_client_initialize():
     init_request = json.loads(fake_stdin.written[0])
     assert init_request["method"] == "initialize"
     assert init_request["params"]["protocolVersion"] == "2024-11-05"
-    assert init_request["params"]["clientInfo"]["name"] == "cowagent"
+    assert init_request["params"]["clientInfo"]["name"] == "coreagent"
 
     # Verify the initialized notification was written
     notification = json.loads(fake_stdin.written[1])

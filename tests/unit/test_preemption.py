@@ -594,7 +594,7 @@ class TestAgentBridgeCancelRunningSession:
         from bridge.bridge import Bridge
 
         with patch("bridge.agent_bridge.AgentInitializer"), \
-             patch("bridge.agent_bridge.CowAgentRuntimeAdapter"), \
+             patch("bridge.agent_bridge.CoreAgentRuntimeAdapter"), \
              patch("bridge.agent_bridge.AgentGovernanceService"):
             bridge = MagicMock(spec=Bridge)
             ab = AgentBridge(bridge)
@@ -613,7 +613,7 @@ class TestAgentBridgeCancelRunningSession:
         from bridge.bridge import Bridge
 
         with patch("bridge.agent_bridge.AgentInitializer"), \
-             patch("bridge.agent_bridge.CowAgentRuntimeAdapter"), \
+             patch("bridge.agent_bridge.CoreAgentRuntimeAdapter"), \
              patch("bridge.agent_bridge.AgentGovernanceService"):
             bridge = MagicMock(spec=Bridge)
             ab = AgentBridge(bridge)
@@ -627,7 +627,7 @@ class TestAgentBridgeCancelRunningSession:
         from bridge.bridge import Bridge
 
         with patch("bridge.agent_bridge.AgentInitializer"), \
-             patch("bridge.agent_bridge.CowAgentRuntimeAdapter"), \
+             patch("bridge.agent_bridge.CoreAgentRuntimeAdapter"), \
              patch("bridge.agent_bridge.AgentGovernanceService"):
             bridge = MagicMock(spec=Bridge)
             ab = AgentBridge(bridge)
@@ -683,7 +683,7 @@ class TestAgentBridgeReplyOnCancellation:
         from bridge.context import Context
 
         with patch("bridge.agent_bridge.AgentInitializer") as MockInit, \
-             patch("bridge.agent_bridge.CowAgentRuntimeAdapter") as mock_adapter, \
+             patch("bridge.agent_bridge.CoreAgentRuntimeAdapter") as mock_adapter, \
              patch("bridge.agent_bridge.AgentGovernanceService"):
             bridge_inst = MagicMock(spec=Bridge)
             ab = AgentBridge(bridge_inst)
@@ -878,7 +878,7 @@ class TestPreemptionE2E:
         from bridge.bridge import Bridge
 
         with patch("bridge.agent_bridge.AgentInitializer"), \
-             patch("bridge.agent_bridge.CowAgentRuntimeAdapter"), \
+             patch("bridge.agent_bridge.CoreAgentRuntimeAdapter"), \
              patch("bridge.agent_bridge.AgentGovernanceService"):
             bridge_inst = MagicMock(spec=Bridge)
             ab = AgentBridge(bridge_inst)
@@ -934,7 +934,7 @@ class TestPreemptionE2E:
         from bridge.bridge import Bridge
 
         with patch("bridge.agent_bridge.AgentInitializer"), \
-             patch("bridge.agent_bridge.CowAgentRuntimeAdapter"), \
+             patch("bridge.agent_bridge.CoreAgentRuntimeAdapter"), \
              patch("bridge.agent_bridge.AgentGovernanceService"):
             bridge_inst = MagicMock(spec=Bridge)
             ab = AgentBridge(bridge_inst)

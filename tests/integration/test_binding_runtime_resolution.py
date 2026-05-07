@@ -6,7 +6,7 @@ from agent.memory import get_conversation_store
 from agent.memory.conversation_store import reset_conversation_store_cache
 from bridge.context import Context, ContextType
 from config import conf
-from cow_platform.adapters.cowagent_runtime_adapter import CowAgentRuntimeAdapter
+from cow_platform.adapters.coreagent_runtime_adapter import CoreAgentRuntimeAdapter
 from cow_platform.repositories.session_repository import SessionRepository
 from cow_platform.services.agent_service import AgentService
 from cow_platform.services.binding_service import ChannelBindingService
@@ -79,7 +79,7 @@ def test_binding_runtime_resolution_isolates_tenants(tmp_path: Path, monkeypatch
         agent_id="assistant",
     )
 
-    adapter = CowAgentRuntimeAdapter(
+    adapter = CoreAgentRuntimeAdapter(
         agent_service=agent_service,
         binding_service=binding_service,
     )

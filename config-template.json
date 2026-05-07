@@ -37,7 +37,7 @@
   "platform_minio_endpoint": "http://127.0.0.1:59000",
   "platform_minio_access_key": "cowplatform",
   "platform_minio_secret_key": "cowplatform123",
-  "platform_minio_bucket": "cowagent",
+  "platform_minio_bucket": "coreagent",
   "agent": true,
   "agent_max_context_tokens": 50000,
   "agent_max_context_turns": 20,

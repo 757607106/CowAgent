@@ -1,4 +1,4 @@
-"""PostgreSQL database helpers for the CowAgent platform."""
+"""PostgreSQL database helpers for the CoreAgent platform."""
 
 from cow_platform.db.postgres import (
     connect,

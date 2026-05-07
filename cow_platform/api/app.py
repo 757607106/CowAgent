@@ -63,7 +63,7 @@ def create_app(settings: PlatformSettings | None = None) -> FastAPI:
     doctor_service = DoctorService()
 
     app = FastAPI(
-        title="CowAgent Platform",
+        title="CoreAgent Platform",
         version="0.1.0",
         docs_url=None,
         redoc_url=None,

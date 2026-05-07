@@ -150,7 +150,7 @@ class ConfigHandler:
         try:
             local_config = conf()
             use_agent = local_config.get("agent", False)
-            title = "CowAgent" if use_agent else "AI Assistant"
+            title = "CoreAgent" if use_agent else "AI Assistant"
             if _is_tenant_auth_enabled() and not _is_platform_admin_session():
                 return json.dumps({
                     "status": "success",

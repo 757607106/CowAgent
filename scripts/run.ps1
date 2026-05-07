@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-    CowAgent installer & management script for Windows.
+    CoreAgent installer & management script for Windows.
 .DESCRIPTION
     One-liner install:
       irm https://cdn.link-ai.tech/code/cow/run.ps1 | iex
@@ -68,15 +68,15 @@ function Assert-Python {
 
 # ── clone project ────────────────────────────────────────────────
 function Install-Project {
-    if (Test-Path "CowAgent") {
-        Write-Warn "Directory 'CowAgent' already exists."
+    if (Test-Path "CoreAgent") {
+        Write-Warn "Directory 'CoreAgent' already exists."
         $choice = Read-Host "Overwrite(o), backup(b), or quit(q)? [default: b]"
         if (-not $choice) { $choice = "b" }
         switch ($choice.ToLower()) {
-            "o" { Remove-Item -Recurse -Force "CowAgent" }
+            "o" { Remove-Item -Recurse -Force "CoreAgent" }
             "b" {
-                $backup = "CowAgent_backup_$(Get-Date -Format 'yyyyMMddHHmmss')"
-                Rename-Item "CowAgent" $backup
+                $backup = "CoreAgent_backup_$(Get-Date -Format 'yyyyMMddHHmmss')"
+                Rename-Item "CoreAgent" $backup
                 Write-Cow "Backed up to '$backup'"
             }
             "q" { Write-Err "Installation cancelled."; exit 1 }
@@ -91,7 +91,7 @@ function Install-Project {
         exit 1
     }
 
-    Write-Cow "Cloning CowAgent project..."
+    Write-Cow "Cloning CoreAgent project..."
     $cloneOk = $false
 
     # Test GitHub connectivity before attempting clone
@@ -99,33 +99,33 @@ function Install-Project {
         $null = Invoke-WebRequest -Uri "https://github.com" -UseBasicParsing -TimeoutSec 5 -ErrorAction Stop
         Write-Cow "GitHub is reachable, cloning from GitHub..."
         $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-        git clone --depth 10 --progress "https://github.com/zhayujie/CowAgent.git" 2>&1 | ForEach-Object { Write-Host $_ }
+        git clone --depth 10 --progress "https://github.com/zhayujie/CoreAgent.git" 2>&1 | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE -eq 0) { $cloneOk = $true }
         $ErrorActionPreference = $prevEAP
         if (-not $cloneOk) {
-            if (Test-Path "CowAgent") { Remove-Item -Recurse -Force "CowAgent" }
+            if (Test-Path "CoreAgent") { Remove-Item -Recurse -Force "CoreAgent" }
         }
     } catch {}
 
     if (-not $cloneOk) {
         Write-Warn "GitHub clone failed or timed out, switching to Gitee mirror..."
         $prevEAP = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-        git clone --depth 10 --progress "https://gitee.com/zhayujie/CowAgent.git" 2>&1 | ForEach-Object { Write-Host $_ }
+        git clone --depth 10 --progress "https://gitee.com/zhayujie/CoreAgent.git" 2>&1 | ForEach-Object { Write-Host $_ }
         if ($LASTEXITCODE -eq 0) { $cloneOk = $true }
         $ErrorActionPreference = $prevEAP
         if (-not $cloneOk) {
-            if (Test-Path "CowAgent") { Remove-Item -Recurse -Force "CowAgent" }
+            if (Test-Path "CoreAgent") { Remove-Item -Recurse -Force "CoreAgent" }
         }
     }
 
     if (-not $cloneOk) {
         Write-Err "Clone failed from both GitHub and Gitee. Please check your network connection."
-        Write-Err "You can also manually clone: git clone https://gitee.com/zhayujie/CowAgent.git"
+        Write-Err "You can also manually clone: git clone https://gitee.com/zhayujie/CoreAgent.git"
         Read-Host "Press Enter to exit"
         exit 1
     }
 
-    Set-Location "CowAgent"
+    Set-Location "CoreAgent"
     $script:BaseDir = $PWD.Path
     $script:IsProjectDir = $true
     Write-Cow "Project cloned: $BaseDir"
@@ -353,8 +353,8 @@ function New-ConfigFile {
 }
 
 # ── start via cow CLI ─────────────────────────────────────────────
-function Start-CowAgent {
-    Write-Cow "Starting CowAgent..."
+function Start-CoreAgent {
+    Write-Cow "Starting CoreAgent..."
     $cowBin = Get-Command cow -ErrorAction SilentlyContinue
     if ($cowBin) {
         & cow start
@@ -379,7 +379,7 @@ function Invoke-CowCommand {
 # ── usage ─────────────────────────────────────────────────────────
 function Show-Usage {
     Write-Info "========================================="
-    Write-Info "   CowAgent Management Script (Windows)"
+    Write-Info "   CoreAgent Management Script (Windows)"
     Write-Info "========================================="
     Write-Host ""
     Write-Host "Usage:"
@@ -402,7 +402,7 @@ function Show-Usage {
 function Install-Mode {
     Clear-Host
     Write-Info "========================================="
-    Write-Info "   CowAgent Installation (Windows)"
+    Write-Info "   CoreAgent Installation (Windows)"
     Write-Info "========================================="
     Write-Host ""
 
@@ -428,9 +428,9 @@ function Install-Mode {
     New-ConfigFile
 
     Write-Host ""
-    $startNow = Read-Host "Start CowAgent now? [Y/n]"
+    $startNow = Read-Host "Start CoreAgent now? [Y/n]"
     if ($startNow -ne "n" -and $startNow -ne "N") {
-        Start-CowAgent
+        Start-CoreAgent
     } else {
         Write-Cow "Installation complete!"
         Write-Host ""
@@ -442,7 +442,7 @@ function Install-Mode {
 
 # ── update ────────────────────────────────────────────────────────
 function Update-Project {
-    Write-Cow "Updating CowAgent..."
+    Write-Cow "Updating CoreAgent..."
     Set-Location $BaseDir
 
     # Stop if running
@@ -462,7 +462,7 @@ function Update-Project {
         if ($pullExit -ne 0) {
             Write-Warn "GitHub failed, trying Gitee..."
             $ErrorActionPreference = "Continue"
-            git remote set-url origin https://gitee.com/zhayujie/CowAgent.git 2>&1 | Out-Null
+            git remote set-url origin https://gitee.com/zhayujie/CoreAgent.git 2>&1 | Out-Null
             git pull 2>&1 | Out-Null
             $ErrorActionPreference = $prevEAP
         }
@@ -475,7 +475,7 @@ function Update-Project {
 
     # Start via python -m cli.cli instead of cow.exe, because the exe may
     # still be cached/locked from the previous installation on Windows.
-    Write-Cow "Starting CowAgent..."
+    Write-Cow "Starting CoreAgent..."
     & $PythonCmd -m cli.cli start
 }
 

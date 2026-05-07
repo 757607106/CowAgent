@@ -1,7 +1,7 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "name": "CowAgent",
-  "description": "CowAgent - AI Super Assistant powered by LLMs, with autonomous task planning, long-term memory, skills system, and multi-channel deployment.",
+  "name": "CoreAgent",
+  "description": "CoreAgent - AI Super Assistant powered by LLMs, with autonomous task planning, long-term memory, skills system, and multi-channel deployment.",
   "theme": "mint",
   "appearance": {
     "default": "light"
@@ -20,17 +20,17 @@
     "links": [
       {
         "label": "官网",
-        "href": "https://cowagent.ai/"
+        "href": "https://coreagent.ai/"
       },
       {
         "label": "GitHub",
-        "href": "https://github.com/zhayujie/CowAgent"
+        "href": "https://github.com/zhayujie/CoreAgent"
       }
     ]
   },
   "footer": {
     "socials": {
-      "github": "https://github.com/zhayujie/CowAgent"
+      "github": "https://github.com/zhayujie/CoreAgent"
     }
   },
   "navigation": {

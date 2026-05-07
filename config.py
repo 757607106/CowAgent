@@ -219,7 +219,7 @@ available_setting = {
     "platform_minio_endpoint": "",  # MinIO HTTP endpoint for platform deployment checks
     "platform_minio_access_key": "",  # MinIO access key
     "platform_minio_secret_key": "",  # MinIO secret key
-    "platform_minio_bucket": "cowagent",  # MinIO bucket used by platform deployments
+    "platform_minio_bucket": "coreagent",  # MinIO bucket used by platform deployments
     "platform_start_channel_runtimes": False,  # Web 进程是否兼容启动租户托管渠道；默认交给 runtime worker
     "agent": True,  # 是否开启Agent模式
     "agent_workspace": "~/cow",  # agent工作空间路径，用于存储skills、memory等

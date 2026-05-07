@@ -246,8 +246,8 @@ def run_install_browser(
         _phase(on_phase, "✅ 验证通过。")
 
     stream("")
-    stream("Browser tool ready! Restart CowAgent to enable it.", "green")
-    _phase(on_phase, "🎉 全部步骤结束。请重启 CowAgent 后使用 browser 工具。")
+    stream("Browser tool ready! Restart CoreAgent to enable it.", "green")
+    _phase(on_phase, "🎉 全部步骤结束。请重启 CoreAgent 后使用 browser 工具。")
     return 0
 
 

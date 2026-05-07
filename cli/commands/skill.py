@@ -620,7 +620,7 @@ def _check_checksum(content: bytes, expected: str):
 
 @click.group()
 def skill():
-    """Manage CowAgent skills."""
+    """Manage CoreAgent skills."""
     pass
 
 
@@ -773,7 +773,7 @@ def _list_remote(page: int = 1):
     if nav_parts:
         click.echo(f"  Navigate: {' | '.join(nav_parts)}")
     click.echo(f"  Install:  cow skill install <name>")
-    click.echo(f"  Browse:   https://skills.cowagent.ai\n")
+    click.echo(f"  Browse:   https://skills.coreagent.ai\n")
 
 
 # ------------------------------------------------------------------

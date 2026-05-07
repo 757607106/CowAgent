@@ -32,8 +32,8 @@ class ResolvedAgentRuntime:
             yield
 
 
-class CowAgentRuntimeAdapter:
-    """把平台侧 Agent 定义适配到现有 CowAgent 运行时。"""
+class CoreAgentRuntimeAdapter:
+    """把平台侧 Agent 定义适配到现有 CoreAgent 运行时。"""
 
     def __init__(
         self,

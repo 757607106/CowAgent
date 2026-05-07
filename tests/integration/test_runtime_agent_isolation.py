@@ -12,7 +12,7 @@ from bridge.agent_bridge import AgentLLMModel
 from bridge.bridge import Bridge
 from bridge.context import Context, ContextType
 from config import conf
-from cow_platform.adapters.cowagent_runtime_adapter import CowAgentRuntimeAdapter
+from cow_platform.adapters.coreagent_runtime_adapter import CoreAgentRuntimeAdapter
 from cow_platform.repositories.session_repository import SessionRepository
 from cow_platform.services.agent_service import AgentService
 from cow_platform.services.model_config_service import ModelConfigService
@@ -95,7 +95,7 @@ def test_runtime_adapter_and_session_store_isolate_agents(tmp_path: Path, monkey
 
     monkeypatch.setattr(agent_bridge, "create_agent", MethodType(fake_create_agent, agent_bridge))
 
-    adapter = CowAgentRuntimeAdapter(service)
+    adapter = CoreAgentRuntimeAdapter(service)
     runtime_a = adapter.resolve_from_context(_build_context("agent-a"))
     runtime_b = adapter.resolve_from_context(_build_context("agent-b"))
 

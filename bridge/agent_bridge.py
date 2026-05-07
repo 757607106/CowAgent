@@ -19,7 +19,7 @@ from common import const
 from common.log import logger
 from common.model_routing import resolve_bot_type_from_model
 from common.utils import expand_path
-from cow_platform.adapters.cowagent_runtime_adapter import CowAgentRuntimeAdapter
+from cow_platform.adapters.coreagent_runtime_adapter import CoreAgentRuntimeAdapter
 from cow_platform.runtime.scope import get_current_model_config_id, get_current_model_name
 from cow_platform.services.agent_governance_service import AgentGovernanceService
 from models.openai_compatible_bot import OpenAICompatibleBot
@@ -270,7 +270,7 @@ class AgentBridge:
         self.default_agent = None  # For backward compatibility (no session_id)
         self.agent: Optional[Agent] = None
         self.scheduler_initialized = False
-        self.runtime_adapter = CowAgentRuntimeAdapter()
+        self.runtime_adapter = CoreAgentRuntimeAdapter()
         self.governance_service = AgentGovernanceService()
         self.pricing_service = self.governance_service.pricing_service
         self.usage_service = self.governance_service.usage_service

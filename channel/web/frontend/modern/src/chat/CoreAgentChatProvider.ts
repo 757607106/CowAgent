@@ -16,7 +16,7 @@ const MAX_TOOL_RESULT_LENGTH = 4000;
 const REASONING_RENDER_CAP = 4 * 1024;
 const CONTEXT_CLEARED_TEXT = '— 以上内容已从上下文中移除 —';
 
-export interface CowAgentChatRequest {
+export interface CoreAgentChatRequest {
   session_id: string;
   message: string;
   attachments?: ChatAttachment[];
@@ -27,10 +27,10 @@ export interface CowAgentChatRequest {
   binding_id?: string;
 }
 
-export type CowAgentChatRole = 'user' | 'assistant' | 'system' | 'divider';
+export type CoreAgentChatRole = 'user' | 'assistant' | 'system' | 'divider';
 
-export interface CowAgentChatMessage {
-  role: CowAgentChatRole;
+export interface CoreAgentChatMessage {
+  role: CoreAgentChatRole;
   createdAt: number;
   text?: string;
   attachments?: ChatAttachment[];
@@ -68,7 +68,7 @@ function cloneAssistantContent(content?: AssistantBubbleContent): AssistantBubbl
   };
 }
 
-function createAssistantMessage(content?: Partial<AssistantBubbleContent>): CowAgentChatMessage {
+function createAssistantMessage(content?: Partial<AssistantBubbleContent>): CoreAgentChatMessage {
   return {
     role: 'assistant',
     createdAt: Date.now(),
@@ -81,7 +81,7 @@ function createAssistantMessage(content?: Partial<AssistantBubbleContent>): CowA
   };
 }
 
-function ensureAssistantMessage(originMessage?: CowAgentChatMessage): CowAgentChatMessage {
+function ensureAssistantMessage(originMessage?: CoreAgentChatMessage): CoreAgentChatMessage {
   if (originMessage?.role === 'assistant') {
     return {
       ...originMessage,
@@ -237,7 +237,7 @@ function parseStreamEvent(chunk?: SSEOutput): StreamEventPayload | null {
   return null;
 }
 
-function applyStreamPayload(message: CowAgentChatMessage, payload: StreamEventPayload): CowAgentChatMessage {
+function applyStreamPayload(message: CoreAgentChatMessage, payload: StreamEventPayload): CoreAgentChatMessage {
   const next = ensureAssistantMessage(message);
   const content = cloneAssistantContent(next.content);
   const steps = [...content.steps];
@@ -422,7 +422,7 @@ function applyStreamPayload(message: CowAgentChatMessage, payload: StreamEventPa
   return next;
 }
 
-function finalizeAssistantMessage(message: CowAgentChatMessage, status: AssistantStep['status']): CowAgentChatMessage {
+function finalizeAssistantMessage(message: CoreAgentChatMessage, status: AssistantStep['status']): CoreAgentChatMessage {
   const next = ensureAssistantMessage(message);
   const content = cloneAssistantContent(next.content);
   const steps = [...content.steps];
@@ -434,7 +434,7 @@ function finalizeAssistantMessage(message: CowAgentChatMessage, status: Assistan
   return next;
 }
 
-function createFallbackAssistantMessage(originMessage: CowAgentChatMessage | undefined, error: Error): CowAgentChatMessage {
+function createFallbackAssistantMessage(originMessage: CoreAgentChatMessage | undefined, error: Error): CoreAgentChatMessage {
   const status = error.name === 'AbortError' ? 'abort' : 'error';
   const next = finalizeAssistantMessage(
     originMessage?.role === 'assistant' ? originMessage : createAssistantMessage(),
@@ -550,8 +550,8 @@ function createHistoryMessageId(row: any, index: number, prefix: string): string
   return `${prefix}-${seq}-${index}`;
 }
 
-export function parseHistoryMessages(rows: any[], contextStartSeq = 0): MessageInfo<CowAgentChatMessage>[] {
-  const messages: MessageInfo<CowAgentChatMessage>[] = [];
+export function parseHistoryMessages(rows: any[], contextStartSeq = 0): MessageInfo<CoreAgentChatMessage>[] {
+  const messages: MessageInfo<CoreAgentChatMessage>[] = [];
   let dividerInserted = false;
 
   rows.forEach((row, index) => {
@@ -629,7 +629,7 @@ export function parseHistoryMessages(rows: any[], contextStartSeq = 0): MessageI
   return messages;
 }
 
-export function createContextDividerMessage(): MessageInfo<CowAgentChatMessage> {
+export function createContextDividerMessage(): MessageInfo<CoreAgentChatMessage> {
   return {
     id: `context-divider-${Date.now()}`,
     status: 'success',
@@ -641,24 +641,24 @@ export function createContextDividerMessage(): MessageInfo<CowAgentChatMessage> 
   };
 }
 
-export function createAssistantPlaceholderMessage(): CowAgentChatMessage {
+export function createAssistantPlaceholderMessage(): CoreAgentChatMessage {
   return createAssistantMessage({ streaming: true });
 }
 
-export function createAssistantErrorMessage(originMessage: CowAgentChatMessage | undefined, error: Error): CowAgentChatMessage {
+export function createAssistantErrorMessage(originMessage: CoreAgentChatMessage | undefined, error: Error): CoreAgentChatMessage {
   return createFallbackAssistantMessage(originMessage, error);
 }
 
-export function extractAssistantReply(message?: CowAgentChatMessage): string {
+export function extractAssistantReply(message?: CoreAgentChatMessage): string {
   if (!message || message.role !== 'assistant') return '';
   return message.content?.text || '';
 }
 
-class CowAgentChatProvider extends AbstractChatProvider<CowAgentChatMessage, CowAgentChatRequest, SSEOutput> {
+class CoreAgentChatProvider extends AbstractChatProvider<CoreAgentChatMessage, CoreAgentChatRequest, SSEOutput> {
   transformParams(
-    requestParams: Partial<CowAgentChatRequest>,
-    options: XRequestOptions<CowAgentChatRequest, SSEOutput, CowAgentChatMessage>,
-  ): CowAgentChatRequest {
+    requestParams: Partial<CoreAgentChatRequest>,
+    options: XRequestOptions<CoreAgentChatRequest, SSEOutput, CoreAgentChatMessage>,
+  ): CoreAgentChatRequest {
     if (typeof requestParams !== 'object') {
       throw new Error('requestParams must be an object');
     }
@@ -668,10 +668,10 @@ class CowAgentChatProvider extends AbstractChatProvider<CowAgentChatMessage, Cow
       ...(requestParams || {}),
       attachments: requestParams.attachments || [],
       stream: true,
-    } as CowAgentChatRequest;
+    } as CoreAgentChatRequest;
   }
 
-  transformLocalMessage(requestParams: Partial<CowAgentChatRequest>): CowAgentChatMessage {
+  transformLocalMessage(requestParams: Partial<CoreAgentChatRequest>): CoreAgentChatMessage {
     return {
       role: 'user',
       text: requestParams.message || '',
@@ -681,12 +681,12 @@ class CowAgentChatProvider extends AbstractChatProvider<CowAgentChatMessage, Cow
   }
 
   transformMessage(info: {
-    originMessage?: CowAgentChatMessage;
+    originMessage?: CoreAgentChatMessage;
     chunk: SSEOutput;
     chunks: SSEOutput[];
     status: 'local' | 'loading' | 'updating' | 'success' | 'error' | 'abort';
     responseHeaders: Headers;
-  }): CowAgentChatMessage {
+  }): CoreAgentChatMessage {
     const { originMessage, chunk, chunks, status } = info;
 
     if (!chunk && Array.isArray(chunks)) {
@@ -707,9 +707,9 @@ class CowAgentChatProvider extends AbstractChatProvider<CowAgentChatMessage, Cow
   }
 }
 
-export function createCowAgentChatProvider() {
-  return new CowAgentChatProvider({
-    request: XRequest<CowAgentChatRequest, SSEOutput, CowAgentChatMessage>('/message', {
+export function createCoreAgentChatProvider() {
+  return new CoreAgentChatProvider({
+    request: XRequest<CoreAgentChatRequest, SSEOutput, CoreAgentChatMessage>('/message', {
       manual: true,
       credentials: 'same-origin',
       headers: {

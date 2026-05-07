@@ -6,7 +6,7 @@ import { api } from '../services/api';
 import type { ChannelConfigItem, ChannelField, ChannelTypeItem, WeixinQrInfo } from '../types';
 
 const WECOM_BOT_SDK_URL = 'https://wwcdn.weixin.qq.com/node/wework/js/wecom-aibot-sdk@0.1.0.min.js';
-const WECOM_BOT_SOURCE = 'cowagent';
+const WECOM_BOT_SOURCE = 'coreagent';
 
 declare global {
   interface Window {

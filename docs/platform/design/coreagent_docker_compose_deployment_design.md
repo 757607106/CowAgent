@@ -428,7 +428,7 @@ docker compose -f docker/compose.base.yml -f docker/compose.platform.yml up -d -
 ## 测试环境
 
 ```bash
-docker compose -p cowagent-test \
+docker compose -p coreagent-test \
   -f docker/compose.base.yml \
   -f docker/compose.platform.yml \
   -f docker/compose.test.yml \
@@ -441,7 +441,7 @@ docker compose -p cowagent-test \
 PLATFORM_POSTGRES_PASSWORD='change-to-strong-db-secret' \
 PLATFORM_MINIO_ROOT_USER='change-to-prod-access' \
 PLATFORM_MINIO_ROOT_PASSWORD='change-to-strong-minio-secret' \
-docker compose -p cowagent-prod \
+docker compose -p coreagent-prod \
   -f docker/compose.base.yml \
   -f docker/compose.platform.yml \
   -f docker/compose.prod.yml \

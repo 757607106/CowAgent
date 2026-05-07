@@ -79,7 +79,7 @@ def test_save_weixin_credentials_persists_database_config_without_file_path() ->
         _weixin_definition(
             config={
                 "weixin_token": "old-token",
-                "weixin_credentials_path": "~/.cowagent/weixin/chcfg_weixin_a.json",
+                "weixin_credentials_path": "~/.coreagent/weixin/chcfg_weixin_a.json",
             }
         )
     )
@@ -110,7 +110,7 @@ def test_clear_weixin_credentials_can_remove_secret_token() -> None:
                 "weixin_base_url": "https://tenant.weixin.example",
                 "weixin_bot_id": "bot-a",
                 "weixin_user_id": "user-a",
-                "weixin_credentials_path": "~/.cowagent/weixin/chcfg_weixin_a.json",
+                "weixin_credentials_path": "~/.coreagent/weixin/chcfg_weixin_a.json",
             }
         )
     )
@@ -130,7 +130,7 @@ def test_delete_channel_runtime_artifacts_removes_only_default_weixin_credential
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setenv("HOME", str(tmp_path))
-    default_path = tmp_path / ".cowagent" / "weixin" / "chcfg_weixin_a.json"
+    default_path = tmp_path / ".coreagent" / "weixin" / "chcfg_weixin_a.json"
     default_path.parent.mkdir(parents=True)
     default_path.write_text(json.dumps({"token": "old"}))
     unsafe_path = tmp_path / "outside.json"
@@ -206,7 +206,7 @@ def test_weixin_qr_confirm_saves_tenant_credentials_to_database_only(
         "user_id": "user-a",
     }
     assert restarted == ["chcfg_weixin_a"]
-    assert not list((tmp_path / ".cowagent").glob("**/*.json"))
+    assert not list((tmp_path / ".coreagent").glob("**/*.json"))
 
 
 def test_tenant_weixin_channel_expiry_clears_database_token(monkeypatch: pytest.MonkeyPatch) -> None:

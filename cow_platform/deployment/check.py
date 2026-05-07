@@ -13,7 +13,7 @@ from cow_platform.deployment.checks import (
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Validate CowAgent platform deployment dependencies.")
+    parser = argparse.ArgumentParser(description="Validate CoreAgent platform deployment dependencies.")
     parser.add_argument("--require-all", action="store_true", help="Require PostgreSQL, Redis, Qdrant, and MinIO.")
     parser.add_argument("--strict-secrets", action="store_true", help="Reject default production secrets.")
     parser.add_argument("--wait-seconds", type=float, default=0.0, help="Wait for required dependencies.")

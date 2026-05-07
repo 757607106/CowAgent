@@ -29,7 +29,7 @@ class ImageGenerationResult:
 
 
 class ImageGenerationService:
-    """Run CowAgent's built-in image-generation Skill under platform runtime config."""
+    """Run CoreAgent's built-in image-generation Skill under platform runtime config."""
 
     def __init__(
         self,

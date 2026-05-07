@@ -3,7 +3,7 @@ from fastapi.testclient import TestClient
 
 from bridge.context import Context, ContextType
 from config import conf
-from cow_platform.adapters.cowagent_runtime_adapter import CowAgentRuntimeAdapter
+from cow_platform.adapters.coreagent_runtime_adapter import CoreAgentRuntimeAdapter
 from cow_platform.api.app import create_app
 from cow_platform.api.settings import PlatformSettings
 from cow_platform.runtime.scope import get_current_model_name
@@ -234,7 +234,7 @@ def test_runtime_uses_resolved_model_config_overrides(tmp_path, monkeypatch) -> 
     context["receiver"] = "user-1"
     context["channel_type"] = "web"
 
-    resolved = CowAgentRuntimeAdapter().resolve_from_context(context)
+    resolved = CoreAgentRuntimeAdapter().resolve_from_context(context)
     assert resolved is not None
     assert resolved.runtime_context.metadata["model_config"]["model_config_id"] == model_config_id
     assert resolved.runtime_context.metadata["config_overrides"]["dashscope_api_key"] == "dashscope-runtime-key"
@@ -276,7 +276,7 @@ def test_runtime_uses_resolved_model_config_overrides(tmp_path, monkeypatch) -> 
     custom_context["receiver"] = "user-1"
     custom_context["channel_type"] = "web"
 
-    custom_resolved = CowAgentRuntimeAdapter().resolve_from_context(custom_context)
+    custom_resolved = CoreAgentRuntimeAdapter().resolve_from_context(custom_context)
     assert custom_resolved is not None
     custom_overrides = custom_resolved.runtime_context.metadata["config_overrides"]
     assert custom_overrides["bot_type"] == "openai"

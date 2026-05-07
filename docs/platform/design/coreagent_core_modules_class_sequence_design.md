@@ -418,10 +418,10 @@ platform/
     workspace/
   bridge/
     config_mapper.py
-    cowagent_runtime_adapter.py
-    cowagent_tool_adapter.py
-    cowagent_skill_adapter.py
-    cowagent_model_adapter.py
+    coreagent_runtime_adapter.py
+    coreagent_tool_adapter.py
+    coreagent_skill_adapter.py
+    coreagent_model_adapter.py
 ```
 
 ---

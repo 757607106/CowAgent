@@ -1,6 +1,6 @@
 ---
 title: Features
-description: CowAgent long-term memory, task planning, skills system, CLI commands, and browser tool in detail
+description: CoreAgent long-term memory, task planning, skills system, CLI commands, and browser tool in detail
 ---
 
 ## 1. Long-term Memory
@@ -84,7 +84,7 @@ Secrets required by skills are stored in an environment variable file, managed b
 
 The Skills system provides infinite extensibility for the Agent. Each Skill consists of a description file, execution scripts (optional), and resources (optional), describing how to complete specific types of tasks. Skills allow the Agent to follow instructions for complex workflows, invoke tools, or integrate third-party systems.
 
-- **[Skill Hub](https://skills.cowagent.ai/):** An open skill marketplace featuring official, community, and third-party skills. Install with one command.
+- **[Skill Hub](https://skills.coreagent.ai/):** An open skill marketplace featuring official, community, and third-party skills. Install with one command.
 - **Built-in skills:** Located in the project's `skills/` directory, including skill creator, image recognition, LinkAI agent, web fetch, and more. Built-in skills are automatically enabled based on dependency conditions (API keys, system commands, etc.).
 - **Custom skills:** Created by users through conversation, stored in the workspace (`~/cow/skills/`), capable of implementing any complex business process or third-party integration.
 
@@ -109,7 +109,7 @@ The `skill-creator` skill enables rapid skill creation through conversation. You
 
 ### 4.3 Skill Hub
 
-Visit [skills.cowagent.ai](https://skills.cowagent.ai/) to browse all available skills, or use commands in conversation:
+Visit [skills.coreagent.ai](https://skills.coreagent.ai/) to browse all available skills, or use commands in conversation:
 
 ```text
 /skill list --remote          # Browse Skill Hub
@@ -123,7 +123,7 @@ Also supports installing skills from GitHub, ClawHub, LinkAI, and other third-pa
 
 ## 5. CLI Command System
 
-CowAgent provides two command interaction methods, covering service management, skill installation, configuration, and more:
+CoreAgent provides two command interaction methods, covering service management, skill installation, configuration, and more:
 
 - **Terminal CLI:** Run `cow <command>` in the system terminal, supporting `start`, `stop`, `restart`, `update`, `status`, `logs`, `skill`, etc.
 - **Chat commands:** Type `/<command>` in conversation. The Web console shows a command menu when you type `/`.
@@ -136,4 +136,4 @@ cow skill install pptx # Install a skill
 cow install-browser    # Install browser tool
 ```
 
-See [Command Overview](https://docs.cowagent.ai/en/cli) for details.
+See [Command Overview](https://docs.coreagent.ai/en/cli) for details.

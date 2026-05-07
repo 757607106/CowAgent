@@ -1,6 +1,6 @@
 # Upstream Upgrade SOP
 
-本文档描述平台分支吸收上游 CowAgent 更新时的最小操作流程。
+本文档描述平台分支吸收上游 CoreAgent 更新时的最小操作流程。
 
 ## 目标
 

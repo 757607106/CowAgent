@@ -45,7 +45,7 @@ def test_app_imports_local_platform_env(monkeypatch, tmp_path):
                 "PLATFORM_MINIO_API_PORT=59000",
                 "PLATFORM_MINIO_ROOT_USER=cowplatform-prod",
                 "PLATFORM_MINIO_ROOT_PASSWORD=prod-smoke-minio-secret",
-                "PLATFORM_MINIO_BUCKET=cowagent",
+                "PLATFORM_MINIO_BUCKET=coreagent",
                 "WEB_PORT=9899",
                 "MODEL=qwen3.6-plus",
             ]
@@ -65,7 +65,7 @@ def test_app_imports_local_platform_env(monkeypatch, tmp_path):
                 "COW_PLATFORM_MINIO_ENDPOINT=http://127.0.0.1:${PLATFORM_MINIO_API_PORT:-59000}",
                 "COW_PLATFORM_MINIO_ACCESS_KEY=${PLATFORM_MINIO_ROOT_USER:-cowplatform-prod}",
                 "COW_PLATFORM_MINIO_SECRET_KEY=${PLATFORM_MINIO_ROOT_PASSWORD:-prod-smoke-minio-secret}",
-                "COW_PLATFORM_MINIO_BUCKET=${PLATFORM_MINIO_BUCKET:-cowagent}",
+                "COW_PLATFORM_MINIO_BUCKET=${PLATFORM_MINIO_BUCKET:-coreagent}",
                 "WEB_TENANT_AUTH=true",
                 "WEB_PORT=${LOCAL_WEB_PORT}",
                 "MODEL=${MODEL:-qwen3.6-plus}",

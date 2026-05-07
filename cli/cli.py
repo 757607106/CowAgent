@@ -1,4 +1,4 @@
-"""CowAgent CLI entry point."""
+"""CoreAgent CLI entry point."""
 
 import click
 from cli import __version__
@@ -12,18 +12,18 @@ from cli.commands.platform import platform
 
 HELP_TEXT = """Usage: cow COMMAND [ARGS]...
 
-  CowAgent CLI - Manage your CowAgent instance.
+  CoreAgent CLI - Manage your CoreAgent instance.
 
 Commands:
   help     Show this message.
   version  Show the version.
-  start    Start CowAgent.
-  stop     Stop CowAgent.
-  restart  Restart CowAgent.
-  update   Update CowAgent and restart.
-  status   Show CowAgent running status.
-  logs     View CowAgent logs.
-  skill    Manage CowAgent skills.
+  start    Start CoreAgent.
+  stop     Stop CoreAgent.
+  restart  Restart CoreAgent.
+  update   Update CoreAgent and restart.
+  status   Show CoreAgent running status.
+  logs     View CoreAgent logs.
+  skill    Manage CoreAgent skills.
   knowledge  Manage knowledge base.
   platform   Run platform API, workers, migrations and doctor commands.
   install-browser  Install browser tool (Playwright + Chromium).
@@ -47,7 +47,7 @@ class CowCLI(click.Group):
 @click.group(cls=CowCLI, invoke_without_command=True, context_settings=dict(help_option_names=[]))
 @click.pass_context
 def main(ctx):
-    """CowAgent CLI - Manage your CowAgent instance."""
+    """CoreAgent CLI - Manage your CoreAgent instance."""
     if ctx.invoked_subcommand is None:
         click.echo(HELP_TEXT.strip())
 

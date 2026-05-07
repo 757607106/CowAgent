@@ -1,10 +1,10 @@
 # Patch Register
 
-本文档记录平台化过程中，对原有 CowAgent 上游文件做过的兼容修改。  
+本文档记录平台化过程中，对原有 CoreAgent 上游文件做过的兼容修改。
 目标不是把所有变更都记在这里，而是把“未来升级时最容易冲突的 patch 点”明确下来。
 
-当前二开基线把上游 CowAgent 作为 Agent 内核，平台能力优先落在 `cow_platform/`。
-上游参考版本：<https://github.com/zhayujie/CowAgent/tree/2.0.7>
+当前二开基线把上游 CoreAgent 作为 Agent 内核，平台能力优先落在 `cow_platform/`。
+上游参考版本：<https://github.com/zhayujie/CoreAgent/tree/2.0.7>
 
 ## Patch 清单
 
@@ -104,6 +104,15 @@
 升级关注点：
 
 - 如果上游调整 worker 或部署入口，需要确认 `cow platform channel-runtime` 与容器服务仍能独立启动租户渠道 runtime
+
+### `scripts/start-platform-local.sh`
+
+- 本地源码启动平台 Web 时，同时编排已有 `cow_platform.worker.channel_runtime`，保持本地调试也具备租户渠道消息消费能力
+- 仅启动已有 runtime worker，不在脚本内复制渠道解析、binding 或消息处理逻辑；可用 `START_CHANNEL_RUNTIME=false` 临时关闭
+
+升级关注点：
+
+- 如果上游调整本地启动脚本，需要确认 `app.py` 仍只承担 Web/API，租户渠道仍通过独立 runtime worker 消费消息
 
 ### `cow_platform/services/scheduler_task_store.py`
 

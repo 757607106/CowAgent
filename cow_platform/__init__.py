@@ -1,4 +1,4 @@
-"""Minimal platform package for staged CowAgent platformization."""
+"""Minimal platform package for staged CoreAgent platformization."""
 
 from cow_platform.domain.models import AgentDefinition, PolicySnapshot, RuntimeContext, SessionState
 

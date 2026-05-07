@@ -188,7 +188,7 @@ class MCPManager:
                 self._loop_ready.clear()
                 self._loop_thread = threading.Thread(
                     target=self._run_background_loop,
-                    name="cowagent-mcp-loop",
+                    name="coreagent-mcp-loop",
                     daemon=True,
                 )
                 self._loop_thread.start()
