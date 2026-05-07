@@ -6,6 +6,7 @@ import {
 } from '@ant-design/icons';
 import { useEffect, useMemo, useState } from 'react';
 import { MarkdownBlock } from './ChatMarkdown';
+import { renderReasoningStepIcon, renderToolStepIcon } from './toolIcons';
 import type { AssistantBubbleContent, AssistantMedia, AssistantStep } from '../types';
 
 interface AssistantMessageFlowProps {
@@ -199,10 +200,17 @@ function buildThoughtChainItems(steps: AssistantStep[]): ThoughtChainItemType[] 
       title = step.toolName || step.title.replace(/^工具\s*[·:：-]\s*/, '');
     }
 
+    const isCustomIconStep = step.kind === 'tool' || step.kind === 'reasoning';
+
     return {
       key: step.key,
       title,
-      status: step.status,
+      status: isCustomIconStep ? undefined : step.status,
+      icon: step.kind === 'tool'
+        ? renderToolStepIcon(step.toolName || title, step.status)
+        : step.kind === 'reasoning'
+          ? renderReasoningStepIcon(step.status)
+          : undefined,
       content: chainContent,
       footer,
       collapsible: isCollapsible,
