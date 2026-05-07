@@ -20,6 +20,7 @@ from cow_platform.db import connect, jsonb
 
 
 DEFAULT_MAX_AGE_DAYS: int = 30
+THINKING_METADATA_KEY = "enable_thinking"
 
 
 def _is_visible_user_message(content: Any) -> bool:
@@ -71,22 +72,52 @@ def _decode_content(raw_content: Any) -> Any:
     return raw_content
 
 
+def _decode_metadata(raw_metadata: Any) -> Dict[str, Any]:
+    if isinstance(raw_metadata, str):
+        try:
+            raw_metadata = json.loads(raw_metadata)
+        except Exception:
+            return {}
+    return raw_metadata if isinstance(raw_metadata, dict) else {}
+
+
+def _thinking_enabled_for_message(metadata: Dict[str, Any], fallback: bool) -> bool:
+    if THINKING_METADATA_KEY not in metadata:
+        return fallback
+    value = metadata.get(THINKING_METADATA_KEY)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off", ""}:
+            return False
+    return bool(value)
+
+
+def _unpack_display_row(row: tuple) -> tuple[str, Any, int, Dict[str, Any]]:
+    role, raw_content, created_at = row[:3]
+    raw_metadata = row[3] if len(row) > 3 else {}
+    return role, _decode_content(raw_content), created_at, _decode_metadata(raw_metadata)
+
+
 def _group_into_display_turns(rows: List[tuple], include_thinking: bool = True) -> List[Dict[str, Any]]:
     groups: List[tuple] = []
     cur_user: Optional[tuple] = None
     cur_rest: List[tuple] = []
     started = False
 
-    for role, raw_content, created_at in rows:
-        content = _decode_content(raw_content)
+    for row in rows:
+        role, content, created_at, metadata = _unpack_display_row(row)
         if role == "user" and _is_visible_user_message(content):
             if started:
                 groups.append((cur_user, cur_rest))
-            cur_user = (content, created_at)
+            cur_user = (content, created_at, metadata)
             cur_rest = []
             started = True
         else:
-            cur_rest.append((role, content, created_at))
+            cur_rest.append((role, content, created_at, metadata))
 
     if started:
         groups.append((cur_user, cur_rest))
@@ -94,7 +125,7 @@ def _group_into_display_turns(rows: List[tuple], include_thinking: bool = True) 
     turns: List[Dict[str, Any]] = []
     for user_row, rest in groups:
         if user_row:
-            content, created_at = user_row
+            content, created_at, _metadata = user_row
             text = _extract_display_text(content)
             if text:
                 turns.append({"role": "user", "content": text, "created_at": created_at})
@@ -104,7 +135,7 @@ def _group_into_display_turns(rows: List[tuple], include_thinking: bool = True) 
         final_text = ""
         final_ts: Optional[int] = None
 
-        for role, content, created_at in rest:
+        for role, content, created_at, metadata in rest:
             if role == "user":
                 tool_results.update(_extract_tool_results(content))
             elif role == "assistant":
@@ -114,7 +145,7 @@ def _group_into_display_turns(rows: List[tuple], include_thinking: bool = True) 
                             continue
                         btype = block.get("type")
                         if btype == "thinking":
-                            if not include_thinking:
+                            if not _thinking_enabled_for_message(metadata, include_thinking):
                                 continue
                             txt = block.get("thinking", "").strip()
                             if txt:
@@ -253,11 +284,13 @@ class ConversationStore:
                     next_seq = int(row["max_seq"]) + 1
 
                     for msg in messages:
+                        raw_metadata = msg.get("metadata", {})
+                        metadata = raw_metadata if isinstance(raw_metadata, dict) else {}
                         conn.execute(
                             """
                             INSERT INTO platform_conversation_messages
-                                (tenant_id, agent_id, session_id, seq, role, content, created_at)
-                            VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                (tenant_id, agent_id, session_id, seq, role, content, metadata, created_at)
+                            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                             ON CONFLICT (tenant_id, agent_id, session_id, seq) DO NOTHING
                             """,
                             (
@@ -267,6 +300,7 @@ class ConversationStore:
                                 next_seq,
                                 msg.get("role", ""),
                                 jsonb(msg.get("content", "")),
+                                jsonb(metadata),
                                 now,
                             ),
                         )
@@ -404,7 +438,7 @@ class ConversationStore:
                 ctx_start = int(ctx_row["context_start_seq"]) if ctx_row else 0
                 rows = conn.execute(
                     """
-                    SELECT seq, role, content, created_at
+                    SELECT seq, role, content, metadata, created_at
                     FROM platform_conversation_messages
                     WHERE tenant_id = %s AND agent_id = %s AND session_id = %s
                     ORDER BY seq ASC
@@ -419,7 +453,7 @@ class ConversationStore:
         except Exception:
             include_thinking = False
 
-        plain_rows = [(row["role"], row["content"], row["created_at"]) for row in rows]
+        plain_rows = [(row["role"], row["content"], row["created_at"], row["metadata"]) for row in rows]
         visible = _group_into_display_turns(plain_rows, include_thinking=include_thinking)
 
         visible_user_seqs: List[int] = []

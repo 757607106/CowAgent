@@ -39,6 +39,30 @@ class FakeModel(LLMModel):
         }
 
 
+class FakeReasoningModel(LLMModel):
+    def __init__(self):
+        super().__init__(model="fake-reasoning-model")
+        self.channel_type = "web"
+
+    def call_stream(self, request):
+        yield {
+            "choices": [
+                {
+                    "delta": {"reasoning_content": "先分析"},
+                    "finish_reason": None,
+                }
+            ]
+        }
+        yield {
+            "choices": [
+                {
+                    "delta": {"content": "答案"},
+                    "finish_reason": "stop",
+                }
+            ]
+        }
+
+
 class FakeAgent:
     memory_manager = None
     skill_manager = None
@@ -95,3 +119,26 @@ def test_text_tool_call_is_executed_and_not_streamed_as_answer():
     assert "<tool_call>" not in streamed_text
     assert any(event.get("type") == "tool_execution_start" for event in events)
     assert any(event.get("type") == "tool_execution_end" for event in events)
+
+
+def test_assistant_message_records_thinking_toggle_for_history(monkeypatch):
+    from config import conf
+
+    monkeypatch.setitem(conf(), "enable_thinking", True)
+
+    events = []
+    executor = AgentStreamExecutor(
+        agent=FakeAgent(),
+        model=FakeReasoningModel(),
+        system_prompt="",
+        tools=[],
+        max_turns=1,
+        on_event=events.append,
+    )
+
+    response = executor.run_stream("需要推理")
+
+    assert response == "答案"
+    assert executor.messages[-1]["metadata"] == {"enable_thinking": True}
+    assert executor.messages[-1]["content"][0] == {"type": "thinking", "thinking": "先分析"}
+    assert any(event.get("type") == "reasoning_update" for event in events)

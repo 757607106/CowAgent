@@ -55,6 +55,7 @@
 - 增加 `platform_runtime_state` 表，作为 runtime desired state、config_version 和 invalidation 的统一真源
 - 增加 `platform_skill_configs` 表，作为平台模式下 skills_config 的租户/Agent 级配置真源
 - `platform_memory_chunks` 在 pgvector 可用时增加 `embedding_vector` 和 HNSW 索引；pgvector 不可用时保留 JSONB embedding 回退
+- `platform_conversation_messages.metadata` 记录消息级运行状态，例如当轮是否开启 `enable_thinking`
 
 升级关注点：
 
@@ -166,7 +167,7 @@
 - 增加按 `workspace_root / db_path` 维度缓存 `ConversationStore`
 - 平台模式下支持按 Agent 工作区隔离会话数据库
 - 增加测试辅助的缓存重置函数
-- 会话历史读取按 `enable_thinking` 决定是否返回 reasoning/thinking 内容，默认关闭以避免平台 Web 历史渲染大段推理文本
+- 会话历史读取优先按 assistant 消息的 `metadata.enable_thinking` 决定是否返回 reasoning/thinking 内容；旧消息无消息级标记时再回退全局 `enable_thinking`
 
 升级关注点：
 

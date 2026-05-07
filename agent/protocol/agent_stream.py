@@ -1051,7 +1051,11 @@ class AgentStreamExecutor:
         full_content = self._filter_think_tags(full_content)
         
         # Add assistant message to history (Claude format uses content blocks)
-        assistant_msg = {"role": "assistant", "content": []}
+        assistant_msg = {
+            "role": "assistant",
+            "content": [],
+            "metadata": {"enable_thinking": bool(thinking_enabled)},
+        }
 
         if full_reasoning:
             stored_reasoning = _truncate_reasoning_for_storage(full_reasoning)

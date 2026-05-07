@@ -1,4 +1,5 @@
 from agent.memory import conversation_persistence
+from agent.memory.conversation_store import _group_into_display_turns
 
 
 def test_persist_messages_honors_config_switch(monkeypatch) -> None:
@@ -35,3 +36,44 @@ def test_clear_session_if_empty_only_clears_empty_sessions(monkeypatch) -> None:
     conversation_persistence.clear_session_if_empty("empty", 0, source="Test")
 
     assert cleared == ["empty"]
+
+
+def test_history_replays_thinking_when_message_metadata_enabled() -> None:
+    rows = [
+        ("user", [{"type": "text", "text": "问题"}], 1, {}),
+        (
+            "assistant",
+            [
+                {"type": "thinking", "thinking": "先分析"},
+                {"type": "text", "text": "答案"},
+            ],
+            2,
+            {"enable_thinking": True},
+        ),
+    ]
+
+    messages = _group_into_display_turns(rows, include_thinking=False)
+
+    assert messages[1]["steps"] == [
+        {"type": "thinking", "content": "先分析"},
+        {"type": "content", "content": "答案"},
+    ]
+
+
+def test_history_hides_thinking_when_message_metadata_disabled() -> None:
+    rows = [
+        ("user", [{"type": "text", "text": "问题"}], 1, {}),
+        (
+            "assistant",
+            [
+                {"type": "thinking", "thinking": "不应回放"},
+                {"type": "text", "text": "答案"},
+            ],
+            2,
+            {"enable_thinking": False},
+        ),
+    ]
+
+    messages = _group_into_display_turns(rows, include_thinking=True)
+
+    assert messages[1]["steps"] == [{"type": "content", "content": "答案"}]

@@ -12,9 +12,10 @@ from common.utils import expand_path
 
 ACCESS_DENIED_MESSAGE = "Error: Access denied: path outside workspace"
 
-_URL_RE = re.compile(r"https?://\S+")
+_URL_RE = re.compile(r"https?://[^\s'\"<>]+")
 _ABS_OR_HOME_PATH_RE = re.compile(r"(?<![\w.:-])(?:~(?:/[^\s'\";|&<>(){}$`]*)?|/(?:[^\s'\";|&<>(){}$`]*)?)")
 _COMMAND_SEPARATORS = {";", "&&", "||", "|", "|&", "("}
+_ALLOWED_SHELL_DEVICE_PATHS = {Path("/dev/null")}
 _SYSTEM_EXECUTABLE_ROOTS = (
     Path("/bin"),
     Path("/sbin"),
@@ -87,13 +88,19 @@ def validate_shell_command_paths(cwd: str | os.PathLike[str], command: str) -> N
         candidates: list[str] = []
         if token.startswith(("~", "/")):
             candidates.append(token)
-        candidates.extend(match.group(0) for match in _ABS_OR_HOME_PATH_RE.finditer(token))
+        candidates.extend(
+            match.group(0)
+            for match in _ABS_OR_HOME_PATH_RE.finditer(token)
+            if not _is_url_pattern_fragment(token, match.start())
+        )
 
         seen: set[str] = set()
         for candidate in candidates:
             if not candidate or candidate in seen:
                 continue
             seen.add(candidate)
+            if _is_allowed_shell_device_path(candidate):
+                continue
             resolve_workspace_path(cwd, candidate)
 
 
@@ -105,6 +112,15 @@ def _contains_parent_reference(value: str) -> bool:
         or "/../" in normalized
         or normalized.endswith("/..")
     )
+
+
+def _is_url_pattern_fragment(token: str, match_start: int) -> bool:
+    scheme_index = token.find("://")
+    return scheme_index >= 0 and match_start > scheme_index
+
+
+def _is_allowed_shell_device_path(path: str) -> bool:
+    return Path(path).resolve(strict=False) in _ALLOWED_SHELL_DEVICE_PATHS
 
 
 def _is_allowed_system_command_token(tokens: list[str], index: int, token: str) -> bool:

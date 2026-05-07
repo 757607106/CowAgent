@@ -120,3 +120,40 @@ def test_bash_allows_workspace_relative_commands(tmp_path: Path) -> None:
 
     assert result.status == "success"
     assert "tenant-a" in result.result["output"]
+
+
+def test_bash_allows_dev_null_redirection(tmp_path: Path) -> None:
+    workspace = tmp_path / "tenant-a" / "default"
+    workspace.mkdir(parents=True)
+
+    result = Bash({"cwd": str(workspace)}).execute({"command": "printf ok 2>/dev/null"})
+
+    assert result.status == "success"
+    assert result.result["output"] == "ok"
+
+
+def test_bash_allows_url_and_regex_like_tokens(tmp_path: Path) -> None:
+    workspace = tmp_path / "tenant-a" / "default"
+    workspace.mkdir(parents=True)
+
+    result = Bash({"cwd": str(workspace)}).execute(
+        {"command": "printf '%s\\n' \"https://example.com/a/b\" 'https?://[^\\s\"]+'"}
+    )
+
+    assert result.status == "success"
+    assert "https://example.com/a/b" in result.result["output"]
+    assert "https?://[^\\s\"]+" in result.result["output"]
+
+
+def test_bash_still_rejects_outside_redirect_paths(tmp_path: Path) -> None:
+    workspace = tmp_path / "tenant-a" / "default"
+    other_workspace = tmp_path / "tenant-b" / "default"
+    workspace.mkdir(parents=True)
+    other_workspace.mkdir(parents=True)
+
+    result = Bash({"cwd": str(workspace)}).execute(
+        {"command": f"printf secret >{other_workspace / 'secret.txt'}"}
+    )
+
+    assert result.status == "error"
+    assert "outside workspace" in str(result.result)

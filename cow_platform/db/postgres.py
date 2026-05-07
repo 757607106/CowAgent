@@ -447,6 +447,7 @@ _SCHEMA = [
         seq INTEGER NOT NULL,
         role TEXT NOT NULL,
         content JSONB NOT NULL,
+        metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
         created_at BIGINT NOT NULL,
         UNIQUE (tenant_id, agent_id, session_id, seq),
         FOREIGN KEY (tenant_id, agent_id, session_id)
@@ -664,9 +665,15 @@ _SCHEDULED_TASK_RUNS_SCHEMA = [
 ]
 
 
+_CONVERSATION_MESSAGE_METADATA_SCHEMA = [
+    "ALTER TABLE platform_conversation_messages ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb",
+]
+
+
 _MIGRATIONS = (
     SchemaMigration("0001_platform_schema", tuple(_SCHEMA)),
     SchemaMigration("0002_runtime_state_and_skill_configs", tuple(_RUNTIME_STATE_SCHEMA)),
     SchemaMigration("0003_capability_configs", tuple(_CAPABILITY_CONFIG_SCHEMA)),
     SchemaMigration("0004_scheduled_task_runs", tuple(_SCHEDULED_TASK_RUNS_SCHEMA)),
+    SchemaMigration("0005_conversation_message_metadata", tuple(_CONVERSATION_MESSAGE_METADATA_SCHEMA)),
 )
