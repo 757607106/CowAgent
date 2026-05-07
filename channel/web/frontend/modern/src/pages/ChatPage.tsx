@@ -45,6 +45,7 @@ import {
   readStoredSessionId,
 } from '../chat/sessionState';
 import { buildChatFileCard } from '../chat/fileCards';
+import { ReasoningIcon } from '../chat/toolIcons';
 import { asAttachment, api } from '../services/api';
 import { scopeBody } from '../services/http';
 import type { ChatAttachment, SessionItem } from '../types';
@@ -836,7 +837,7 @@ export default function ChatPage() {
                         />
                         <SenderSwitch
                           value={deepThink ?? false}
-                          icon={<BulbOutlined />}
+                          icon={<ReasoningIcon />}
                           checkedChildren="深度思考：开"
                           unCheckedChildren="深度思考：关"
                           onChange={(checked) => setDeepThink(Boolean(checked))}

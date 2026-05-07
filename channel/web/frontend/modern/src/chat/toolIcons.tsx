@@ -207,7 +207,7 @@ function GenericToolIcon() {
   );
 }
 
-function ReasoningIcon() {
+export function ReasoningIcon() {
   return (
     <svg
       className="chat-tool-step-icon-svg"
