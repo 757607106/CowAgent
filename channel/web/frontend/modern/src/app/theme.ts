@@ -1,14 +1,14 @@
 const palette = {
   brand: {
-    50: '#EEF4FF',
-    100: '#DDE8FF',
-    200: '#BCD1FF',
-    300: '#93B3FF',
-    400: '#6C91F2',
-    500: '#486FE6',
-    600: '#2F54D4',
-    700: '#243FA8',
-    800: '#1B2E7A',
+    50:  '#EEEFFE',   /* Very light indigo tint */
+    100: '#E0E1FD',
+    200: '#C3C5FB',
+    300: '#9FA2F8',
+    400: '#7577F2',
+    500: '#5557E8',
+    600: '#4338CA',   /* Primary: indigo-600 — distinctive, not generic blue */
+    700: '#3730A3',   /* Hover/pressed */
+    800: '#2E2880',
   },
   accent: {
     50: '#FFF8E6',
@@ -44,11 +44,11 @@ const palette = {
 };
 
 const surface = {
-  body: '#F2F5F9',
+  body: '#F4F4F5',     /* Near-neutral warm grey, not the blue-tinted #F2F5F9 */
   surface: palette.neutral[0],
   raised: '#FFFFFF',
-  subtle: '#F8FAFD',
-  inset: '#EEF2F7',
+  subtle: '#FAFAFA',
+  inset: '#F0F0F1',
 };
 
 const text = {
@@ -82,7 +82,11 @@ const controlHeight = {
 };
 
 const typography = {
-  fontFamily: '"Aptos", "PingFang SC", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+  /*
+   * Inter is the standard for premium PC tools (Linear, Vercel, Raycast).
+   * PingFang SC handles Chinese. Aptos/Segoe fallback for Windows.
+   */
+  fontFamily: '"Inter", "PingFang SC", "Microsoft YaHei UI", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
   fontSize: 14,
   fontSizeLG: 16,
   fontSizeSM: 12,

@@ -51,7 +51,7 @@ export function EmployeeCard({
   actions,
 }: EmployeeCardProps) {
   return (
-    <article className="employee-card">
+    <article className={`employee-card employee-card-${status}`}>
       <header className="employee-card-head">
         <div className="employee-identity">
           <span className="employee-avatar-ring">

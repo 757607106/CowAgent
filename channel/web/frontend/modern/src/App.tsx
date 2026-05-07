@@ -67,7 +67,10 @@ function SidebarContent({
     <>
       <div className="app-logo" aria-label="CowAgent">
         <span className="app-logo-mark">C</span>
-        <span className="app-logo-word">CowAgent</span>
+        <span className="app-logo-text">
+          <span className="app-logo-word">CowAgent</span>
+          <span className="app-logo-sub">AI 员工管理台</span>
+        </span>
       </div>
       <Menu
         mode="inline"

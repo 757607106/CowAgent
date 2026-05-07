@@ -570,8 +570,7 @@ export default function ChatPage() {
   const bubbleRole = useMemo(() => ({
     user: {
       placement: 'end' as const,
-      variant: 'shadow' as const,
-      shape: 'round' as const,
+      variant: 'borderless' as const,
       avatar: <Avatar className="chat-avatar-user" icon={<UserOutlined />} />,
       footerPlacement: 'outer-end' as const,
       footer: (_content: unknown, info: { extraInfo?: Record<string, unknown> }) => (
@@ -692,26 +691,31 @@ export default function ChatPage() {
       <section className="chat-main-pane">
         <div className="chat-main-head">
           <div className="chat-main-intro">
-            <Typography.Title level={4} className="chat-pane-title">
-              {activeSession?.title || '新对话'}
-            </Typography.Title>
-            {historyHasMore ? (
-              <Typography.Text type="secondary">
-                当前展示最近 {HISTORY_PAGE_SIZE} 条消息
-              </Typography.Text>
-            ) : null}
+            <Avatar size={30} src={assistantAvatarSrc} className="chat-active-agent-avatar" />
+            <div className="chat-active-agent-copy">
+              <Typography.Title level={5} className="chat-pane-title" style={{ fontSize: 14, fontWeight: 600, margin: 0, lineHeight: '1.3' }}>
+                {activeSession?.title || '新对话'}
+              </Typography.Title>
+              <div className="chat-active-agent-meta">
+                <span>{formatAgentTriggerLabel(scopeLabel)}</span>
+                <span>{isRequesting ? '正在响应…' : '在线'}</span>
+                {historyHasMore ? (
+                  <span style={{ color: 'var(--text-tertiary)' }}>最近 {HISTORY_PAGE_SIZE} 条</span>
+                ) : null}
+              </div>
+            </div>
           </div>
 
           {(!autoScrollEnabled && bubbleItems.length > 0) || isRequesting ? (
             <Space wrap>
               {!autoScrollEnabled && bubbleItems.length > 0 ? (
-                <Button icon={<ArrowDownOutlined />} onClick={scrollToBottom}>
+                <Button size="small" icon={<ArrowDownOutlined />} onClick={scrollToBottom}>
                   回到底部
                 </Button>
               ) : null}
               {isRequesting ? (
-                <Button danger icon={<StopOutlined />} onClick={abort}>
-                  停止回复
+                <Button size="small" danger icon={<StopOutlined />} onClick={abort}>
+                  停止
                 </Button>
               ) : null}
             </Space>
@@ -750,26 +754,7 @@ export default function ChatPage() {
             )}
           </div>
 
-          <div
-            className={dragOver ? 'chat-sender-shell drag-over' : 'chat-sender-shell'}
-            onDragOver={(event) => {
-              event.preventDefault();
-              if (!dragOver) setDragOver(true);
-            }}
-            onDragLeave={(event) => {
-              event.preventDefault();
-              const nextTarget = event.relatedTarget;
-              if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
-              setDragOver(false);
-            }}
-            onDrop={(event) => {
-              event.preventDefault();
-              setDragOver(false);
-              if (event.dataTransfer.files.length > 0) {
-                void uploadFiles(Array.from(event.dataTransfer.files));
-              }
-            }}
-          >
+          <div className="chat-sender-wrap">
             <Suggestion
               items={suggestionItems}
               open={suggestionOpen && suggestionItems.length > 0}
@@ -781,6 +766,26 @@ export default function ChatPage() {
               rootClassName="chat-command-suggestion"
             >
               {({ onTrigger, onKeyDown }) => (
+                <div
+                  className={dragOver ? 'chat-sender-shell drag-over' : 'chat-sender-shell'}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    if (!dragOver) setDragOver(true);
+                  }}
+                  onDragLeave={(event) => {
+                    event.preventDefault();
+                    const nextTarget = event.relatedTarget;
+                    if (nextTarget instanceof Node && event.currentTarget.contains(nextTarget)) return;
+                    setDragOver(false);
+                  }}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    setDragOver(false);
+                    if (event.dataTransfer.files.length > 0) {
+                      void uploadFiles(Array.from(event.dataTransfer.files));
+                    }
+                  }}
+                >
                 <Sender
                   value={draft}
                   loading={isRequesting}
@@ -887,6 +892,7 @@ export default function ChatPage() {
                   )}
                   suffix={false}
                 />
+                </div>
               )}
             </Suggestion>
           </div>
