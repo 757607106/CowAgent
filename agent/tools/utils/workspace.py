@@ -16,6 +16,8 @@ _URL_RE = re.compile(r"https?://[^\s'\"<>]+")
 _ABS_OR_HOME_PATH_RE = re.compile(r"(?<![\w.:-])(?:~(?:/[^\s'\";|&<>(){}$`]*)?|/(?:[^\s'\";|&<>(){}$`]*)?)")
 _COMMAND_SEPARATORS = {";", "&&", "||", "|", "|&", "("}
 _ALLOWED_SHELL_DEVICE_PATHS = {Path("/dev/null")}
+_BUILTIN_SKILLS_ROOT = Path(__file__).resolve().parents[3] / "skills"
+_INTERPRETER_SCRIPT_SUFFIXES = {".py", ".sh", ".bash", ".js", ".mjs"}
 _SYSTEM_EXECUTABLE_ROOTS = (
     Path("/bin"),
     Path("/sbin"),
@@ -35,7 +37,12 @@ def workspace_root(cwd: str | os.PathLike[str]) -> Path:
     return Path(expand_path(str(cwd or "."))).resolve(strict=False)
 
 
-def resolve_workspace_path(cwd: str | os.PathLike[str], path: str) -> str:
+def resolve_workspace_path(
+    cwd: str | os.PathLike[str],
+    path: str,
+    *,
+    allow_builtin_skill_instruction: bool = False,
+) -> str:
     """Resolve a user path and require it to stay inside cwd."""
     root = workspace_root(cwd)
     raw_path = str(path or "").strip()
@@ -49,6 +56,10 @@ def resolve_workspace_path(cwd: str | os.PathLike[str], path: str) -> str:
 
     resolved = candidate.resolve(strict=False)
     if not is_within_workspace(root, resolved):
+        if allow_builtin_skill_instruction:
+            skill_path = _resolve_builtin_skill_instruction_path(raw_path)
+            if skill_path:
+                return skill_path
         raise WorkspaceAccessError(ACCESS_DENIED_MESSAGE)
     return str(resolved)
 
@@ -63,7 +74,12 @@ def is_within_workspace(cwd: str | os.PathLike[str], path: str | os.PathLike[str
         return False
 
 
-def validate_shell_command_paths(cwd: str | os.PathLike[str], command: str) -> None:
+def validate_shell_command_paths(
+    cwd: str | os.PathLike[str],
+    command: str,
+    *,
+    allow_builtin_skill_scripts: bool = False,
+) -> None:
     """Reject obvious shell path escapes before running inside the workspace.
 
     This is intentionally conservative: if a command references parent dirs,
@@ -101,7 +117,12 @@ def validate_shell_command_paths(cwd: str | os.PathLike[str], command: str) -> N
             seen.add(candidate)
             if _is_allowed_shell_device_path(candidate):
                 continue
-            resolve_workspace_path(cwd, candidate)
+            try:
+                resolve_workspace_path(cwd, candidate)
+            except WorkspaceAccessError:
+                if allow_builtin_skill_scripts and _is_allowed_builtin_skill_script_token(tokens, index, candidate):
+                    continue
+                raise
 
 
 def _contains_parent_reference(value: str) -> bool:
@@ -121,6 +142,75 @@ def _is_url_pattern_fragment(token: str, match_start: int) -> bool:
 
 def _is_allowed_shell_device_path(path: str) -> bool:
     return Path(path).resolve(strict=False) in _ALLOWED_SHELL_DEVICE_PATHS
+
+
+def _resolve_builtin_skill_instruction_path(path: str) -> str | None:
+    resolved = _resolve_builtin_skill_path(path)
+    if resolved is None or resolved.name != "SKILL.md":
+        return None
+    return str(resolved)
+
+
+def _resolve_builtin_skill_script_path(path: str) -> str | None:
+    resolved = _resolve_builtin_skill_path(path)
+    if resolved is None:
+        return None
+    relative = resolved.relative_to(_BUILTIN_SKILLS_ROOT.resolve(strict=False))
+    if len(relative.parts) < 3 or relative.parts[1] != "scripts":
+        return None
+    return str(resolved)
+
+
+def _resolve_builtin_skill_path(path: str) -> Path | None:
+    raw_path = expand_path(str(path or "").strip())
+    candidate = Path(raw_path)
+    if not candidate.is_absolute():
+        return None
+
+    resolved = candidate.resolve(strict=False)
+    skills_root = _BUILTIN_SKILLS_ROOT.resolve(strict=False)
+    try:
+        relative = resolved.relative_to(skills_root)
+    except ValueError:
+        return None
+
+    if len(relative.parts) < 2:
+        return None
+    if any(part.startswith(".") for part in relative.parts):
+        return None
+    return resolved
+
+
+def _is_allowed_builtin_skill_script_token(tokens: list[str], index: int, token: str) -> bool:
+    script_path = _resolve_builtin_skill_script_path(token)
+    if script_path is None:
+        return False
+    if _is_command_position(tokens, index):
+        return True
+    if Path(script_path).suffix.lower() not in _INTERPRETER_SCRIPT_SUFFIXES:
+        return False
+    return _is_interpreter_command(_command_name_for_position(tokens, index))
+
+
+def _command_name_for_position(tokens: list[str], index: int) -> str:
+    start = 0
+    cursor = index - 1
+    while cursor >= 0:
+        if tokens[cursor] in _COMMAND_SEPARATORS:
+            start = cursor + 1
+            break
+        cursor -= 1
+
+    while start < index and _is_env_assignment(tokens[start]):
+        start += 1
+    if start >= index:
+        return ""
+    return Path(tokens[start]).name
+
+
+def _is_interpreter_command(command_name: str) -> bool:
+    normalized = command_name.lower()
+    return normalized in {"bash", "sh", "node"} or normalized.startswith("python")
 
 
 def _is_allowed_system_command_token(tokens: list[str], index: int, token: str) -> bool:

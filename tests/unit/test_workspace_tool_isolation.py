@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from agent.tools.bash.bash import Bash
 from agent.tools.edit.edit import Edit
 from agent.tools.ls.ls import Ls
 from agent.tools.read.read import Read
 from agent.tools.send.send import Send
 from agent.tools.write.write import Write
+from agent.tools.utils.workspace import WorkspaceAccessError, validate_shell_command_paths
 
 
 def test_file_tools_reject_absolute_paths_outside_workspace(tmp_path: Path) -> None:
@@ -73,6 +76,28 @@ def test_read_allows_absolute_paths_inside_workspace(tmp_path: Path) -> None:
     assert "tenant-a" in str(result.result)
 
 
+def test_read_allows_builtin_skill_instruction_outside_workspace(tmp_path: Path) -> None:
+    workspace = tmp_path / "tenant-a" / "default"
+    workspace.mkdir(parents=True)
+    skill_md = Path(__file__).resolve().parents[2] / "skills" / "image-generation" / "SKILL.md"
+
+    result = Read({"cwd": str(workspace)}).execute({"path": str(skill_md)})
+
+    assert result.status == "success"
+    assert "# Image Generation" in str(result.result)
+
+
+def test_read_still_rejects_builtin_skill_script_outside_workspace(tmp_path: Path) -> None:
+    workspace = tmp_path / "tenant-a" / "default"
+    workspace.mkdir(parents=True)
+    script = Path(__file__).resolve().parents[2] / "skills" / "image-generation" / "scripts" / "generate.py"
+
+    result = Read({"cwd": str(workspace)}).execute({"path": str(script)})
+
+    assert result.status == "error"
+    assert "outside workspace" in str(result.result)
+
+
 def test_bash_rejects_paths_outside_workspace(tmp_path: Path) -> None:
     workspace = tmp_path / "tenant-a" / "default"
     other_workspace = tmp_path / "tenant-b" / "default"
@@ -85,6 +110,31 @@ def test_bash_rejects_paths_outside_workspace(tmp_path: Path) -> None:
 
     assert result.status == "error"
     assert "outside workspace" in str(result.result)
+
+
+def test_bash_allows_builtin_skill_script_argument(tmp_path: Path) -> None:
+    workspace = tmp_path / "tenant-a" / "default"
+    workspace.mkdir(parents=True)
+    script = Path(__file__).resolve().parents[2] / "skills" / "image-generation" / "scripts" / "generate.py"
+
+    validate_shell_command_paths(
+        str(workspace),
+        f"python3 {script} '{{\"prompt\":\"x\"}}'",
+        allow_builtin_skill_scripts=True,
+    )
+
+
+def test_bash_still_rejects_builtin_skill_script_as_plain_file_arg(tmp_path: Path) -> None:
+    workspace = tmp_path / "tenant-a" / "default"
+    workspace.mkdir(parents=True)
+    script = Path(__file__).resolve().parents[2] / "skills" / "image-generation" / "scripts" / "generate.py"
+
+    with pytest.raises(WorkspaceAccessError):
+        validate_shell_command_paths(
+            str(workspace),
+            f"cat {script}",
+            allow_builtin_skill_scripts=True,
+        )
 
 
 def test_bash_allows_system_executable_for_workspace_commands(tmp_path: Path) -> None:

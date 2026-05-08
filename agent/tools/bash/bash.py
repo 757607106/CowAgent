@@ -29,7 +29,7 @@ ENVIRONMENT: All API keys from env_config are auto-injected. Use $VAR_NAME direc
 
 SAFETY:
 - Freely create/modify/delete files within the workspace
-- Paths outside the workspace are not allowed"""
+- Paths outside the workspace are not allowed, except built-in skill scripts listed in skill instructions"""
 
     params: dict = {
         "type": "object",
@@ -83,7 +83,7 @@ SAFETY:
                     f"Safety Warning: {warning}\n\nIf you believe this command is safe and necessary, please ask the user for confirmation first, explaining what the command does and why it's needed.")
 
         try:
-            validate_shell_command_paths(self.cwd, command)
+            validate_shell_command_paths(self.cwd, command, allow_builtin_skill_scripts=True)
         except WorkspaceAccessError as e:
             return ToolResult.fail(str(e))
 

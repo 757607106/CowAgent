@@ -17,14 +17,14 @@ class Read(BaseTool):
     """Tool for reading file contents"""
     
     name: str = "read"
-    description: str = f"Read or inspect file contents. For text/PDF files, returns content (truncated to {DEFAULT_MAX_LINES} lines or {DEFAULT_MAX_BYTES // 1024}KB). For images/videos/audio, returns metadata only (file info, size, type). Use offset/limit for large text files."
+    description: str = f"Read or inspect file contents. For text/PDF files, returns content (truncated to {DEFAULT_MAX_LINES} lines or {DEFAULT_MAX_BYTES // 1024}KB). For images/videos/audio, returns metadata only (file info, size, type). Use offset/limit for large text files. Built-in SKILL.md paths listed by the skill system are allowed."
     
     params: dict = {
         "type": "object",
         "properties": {
             "path": {
                 "type": "string",
-                "description": "Path to the file to read. Relative paths are based on the current workspace. Paths outside the workspace are not allowed."
+                "description": "Path to the file to read. Relative paths are based on the current workspace. Paths outside the workspace are not allowed except built-in SKILL.md paths listed by the skill system."
             },
             "offset": {
                 "type": "integer",
@@ -138,7 +138,7 @@ class Read(BaseTool):
         :param path: Relative or absolute path
         :return: Absolute path
         """
-        return resolve_workspace_path(self.cwd, path)
+        return resolve_workspace_path(self.cwd, path, allow_builtin_skill_instruction=True)
     
     def _return_file_metadata(self, absolute_path: str, file_type: str, file_size: int) -> ToolResult:
         """
