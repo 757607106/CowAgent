@@ -49,7 +49,7 @@
   --transition-smooth: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 
   /* Layout */
-  --sidebar-width: 12.5rem;
+  --sidebar-width: 11.25rem;
   --header-height: 3.5rem;
   --content-max-width: 100%;
   --content-available-height: calc(100vh - var(--app-content-padding, 0px) - var(--app-content-padding, 0px));
@@ -103,9 +103,8 @@ body,
 }
 
 .app-sider {
-  --sidebar-width: 11.25rem;
-  background: var(--bg-surface) !important;
-  border-right: 1px solid var(--border-light) !important;
+  background: var(--bg-surface);
+  border-right: 1px solid var(--border-light);
   box-shadow: none;
   z-index: 10;
 }
@@ -236,11 +235,11 @@ body,
 /* Navigation menu */
 .app-nav-menu {
   flex: 1;
-  border-inline-end: 0 !important;
+  border-inline-end: 0;
   padding: var(--space-1) 6px var(--space-3);
   overflow-y: auto;
   overscroll-behavior: contain;
-  background: transparent !important;
+  background: transparent;
 }
 
 .app-nav-menu .ant-menu-item {
@@ -251,7 +250,7 @@ body,
   font-size: 13.5px;
   font-weight: 500;
   color: var(--neutral-600);
-  padding-inline: 10px !important;
+  padding-right: 10px;
   transition: background 0.15s ease, color 0.15s ease;
 }
 
@@ -261,8 +260,8 @@ body,
 }
 
 .app-nav-menu .ant-menu-item-selected {
-  color: var(--neutral-900) !important;
-  background: var(--neutral-100) !important;
+  color: var(--neutral-900);
+  background: var(--neutral-100);
   font-weight: 600;
 }
 
@@ -1298,20 +1297,9 @@ body,
   color: var(--text-tertiary);
 }
 
-/* User markdown */
-.chat-user-markdown {
-  color: var(--text-primary);
-}
-
-.chat-user-markdown p,
-.chat-user-markdown li,
-.chat-user-markdown code,
-.chat-user-markdown strong {
-  color: inherit;
-}
-
-.chat-user-markdown pre {
-  background: var(--bg-inset);
+.chat-user-text {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* ── Markdown & Content ───────────────────────────────────────── */
@@ -1396,13 +1384,6 @@ body,
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-}
-
-.chat-markdown-code,
-.chat-markdown-mermaid {
-  width: 100%;
-  overflow: hidden;
-  border-radius: var(--radius-xl);
 }
 
 .chat-markdown-video {

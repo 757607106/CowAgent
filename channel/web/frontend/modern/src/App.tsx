@@ -62,6 +62,7 @@ function SidebarContent({
   const isPlatformAdmin = authUser?.principal_type === 'platform';
   const teamLabel = isPlatformAdmin ? '平台管理' : authUser?.tenant_name || '当前团队';
   const accountLabel = authUser?.account || authUser?.user_name || '已登录';
+  const menuItems = useMemo(() => getMenuItemsForRole(isPlatformAdmin), [isPlatformAdmin]);
 
   return (
     <>
@@ -75,9 +76,10 @@ function SidebarContent({
       <Menu
         mode="inline"
         selectedKeys={selectedMenu}
-        items={getMenuItemsForRole(isPlatformAdmin)}
+        items={menuItems}
         onClick={({ key }) => onMenuClick(String(key))}
         className="app-nav-menu"
+        inlineIndent={12}
       />
       {authUser && (
         <div className="app-sidebar-footer">
@@ -354,8 +356,12 @@ function Shell({ authUser, onLogout }: { authUser: AuthUser | null; onLogout: ()
 
   const selectedMenu = useMemo(() => {
     if (location.pathname.startsWith('/bindings')) return ['/channels'];
-    const target = flatMenuItems.find((item) => location.pathname.startsWith(item.key));
-    return target ? [target.key] : [isPlatformAdmin ? '/platform/models' : '/chat'];
+    let bestMatch: string | undefined;
+    for (const item of flatMenuItems) {
+      if (!location.pathname.startsWith(item.key)) continue;
+      if (!bestMatch || item.key.length > bestMatch.length) bestMatch = item.key;
+    }
+    return [bestMatch || (isPlatformAdmin ? '/platform/models' : '/chat')];
   }, [flatMenuItems, isPlatformAdmin, location.pathname]);
 
   const handleMenuClick = useCallback((key: string) => {

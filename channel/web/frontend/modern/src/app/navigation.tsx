@@ -42,12 +42,16 @@ export function getFlatMenuItemsForRole(isPlatformAdmin: boolean): ConsoleNavIte
   return isPlatformAdmin ? platformNavItems : tenantNavItems;
 }
 
-function toMenuItems(items: ConsoleNavItem[]): NonNullable<MenuProps['items']> {
-  return items.map((item) => ({
-    key: item.key,
-    icon: item.icon,
-    label: item.label,
-  }));
+function toMenuItems(items: readonly ConsoleNavItem[]): NonNullable<MenuProps['items']> {
+  return items.map((item) => ({ key: item.key, icon: item.icon, label: item.label }));
+}
+
+function pickMenuItems(items: readonly ConsoleNavItem[], keys: readonly string[]): NonNullable<MenuProps['items']> {
+  const map = new Map(items.map((item) => [item.key, item] as const));
+  return keys
+    .map((key) => map.get(key))
+    .filter((item): item is ConsoleNavItem => Boolean(item))
+    .map((item) => ({ key: item.key, icon: item.icon, label: item.label }));
 }
 
 export function getMenuItemsForRole(isPlatformAdmin: boolean): MenuProps['items'] {
@@ -65,32 +69,32 @@ export function getMenuItemsForRole(isPlatformAdmin: boolean): MenuProps['items'
     {
       type: 'group',
       label: '工作台',
-      children: toMenuItems(tenantNavItems.filter((item) => item.key === '/chat')),
+      children: pickMenuItems(tenantNavItems, ['/chat']),
     },
     {
       type: 'group',
       label: 'AI 员工',
-      children: toMenuItems(tenantNavItems.filter((item) => item.key === '/agents')),
+      children: pickMenuItems(tenantNavItems, ['/agents']),
     },
     {
       type: 'group',
       label: '模型与能力',
-      children: toMenuItems(tenantNavItems.filter((item) => ['/tenant-models', '/skills', '/mcp'].includes(item.key))),
+      children: pickMenuItems(tenantNavItems, ['/tenant-models', '/skills', '/mcp']),
     },
     {
       type: 'group',
       label: '渠道接入',
-      children: toMenuItems(tenantNavItems.filter((item) => item.key === '/channels')),
+      children: pickMenuItems(tenantNavItems, ['/channels']),
     },
     {
       type: 'group',
       label: '运营观测',
-      children: toMenuItems(tenantNavItems.filter((item) => ['/usage', '/tasks'].includes(item.key))),
+      children: pickMenuItems(tenantNavItems, ['/usage', '/tasks']),
     },
     {
       type: 'group',
       label: '组织成员',
-      children: toMenuItems(tenantNavItems.filter((item) => item.key === '/tenant-users')),
+      children: pickMenuItems(tenantNavItems, ['/tenant-users']),
     },
   ];
 }

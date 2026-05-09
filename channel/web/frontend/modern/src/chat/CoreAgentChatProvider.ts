@@ -13,7 +13,6 @@ import type {
 } from '../types';
 
 const MAX_TOOL_RESULT_LENGTH = 4000;
-const REASONING_RENDER_CAP = 4 * 1024;
 const CONTEXT_CLEARED_TEXT = '— 以上内容已从上下文中移除 —';
 
 export interface CoreAgentChatRequest {
@@ -157,9 +156,7 @@ function formatToolOutputMarkdown(value: unknown): string {
 }
 
 function formatReasoningMarkdown(value: unknown): string {
-  const text = asText(value);
-  if (text.length <= REASONING_RENDER_CAP) return text;
-  return `${text.slice(0, REASONING_RENDER_CAP)}\n\n...（思考内容过长，已截断）`;
+  return asText(value);
 }
 
 function getToolStatusText(status: AssistantStep['status']): string {

@@ -33,6 +33,30 @@ function normalizeLanguage(lang?: string): string {
   return value.split(/\s+/)[0].replace(/^language-/, '');
 }
 
+function normalizeMermaidCode(code: string): string {
+  return code
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => {
+      let next = line.replace(/\|([^|\n]*&[^|\n]*)\|/g, (_, label: string) => `|${label.replace(/&/g, '＆')}|`);
+
+      if (/^\s*classDef\s+/i.test(next)) {
+        next = next
+          .replace(/,?\s*stroke-dasharray\s*:\s*[^,;]+/gi, '')
+          .replace(/,\s*;/g, ';')
+          .replace(/\s+,/g, ',');
+
+        if (/^\s*classDef\s+\S+\s*;?\s*$/.test(next)) {
+          return '';
+        }
+      }
+
+      return next;
+    })
+    .filter((line) => line.trim().length > 0)
+    .join('\n');
+}
+
 function sanitizeMarkdownForSources(content: string): string {
   return content
     .replace(/```[\s\S]*?```/g, '')
@@ -114,27 +138,23 @@ export function extractMarkdownSources(content: string): NonNullable<SourcesProp
   return items.slice(0, 8);
 }
 
-function MarkdownCodeRenderer({ children, lang, block, streamStatus, className }: ComponentProps) {
+function MarkdownCodeRenderer({ children, lang, block, className }: ComponentProps) {
   const code = getNodeText(children).replace(/\n$/, '');
-  const language = normalizeLanguage(lang);
+  const classLanguage = className?.match(/(?:^|\s)language-([^\s]+)/)?.[1] || '';
+  const language = normalizeLanguage(lang || classLanguage);
 
   if (!block) {
     return <code className={className}>{children}</code>;
   }
 
-  if (language === 'mermaid' && streamStatus === 'done') {
-    return (
-      <div className="chat-markdown-mermaid">
-        <Mermaid header={null}>{code}</Mermaid>
-      </div>
-    );
+  if (language === 'mermaid') {
+    return <Mermaid>{normalizeMermaidCode(code)}</Mermaid>;
   }
 
-  const highlightLanguage = language === 'mermaid' ? 'markdown' : language;
   return (
-    <div className="chat-markdown-code">
-      <CodeHighlighter lang={highlightLanguage}>{code}</CodeHighlighter>
-    </div>
+    <CodeHighlighter lang={language} prismLightMode={false}>
+      {code}
+    </CodeHighlighter>
   );
 }
 
@@ -184,6 +204,7 @@ export function MarkdownBlock({
         openLinksInNewTab
         escapeRawHtml
         components={MARKDOWN_COMPONENTS}
+        paragraphTag="div"
         rootClassName={joinClassNames('chat-markdown', className)}
         streaming={loading ? { hasNextChunk: true, enableAnimation: true, tail: false } : undefined}
       />

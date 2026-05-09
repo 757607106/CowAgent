@@ -18,7 +18,6 @@ import {
   PaperClipOutlined,
   PlusOutlined,
   ReloadOutlined,
-  StopOutlined,
   UserOutlined,
 } from '@ant-design/icons';
 import { App, Avatar, Button, Dropdown, Empty, Flex, Space, Spin, Tag, Tooltip, Typography } from 'antd';
@@ -33,7 +32,6 @@ import {
   parseHistoryMessages,
 } from '../chat/CoreAgentChatProvider';
 import { AssistantMessageFlow } from '../chat/AssistantMessageFlow';
-import { MarkdownBlock } from '../chat/ChatMarkdown';
 import { DEFAULT_AGENT_ID, DEFAULT_AGENT_NAME, useRuntimeScope } from '../context/runtime';
 import {
   HISTORY_PAGE_SIZE,
@@ -54,6 +52,13 @@ import { avatarOptionByKey } from '../utils/avatar';
 
 const SenderSwitch = Sender.Switch;
 const SenderHeader = Sender.Header;
+
+function keepSenderKeyboardEvent(event: ReactKeyboardEvent) {
+  if (event.key === ' ' || event.key === 'Enter') {
+    event.stopPropagation();
+  }
+}
+
 const SLASH_COMMANDS = [
   { cmd: '/help', desc: '显示命令帮助' },
   { cmd: '/status', desc: '查看运行状态' },
@@ -423,11 +428,12 @@ export default function ChatPage() {
   }, [attachmentPanelOpen, attachments.length, revealAttachmentPanel, uploading]);
 
   const submitMessage = useCallback((rawText: string) => {
-    const text = rawText.trim();
-    if (!text && attachments.length === 0) return;
+    const text = rawText.replace(/\r\n/g, '\n');
+    const hasText = text.trim().length > 0;
+    if (!hasText && attachments.length === 0) return;
     if (!sessionId) return;
 
-    if (text) {
+    if (hasText) {
       const nextHistory = inputHistoryRef.current.filter((item) => item !== text);
       nextHistory.push(text);
       inputHistoryRef.current = nextHistory.slice(-50);
@@ -441,7 +447,8 @@ export default function ChatPage() {
     setAttachments([]);
     setAttachmentPanelOpen(false);
 
-    const userSummary = text || (nextAttachments.length > 0
+    const summaryText = text.trim();
+    const userSummary = summaryText || (nextAttachments.length > 0
       ? `附件：${nextAttachments.map((item) => item.file_name).join('、')}`
       : '新消息');
 
@@ -464,7 +471,7 @@ export default function ChatPage() {
 
     onRequest({
       session_id: sessionId,
-      message: text,
+      message: hasText ? text : '',
       attachments: nextAttachments,
       ...(deepThink === null ? {} : { enable_thinking: deepThink }),
       timestamp: new Date().toISOString(),
@@ -556,7 +563,7 @@ export default function ChatPage() {
             </div>
           ) : null}
           {content.text ? (
-            <MarkdownBlock content={content.text} className="msg-content chat-user-markdown user-bubble" />
+            <div className="msg-content chat-user-text user-bubble">{content.text}</div>
           ) : null}
         </div>
       ),
@@ -691,11 +698,6 @@ export default function ChatPage() {
                   回到底部
                 </Button>
               ) : null}
-              {isRequesting ? (
-                <Button size="small" danger icon={<StopOutlined />} onClick={abort}>
-                  停止
-                </Button>
-              ) : null}
             </Space>
           ) : null}
         </div>
@@ -770,6 +772,7 @@ export default function ChatPage() {
                   disabled={uploading || !sessionId}
                   placeholder={isRequesting ? '模型正在回复...' : '输入消息，输入 / 查看命令'}
                   autoSize={{ minRows: 2, maxRows: 5 }}
+                  submitType="enter"
                   onChange={(value) => {
                     setDraft(value);
                     const shouldOpen = value.trimStart().startsWith('/') && buildSuggestionItems(value).length > 0;
@@ -779,9 +782,14 @@ export default function ChatPage() {
                   onKeyDown={(event) => {
                     if (suggestionOpen && suggestionItems.length > 0) {
                       onKeyDown(event);
-                      if (event.defaultPrevented) return;
+                      if (event.defaultPrevented) {
+                        event.stopPropagation();
+                        return false;
+                      }
                     }
+                    keepSenderKeyboardEvent(event);
                     handleSenderKeyDown(event);
+                    return undefined;
                   }}
                   onSubmit={(value) => submitMessage(value)}
                   onCancel={abort}
