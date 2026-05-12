@@ -11,7 +11,7 @@ The Web Console is CoreAgent's default channel. It starts automatically after la
 {
   "channel_type": "web",
   "web_port": 9899,
-  "platform_database_url": "postgresql://cowplatform:cowplatform@127.0.0.1:55432/cowplatform"
+  "platform_database_url": "postgresql://cowplatform:prod-smoke-db-secret@127.0.0.1:55432/cowplatform"
 }
 ```
 
@@ -19,7 +19,7 @@ The Web Console is CoreAgent's default channel. It starts automatically after la
 | --- | --- | --- |
 | `channel_type` | Set to `web` | `web` |
 | `web_port` | Web service listen port | `9899` |
-| `platform_database_url` | PostgreSQL DSN for tenants, agents, sessions, memory indexes, jobs, and audit logs | `postgresql://cowplatform:cowplatform@127.0.0.1:55432/cowplatform` |
+| `platform_database_url` | PostgreSQL DSN for tenants, agents, sessions, memory indexes, jobs, and audit logs. Local source startup derives it from `.env.docker` and connects to Docker-mapped ports. | `postgresql://cowplatform:prod-smoke-db-secret@127.0.0.1:55432/cowplatform` |
 
 ## Access URL
 

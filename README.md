@@ -206,12 +206,12 @@ cow install-browser
   "web_tenant_auth": true,                                    # Web 控制台启用租户注册/登录，并按租户隔离数据
   "platform_env": "dev",                                      # 平台部署环境：dev/test/production
   "platform_require_dependencies": true,                      # 严格要求 PostgreSQL/Redis/Qdrant/MinIO 同时可用
-  "platform_database_url": "postgresql://cowplatform:cowplatform@127.0.0.1:55432/cowplatform", # PostgreSQL 平台数据连接串
+  "platform_database_url": "postgresql://cowplatform:prod-smoke-db-secret@127.0.0.1:55432/cowplatform", # PostgreSQL 平台数据连接串
   "platform_redis_url": "redis://127.0.0.1:56379/0",          # Redis 平台依赖
   "platform_qdrant_url": "http://127.0.0.1:56333",            # Qdrant 平台依赖
   "platform_minio_endpoint": "http://127.0.0.1:59000",        # MinIO 平台依赖
-  "platform_minio_access_key": "cowplatform",                 # MinIO 访问账号
-  "platform_minio_secret_key": "cowplatform123",              # MinIO 访问密钥
+  "platform_minio_access_key": "cowplatform-prod",            # MinIO 访问账号
+  "platform_minio_secret_key": "prod-smoke-minio-secret",     # MinIO 访问密钥
   "platform_minio_bucket": "coreagent",                        # MinIO 默认 bucket
   "agent": true,                                              # 是否启用 Agent 模式，启用后拥有多轮工具决策、长期记忆、Skills 能力等
   "agent_workspace": "~/cow",                                 # Agent 的工作空间路径，用于存储 memory、skills、系统设定等
@@ -252,101 +252,48 @@ cow install-browser
 
 ## 三、运行
 
-### 1.本地运行
+### 1.本地源码启动
 
-如果是个人计算机 **本地运行**，直接在项目根目录下执行：
+本地源码启动只运行 Python Web/API 进程，PostgreSQL、Redis、Qdrant、MinIO 统一使用 Docker 依赖栈。先准备 Docker 环境文件并启动依赖：
 
 ```bash
-cow start              # 推荐，需先安装 Cow CLI
-python3 app.py         # 或直接运行，windows 环境下该命令通常为 python app.py
+cp .env.docker.example .env.docker
+docker compose --env-file .env.docker -f docker/compose.base.yml up -d postgres redis qdrant minio
 ```
 
-运行后默认会启动 web 服务，可通过访问 `http://localhost:9899/chat` 在网页端对话。
-
-如果需要接入其他应用通道只需修改 `config.json` 配置文件中的 `channel_type` 参数，详情参考：[通道说明](#通道说明)。
-
-
-### 2.服务器部署
-
-推荐使用 `cow` 命令管理服务：
+再启动本地源码服务：
 
 ```bash
-cow start              # 后台启动
-cow stop               # 停止服务
-cow restart            # 重启服务
-cow status             # 查看运行状态
-cow logs               # 查看日志
-cow update             # 拉取最新代码并重启
+cp .env.local.example .env.local
+./scripts/start-platform-local.sh
 ```
 
-也可以使用传统方式后台运行：
+运行后本地源码 Web 默认使用 `http://localhost:9901/chat`，Docker Web 默认使用 `http://localhost:9899/chat`，两个端口不会冲突。
+
+### 2.Docker 启动
+
+Docker 启动使用同一份 `.env.docker`，会运行 PostgreSQL、Redis、Qdrant、MinIO、platform-app、platform-worker、platform-channel-runtime、platform-web：
 
 ```bash
-nohup python3 app.py & tail -f nohup.out
-```
-
-此外，项目根目录下的 `run.sh` 脚本也支持一键管理服务，包括 `./run.sh start`、`./run.sh stop`、`./run.sh restart` 等命令，执行 `./run.sh help` 可查看全部用法。
-
-> 如果需要通过浏览器访问 Web 控制台，请确保服务器的 `9899` 端口已在防火墙或安全组中放行，建议仅对指定 IP 开放以保证安全。
-
-### 3.Docker部署
-
-使用 docker 部署无需下载源码和安装依赖，只需要获取 `docker-compose.yml` 配置文件并启动容器即可。Agent 模式下更推荐使用源码进行部署，以获得更多系统访问能力。
-
-> 前提是需要安装好 `docker` 及 `docker-compose`，安装成功后执行 `docker -v` 和 `docker-compose version` (或 `docker compose version`) 可查看到版本号。安装地址为 [docker官网](https://docs.docker.com/engine/install/) 。
-
-**(1) 下载 docker-compose.yml 文件**
-
-```bash
-curl -O https://cdn.link-ai.tech/code/cow/docker-compose.yml
-```
-
-下载完成后打开 `docker-compose.yml` 填写所需配置，例如 `CHANNEL_TYPE`、`OPEN_AI_API_KEY` 和等配置。
-
-**(2) 启动容器**
-
-在 `docker-compose.yml` 所在目录下执行以下命令启动容器：
-
-```bash
-sudo docker compose up -d         # 若docker-compose为 1.X 版本，则执行 `sudo  docker-compose up -d`
-```
-
-运行命令后，会自动取 [docker hub](https://hub.docker.com/r/zhayujie/chatgpt-on-wechat) 拉取最新 release 版本的镜像。当执行 `sudo docker ps` 能查看到 NAMES 为 chatgpt-on-wechat 的容器即表示运行成功。最后执行以下命令可查看容器的运行日志：
-
-```bash
-sudo docker logs -f chatgpt-on-wechat
-```
-
-> 如果需要通过浏览器访问 Web 控制台，请确保服务器的 `9899` 端口已在防火墙或安全组中放行，建议仅对指定 IP 开放以保证安全。
-
-#### 平台生产化 Docker 部署
-
-平台模式使用同一套 Docker 依赖栈运行测试和生产：PostgreSQL、Redis、Qdrant、MinIO、platform-app、platform-worker、platform-web。容器启动会等待全依赖可用并自动执行 PostgreSQL schema 迁移。
-
-测试环境：
-
-```bash
-docker compose -p coreagent-test \
+cp .env.docker.example .env.docker
+docker compose --env-file .env.docker -p coreagent-prod \
   -f docker/compose.base.yml \
   -f docker/compose.platform.yml \
-  -f docker/compose.test.yml \
   up -d --build
 ```
 
-生产环境：
+容器启动会等待全依赖可用并自动执行 PostgreSQL schema 迁移，`/ready` 会同时报告 PostgreSQL、Redis、Qdrant、MinIO 状态。
+
+临时测试环境可复用同一套 compose，只需换 project name 和端口：
 
 ```bash
-PLATFORM_POSTGRES_PASSWORD='change-to-strong-db-secret' \
-PLATFORM_MINIO_ROOT_USER='change-to-prod-access' \
-PLATFORM_MINIO_ROOT_PASSWORD='change-to-strong-minio-secret' \
-docker compose -p coreagent-prod \
+docker compose --env-file .env.docker -p coreagent-test \
   -f docker/compose.base.yml \
   -f docker/compose.platform.yml \
-  -f docker/compose.prod.yml \
   up -d --build
 ```
 
-生产 overlay 会拒绝默认弱密码和 localhost 依赖，`/ready` 会同时报告 PostgreSQL、Redis、Qdrant、MinIO 状态。
+生产环境请先把 `.env.docker` 中的数据库和 MinIO 密钥替换为强密码；生产启动会拒绝默认弱密码和 localhost 依赖。
 
 ## 模型说明
 

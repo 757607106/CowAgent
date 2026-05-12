@@ -52,12 +52,12 @@ def _host(value: str) -> str:
 
 
 @pytest.mark.e2e
-def test_test_and_production_compose_use_the_same_dependency_stack() -> None:
+def test_platform_compose_uses_single_docker_stack() -> None:
     files = ["docker/compose.base.yml", "docker/compose.platform.yml"]
-    test_config = _compose_config([*files, "docker/compose.test.yml"])
-    prod_config = _compose_config(
-        [*files, "docker/compose.prod.yml"],
+    config = _compose_config(
+        files,
         env={
+            "COW_PLATFORM_ENV": "production",
             "PLATFORM_POSTGRES_PASSWORD": "strong-db-secret",
             "PLATFORM_MINIO_ROOT_USER": "prod-access",
             "PLATFORM_MINIO_ROOT_PASSWORD": "prod-minio-secret",
@@ -74,28 +74,29 @@ def test_test_and_production_compose_use_the_same_dependency_stack() -> None:
         "platform-channel-runtime",
         "platform-web",
     }
-    assert set(test_config["services"]) == required_services
-    assert set(prod_config["services"]) == required_services
+    assert set(config["services"]) == required_services
 
-    for config, expected_env in ((test_config, "test"), (prod_config, "production")):
-        services = config["services"]
-        for service_name in ("platform-app", "platform-worker", "platform-channel-runtime", "platform-web"):
-            service = services[service_name]
-            env = _env_map(service)
-            assert _depends_on(service) >= {"postgres", "redis", "qdrant", "minio"}
-            assert env["COW_PLATFORM_ENV"] == expected_env
-            assert env["COW_PLATFORM_REQUIRE_DEPENDENCIES"] == "true"
-            assert env["COW_PLATFORM_STRICT_STARTUP"] == "true"
-            assert _host(env["COW_PLATFORM_DATABASE_URL"]) == "postgres"
-            assert _host(env["COW_PLATFORM_REDIS_URL"]) == "redis"
-            assert _host(env["COW_PLATFORM_QDRANT_URL"]) == "qdrant"
-            assert _host(env["COW_PLATFORM_MINIO_ENDPOINT"]) == "minio"
-            assert env["COW_PLATFORM_MINIO_BUCKET"]
-        assert _env_map(services["platform-web"])["WEB_TENANT_AUTH"] == "true"
-        assert _env_map(services["platform-web"])["COW_PLATFORM_START_CHANNEL_RUNTIMES"] == "false"
+    services = config["services"]
+    for service_name in ("platform-app", "platform-worker", "platform-channel-runtime", "platform-web"):
+        service = services[service_name]
+        env = _env_map(service)
+        assert _depends_on(service) >= {"postgres", "redis", "qdrant", "minio"}
+        assert env["COW_PLATFORM_ENV"] == "production"
+        assert env["COW_PLATFORM_REQUIRE_DEPENDENCIES"] == "true"
+        assert env["COW_PLATFORM_STRICT_STARTUP"] == "true"
+        assert _host(env["COW_PLATFORM_DATABASE_URL"]) == "postgres"
+        assert _host(env["COW_PLATFORM_REDIS_URL"]) == "redis"
+        assert _host(env["COW_PLATFORM_QDRANT_URL"]) == "qdrant"
+        assert _host(env["COW_PLATFORM_MINIO_ENDPOINT"]) == "minio"
+        assert env["COW_PLATFORM_MINIO_BUCKET"]
+    assert _env_map(services["platform-web"])["WEB_TENANT_AUTH"] == "true"
+    assert _env_map(services["platform-web"])["COW_PLATFORM_START_CHANNEL_RUNTIMES"] == "false"
 
     for service_name in required_services:
-        assert prod_config["services"][service_name].get("restart") == "unless-stopped"
+        assert services[service_name].get("restart") == "unless-stopped"
+
+    assert not (REPO_ROOT / "docker" / "compose.test.yml").exists()
+    assert not (REPO_ROOT / "docker" / "compose.prod.yml").exists()
 
 
 def test_platform_docker_image_does_not_generate_root_config_json() -> None:

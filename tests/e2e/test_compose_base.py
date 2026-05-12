@@ -80,13 +80,13 @@ def test_compose_base_starts_platform_dependencies() -> None:
             "COW_PLATFORM_ENV": "test",
             "COW_PLATFORM_REQUIRE_DEPENDENCIES": "true",
             "COW_PLATFORM_DATABASE_URL": (
-                f"postgresql://cowplatform:cowplatform@127.0.0.1:{env['PLATFORM_POSTGRES_PORT']}/cowplatform"
+                f"postgresql://cowplatform:prod-smoke-db-secret@127.0.0.1:{env['PLATFORM_POSTGRES_PORT']}/cowplatform"
             ),
             "COW_PLATFORM_REDIS_URL": f"redis://127.0.0.1:{env['PLATFORM_REDIS_PORT']}/0",
             "COW_PLATFORM_QDRANT_URL": f"http://127.0.0.1:{env['PLATFORM_QDRANT_HTTP_PORT']}",
             "COW_PLATFORM_MINIO_ENDPOINT": f"http://127.0.0.1:{env['PLATFORM_MINIO_API_PORT']}",
-            "COW_PLATFORM_MINIO_ACCESS_KEY": "cowplatform",
-            "COW_PLATFORM_MINIO_SECRET_KEY": "cowplatform123",
+            "COW_PLATFORM_MINIO_ACCESS_KEY": "cowplatform-prod",
+            "COW_PLATFORM_MINIO_SECRET_KEY": "prod-smoke-minio-secret",
             "COW_PLATFORM_MINIO_BUCKET": "coreagent",
         }
         dependency_check = subprocess.run(

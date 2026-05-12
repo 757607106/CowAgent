@@ -3,10 +3,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-if [ -f ".env.platform" ]; then
+if [ -f ".env.docker" ]; then
   set -a
   # shellcheck disable=SC1091
-  source ".env.platform"
+  source ".env.docker"
   set +a
 fi
 DOCKER_WEB_PORT="${PLATFORM_WEB_PORT:-${WEB_PORT:-9899}}"
@@ -34,8 +34,8 @@ export COW_PLATFORM_MINIO_ENDPOINT="http://127.0.0.1:${PLATFORM_MINIO_API_PORT:-
 export COW_PLATFORM_MINIO_ACCESS_KEY="${PLATFORM_MINIO_ROOT_USER:-cowplatform-prod}"
 export COW_PLATFORM_MINIO_SECRET_KEY="${PLATFORM_MINIO_ROOT_PASSWORD:-prod-smoke-minio-secret}"
 export COW_PLATFORM_MINIO_BUCKET="${PLATFORM_MINIO_BUCKET:-coreagent}"
-export COW_PLATFORM_ENV="${COW_PLATFORM_ENV:-dev}"
-export WEB_TENANT_AUTH="true"
+export COW_PLATFORM_ENV="dev"
+export WEB_TENANT_AUTH="${WEB_TENANT_AUTH:-true}"
 export WEB_PORT="$LOCAL_WEB_PORT"
 export MODEL="${MODEL:-qwen3.6-plus}"
 export AGENT_WORKSPACE="${AGENT_WORKSPACE:-$HOME/cow}"

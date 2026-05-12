@@ -1237,11 +1237,9 @@ nginx / TLS / 日志采集可以在外层继续接入，不改变核心服务栈
 docker/
   compose.base.yml
   compose.platform.yml
-  compose.test.yml
-  compose.prod.yml
 ```
 
-`compose.test.yml` 和 `compose.prod.yml` 使用同一组服务，仅允许环境名、密钥、restart 策略等部署属性不同。
+测试、生产和本地 Docker 均使用 `compose.base.yml + compose.platform.yml`，通过 `.env.docker` 和 Docker project name 区分环境。
 
 ## 21.5 migration 原则
 

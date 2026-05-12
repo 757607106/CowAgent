@@ -144,8 +144,6 @@
 docker/
   compose.base.yml
   compose.platform.yml
-  compose.test.yml
-  compose.prod.yml
   init/
     minio/
     qdrant/
@@ -282,21 +280,21 @@ networks:
 
 ---
 
-## 9. compose.test.yml 已落地约束
+## 9. 单一 compose 栈测试约束
 
 测试环境要求：
 
 - 不改变依赖类型
-- 使用独立 env
+- 使用 `.env.docker` 和独立 Docker project name
 - 自动 migration
 - 容器启动前等待 PostgreSQL / Redis / Qdrant / MinIO 全部可用
 - `/ready` 纳入四类依赖状态
 - 可执行集成测试
-- compose 契约测试校验测试环境和生产环境服务集合一致
+- compose 契约测试校验平台服务集合一致
 
 ---
 
-## 10. compose.prod.yml 已落地约束
+## 10. Docker 生产约束
 
 生产环境要求：
 
@@ -431,7 +429,6 @@ docker compose -f docker/compose.base.yml -f docker/compose.platform.yml up -d -
 docker compose -p coreagent-test \
   -f docker/compose.base.yml \
   -f docker/compose.platform.yml \
-  -f docker/compose.test.yml \
   up -d --build
 ```
 
@@ -444,7 +441,6 @@ PLATFORM_MINIO_ROOT_PASSWORD='change-to-strong-minio-secret' \
 docker compose -p coreagent-prod \
   -f docker/compose.base.yml \
   -f docker/compose.platform.yml \
-  -f docker/compose.prod.yml \
   up -d --build
 ```
 

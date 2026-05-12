@@ -299,8 +299,7 @@
 
 - 新增 `platform/jobs`
 - 新增 `docker/compose.platform.yml`
-- 新增 `docker/compose.test.yml`
-- 新增 `docker/compose.prod.yml`
+- Docker 环境统一使用 `docker/compose.base.yml + docker/compose.platform.yml`
 - 改造 [cli/commands/process.py](/Users/pusonglin/PycharmProjects/CoreAgent-2.0.6/cli/commands/process.py)
 
 ### 必做真实测试

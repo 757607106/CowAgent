@@ -16,7 +16,7 @@ except Exception:  # pragma: no cover - optional dependency in legacy installs
     ConnectionPool = None
 
 
-DEFAULT_DATABASE_URL = "postgresql://cowplatform:cowplatform@127.0.0.1:55432/cowplatform"
+DEFAULT_DATABASE_URL = "postgresql://cowplatform:prod-smoke-db-secret@127.0.0.1:55432/cowplatform"
 
 _migration_lock = threading.Lock()
 _migrated_urls: set[str] = set()

@@ -12,13 +12,13 @@
 
 - 平台模式启动入口只负责加载配置、启动 Web 控制台和注册信号处理
 - `ChannelManager` 已抽离到 `cow_platform/runtime/channel_manager.py`，`app.py` 仅保留兼容导出
-- 本地源码直接执行 `python app.py` 时会自动加载 `.env.local`，让端口、数据库、Redis、Qdrant、MinIO、模型和工作区与 `scripts/start-platform-local.sh` 保持一致；可用 `COW_PLATFORM_AUTO_LOCAL_ENV=false` 关闭
+- 本地源码直接执行 `python app.py` 时会自动加载 `.env.docker` + `.env.local`：Docker 依赖配置只保留在 `.env.docker`，本地进程只在 `.env.local` 配置端口、模型和工作区；可用 `COW_PLATFORM_AUTO_LOCAL_ENV=false` 关闭
 
 升级关注点：
 
 - 如果上游调整应用启动，需要确认 Web 进程不会重新默认承载长连接/轮询渠道
 - 如果上游调整 ChannelManager，需要合并到平台 runtime 层，不要重新塞回 `app.py`
-- 如果上游调整启动配置加载顺序，需要确认直接执行 `python app.py` 仍不会退回 Docker 端口 `9899` 或错误数据库凭据
+- 如果上游调整启动配置加载顺序，需要确认直接执行 `python app.py` 仍从 `.env.docker` 派生 PostgreSQL/Redis/Qdrant/MinIO 连接并使用本地端口 `9901`
 
 ### `config.py`
 
@@ -110,6 +110,7 @@
 
 - 本地源码启动平台 Web 时，同时编排已有 `cow_platform.worker.channel_runtime`，保持本地调试也具备租户渠道消息消费能力
 - 仅启动已有 runtime worker，不在脚本内复制渠道解析、binding 或消息处理逻辑；可用 `START_CHANNEL_RUNTIME=false` 临时关闭
+- 本地源码启动不再维护独立数据库配置；PostgreSQL/Redis/Qdrant/MinIO 均来自 Docker 依赖栈的 `.env.docker`
 
 升级关注点：
 
@@ -562,6 +563,8 @@
 
 - 定义平台 API、job worker、channel runtime worker、Web 控制台、PostgreSQL 等运行组件
 - `platform-web` 显式设置 `COW_PLATFORM_START_CHANNEL_RUNTIMES=false`，避免 Web 进程承载租户长连接/轮询渠道
+- Docker 启动配置统一来自 `.env.docker`，不要再新增其它 env 文件或让本地源码启动维护第二套依赖密钥
+- 测试/生产不再维护单独 compose overlay；统一使用 `compose.base.yml + compose.platform.yml`，通过 `.env.docker` 和 project name 区分环境
 
 升级关注点：
 

@@ -1,6 +1,7 @@
 import os
 
 import app
+import cli.commands.platform as platform_command
 from bridge.agent_initializer import AgentInitializer
 import bridge.agent_initializer as agent_initializer_module
 from bridge.context import Context, ContextType
@@ -33,7 +34,7 @@ def test_app_imports_local_platform_env(monkeypatch, tmp_path):
         monkeypatch.delenv(key, raising=False)
     monkeypatch.setenv("HOME", "/tmp/cow-home")
 
-    (tmp_path / ".env.platform").write_text(
+    (tmp_path / ".env.docker").write_text(
         "\n".join(
             [
                 "PLATFORM_POSTGRES_USER=cowplatform",
@@ -55,17 +56,7 @@ def test_app_imports_local_platform_env(monkeypatch, tmp_path):
     (tmp_path / ".env.local").write_text(
         "\n".join(
             [
-                'if [ -f ".env.platform" ]; then',
-                '  source ".env.platform"',
-                "fi",
                 "LOCAL_WEB_PORT=9901",
-                "COW_PLATFORM_DATABASE_URL=postgresql://${PLATFORM_POSTGRES_USER:-cowplatform}:${PLATFORM_POSTGRES_PASSWORD:-prod-smoke-db-secret}@127.0.0.1:${PLATFORM_POSTGRES_PORT:-55432}/${PLATFORM_POSTGRES_DB:-cowplatform}",
-                "COW_PLATFORM_REDIS_URL=redis://127.0.0.1:${PLATFORM_REDIS_PORT:-56379}/0",
-                "COW_PLATFORM_QDRANT_URL=http://127.0.0.1:${PLATFORM_QDRANT_HTTP_PORT:-56333}",
-                "COW_PLATFORM_MINIO_ENDPOINT=http://127.0.0.1:${PLATFORM_MINIO_API_PORT:-59000}",
-                "COW_PLATFORM_MINIO_ACCESS_KEY=${PLATFORM_MINIO_ROOT_USER:-cowplatform-prod}",
-                "COW_PLATFORM_MINIO_SECRET_KEY=${PLATFORM_MINIO_ROOT_PASSWORD:-prod-smoke-minio-secret}",
-                "COW_PLATFORM_MINIO_BUCKET=${PLATFORM_MINIO_BUCKET:-coreagent}",
                 "WEB_TENANT_AUTH=true",
                 "WEB_PORT=${LOCAL_WEB_PORT}",
                 "MODEL=${MODEL:-qwen3.6-plus}",
@@ -87,6 +78,8 @@ def test_app_imports_local_platform_env(monkeypatch, tmp_path):
     assert os.environ["COW_PLATFORM_REDIS_URL"] == "redis://127.0.0.1:56379/0"
     assert os.environ["COW_PLATFORM_QDRANT_URL"] == "http://127.0.0.1:56333"
     assert os.environ["COW_PLATFORM_MINIO_ENDPOINT"] == "http://127.0.0.1:59000"
+    assert os.environ["COW_PLATFORM_MINIO_ACCESS_KEY"] == "cowplatform-prod"
+    assert os.environ["COW_PLATFORM_MINIO_SECRET_KEY"] == "prod-smoke-minio-secret"
 
 
 def test_app_local_platform_env_can_be_disabled(monkeypatch, tmp_path):
@@ -97,6 +90,19 @@ def test_app_local_platform_env_can_be_disabled(monkeypatch, tmp_path):
     app._import_local_platform_env(tmp_path)
 
     assert "WEB_PORT" not in os.environ
+
+
+def test_platform_cli_imports_local_platform_env(monkeypatch):
+    calls = []
+
+    def fake_import_local_platform_env(*, source=""):
+        calls.append(source)
+
+    monkeypatch.setattr(platform_command, "import_local_platform_env", fake_import_local_platform_env)
+
+    platform_command.platform.callback()
+
+    assert calls == ["CLI"]
 
 
 def test_embedding_config_skips_endpoint_specific_openai_base():

@@ -149,9 +149,7 @@
   - `platform-app`
   - `platform-worker`
   - `platform-web`
-- 新增环境 overlay：
-  - `docker/compose.test.yml`
-  - `docker/compose.prod.yml`
+- Docker 环境统一使用 `docker/compose.base.yml + docker/compose.platform.yml`，配置来自 `.env.docker`
 - `platform-app / platform-worker / platform-web` 统一通过同一组环境变量连接：
   - PostgreSQL：`COW_PLATFORM_DATABASE_URL`
   - Redis：`COW_PLATFORM_REDIS_URL`
@@ -302,7 +300,6 @@ PLATFORM_POSTGRES_PASSWORD=... PLATFORM_MINIO_ROOT_USER=... PLATFORM_MINIO_ROOT_
 docker compose -p coreagent-prod-smoke \
   -f docker/compose.base.yml \
   -f docker/compose.platform.yml \
-  -f docker/compose.prod.yml \
   up -d --build
 platform-app / platform-web / postgres / redis 均 healthy，/ready 返回 PostgreSQL / Redis / Qdrant / MinIO 全部 ok
 

@@ -4,10 +4,13 @@ import json
 
 import click
 
+from cow_platform.runtime.local_env import import_local_platform_env
+
 
 @click.group()
 def platform():
     """平台模式相关命令。"""
+    import_local_platform_env(source="CLI")
 
 
 @platform.command()
