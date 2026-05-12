@@ -757,6 +757,21 @@ body,
   min-height: 100%;
 }
 
+.chat-bubble-list .chat-assistant-bubble {
+  width: 100%;
+}
+
+.chat-bubble-list .chat-assistant-bubble-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: min(58rem, calc(100% - 3rem));
+}
+
+.chat-bubble-list .chat-assistant-bubble-content {
+  width: 100%;
+  max-width: 100%;
+}
+
 .chat-avatar-user {
   background: #0066FF;
   color: var(--neutral-0);
@@ -1384,6 +1399,11 @@ body,
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+.chat-main-markdown .ant-mermaid {
+  width: 100%;
+  max-width: 100%;
 }
 
 .chat-markdown-video {

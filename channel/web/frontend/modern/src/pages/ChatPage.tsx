@@ -571,6 +571,11 @@ export default function ChatPage() {
     assistant: {
       placement: 'start' as const,
       variant: 'borderless' as const,
+      rootClassName: 'chat-assistant-bubble',
+      classNames: {
+        body: 'chat-assistant-bubble-body',
+        content: 'chat-assistant-bubble-content',
+      },
       avatar: <Avatar className="chat-avatar-assistant" src={assistantAvatarSrc} />,
       footerPlacement: 'outer-start' as const,
       footer: (_content: unknown, info: { extraInfo?: Record<string, unknown> }) => (

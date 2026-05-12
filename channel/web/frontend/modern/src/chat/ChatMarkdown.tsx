@@ -33,6 +33,10 @@ function normalizeLanguage(lang?: string): string {
   return value.split(/\s+/)[0].replace(/^language-/, '');
 }
 
+function hasMermaidFence(content: string): boolean {
+  return /(^|\n)```[^\n]*\bmermaid\b/i.test(content);
+}
+
 function normalizeMermaidCode(code: string): string {
   return code
     .replace(/\r\n/g, '\n')
@@ -138,7 +142,7 @@ export function extractMarkdownSources(content: string): NonNullable<SourcesProp
   return items.slice(0, 8);
 }
 
-function MarkdownCodeRenderer({ children, lang, block, className }: ComponentProps) {
+function MarkdownCodeRenderer({ children, lang, block, streamStatus, className }: ComponentProps) {
   const code = getNodeText(children).replace(/\n$/, '');
   const classLanguage = className?.match(/(?:^|\s)language-([^\s]+)/)?.[1] || '';
   const language = normalizeLanguage(lang || classLanguage);
@@ -148,6 +152,14 @@ function MarkdownCodeRenderer({ children, lang, block, className }: ComponentPro
   }
 
   if (language === 'mermaid') {
+    if (streamStatus !== 'done') {
+      return (
+        <CodeHighlighter lang="markdown" prismLightMode={false}>
+          {code}
+        </CodeHighlighter>
+      );
+    }
+
     return <Mermaid>{normalizeMermaidCode(code)}</Mermaid>;
   }
 
@@ -196,6 +208,9 @@ export function MarkdownBlock({
     () => (withSources ? extractMarkdownSources(content) : []),
     [content, withSources],
   );
+  const streaming = loading
+    ? { hasNextChunk: true, enableAnimation: !hasMermaidFence(content), tail: false }
+    : undefined;
 
   return (
     <div className={joinClassNames('chat-markdown-shell', className)}>
@@ -206,7 +221,7 @@ export function MarkdownBlock({
         components={MARKDOWN_COMPONENTS}
         paragraphTag="div"
         rootClassName={joinClassNames('chat-markdown', className)}
-        streaming={loading ? { hasNextChunk: true, enableAnimation: true, tail: false } : undefined}
+        streaming={streaming}
       />
       {withSources && sourceItems.length > 0 ? (
         <div className="chat-sources-wrap">
